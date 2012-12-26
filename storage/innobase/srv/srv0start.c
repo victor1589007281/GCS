@@ -1440,7 +1440,9 @@ innobase_start_or_create_for_mysql(void)
 	}
 #endif /* UNIV_LOG_ARCHIVE */
 
-	if (srv_n_log_files * srv_log_file_size >= 262144) {
+	//if (srv_n_log_files * srv_log_file_size >= 262144) {
+    if (srv_n_log_files * srv_log_file_size
+            >= ((ulint)1 << (32 - UNIV_PAGE_SIZE_SHIFT))) {
 		ut_print_timestamp(stderr);
 		fprintf(stderr,
 			" InnoDB: Error: combined size of log files"
@@ -1454,7 +1456,8 @@ innobase_start_or_create_for_mysql(void)
     /* 计算InnoDB空间总大小  */
 	for (i = 0; i < srv_n_data_files; i++) {
 #ifndef __WIN__
-		if (sizeof(off_t) < 5 && srv_data_file_sizes[i] >= 262144) {
+		//if (sizeof(off_t) < 5 && srv_data_file_sizes[i] >= 262144) {
+        if (sizeof(off_t) < 5 && srv_data_file_sizes[i] >= ((ulint)1 << (32 - UNIV_PAGE_SIZE_SHIFT))) {
 			ut_print_timestamp(stderr);
 			fprintf(stderr,
 				" InnoDB: Error: file size must be < 4 GB"
