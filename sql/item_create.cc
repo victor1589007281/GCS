@@ -234,6 +234,18 @@ protected:
 };
 
 
+class Create_func_current_program_name : public Create_func_arg0
+{
+public:
+	virtual Item *create(THD *thd);
+
+	static Create_func_current_program_name s_singleton;
+
+protected:
+	Create_func_current_program_name() {}
+	virtual ~Create_func_current_program_name() {}
+};
+
 class Create_func_acos : public Create_func_arg1
 {
 public:
@@ -512,6 +524,19 @@ public:
 protected:
   Create_func_connection_id() {}
   virtual ~Create_func_connection_id() {}
+};
+
+/* client program name class */
+class Create_func_program_name : public Create_func_arg0
+{
+public:
+	virtual Item *create(THD *thd);
+
+	static Create_func_program_name s_singleton;
+
+protected:
+	Create_func_program_name() {}
+	virtual ~Create_func_program_name() {}
 };
 
 
@@ -4733,7 +4758,7 @@ Create_func_uuid_short::create(THD *thd)
 Create_func_version Create_func_version::s_singleton;
 
 Item*
-Create_func_version::create(THD *thd)
+Create_func_version::create(THD *thd) 
 {
   thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
   return new (thd->mem_root) Item_static_string_func("version()",
@@ -4741,6 +4766,19 @@ Create_func_version::create(THD *thd)
                                                      (uint) strlen(server_version),
                                                      system_charset_info,
                                                      DERIVATION_SYSCONST);
+}
+
+Create_func_current_program_name Create_func_current_program_name::s_singleton;
+
+Item*
+Create_func_current_program_name::create(THD *thd)
+{
+	thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
+	return new (thd->mem_root) Item_static_string_func("current_program_name()",
+		thd->client_program_name,
+		(uint) strlen(thd->client_program_name),
+		system_charset_info,
+		DERIVATION_SYSCONST);
 }
 
 
@@ -4880,6 +4918,7 @@ struct Native_func_registry
 
 static Native_func_registry func_array[] =
 {
+  { { C_STRING_WITH_LEN("CURRENT_PROGRAM_NAME") }, BUILDER(Create_func_current_program_name)}, 
   { { C_STRING_WITH_LEN("ABS") }, BUILDER(Create_func_abs)},
   { { C_STRING_WITH_LEN("ACOS") }, BUILDER(Create_func_acos)},
   { { C_STRING_WITH_LEN("ADDTIME") }, BUILDER(Create_func_addtime)},

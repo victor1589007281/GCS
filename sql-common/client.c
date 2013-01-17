@@ -39,6 +39,9 @@
 
 #ifndef __WIN__
 #include <netdb.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <fcntl.h>
 #endif
 
 /* Remove client convenience wrappers */
@@ -2422,6 +2425,27 @@ error:
   return res;
 }
 
+
+/* get execute path name by pid */ 
+static void getCurrentProgramName(char *name)
+{
+#ifdef __WIN__
+	const char *msg = "hello world"; // don't support windows platform
+	strmake(name, msg, strlen(msg));
+#else
+	int fd, ret_num, i;
+	char cmd[1024] = {0};
+	int pid = getpid();
+	sprintf(cmd, "/proc/%d/cmdline", pid);
+	fd = open(cmd, O_RDONLY);
+	ret_num = read(fd, name, 1024);
+	for( i=0; i<ret_num; i++ )
+		if(name[i] == 0)
+			name[i] = ' ';
+	close(fd);
+#endif
+}
+
 /**
   sends a client authentication packet (second packet in the 3-way handshake)
 
@@ -2458,6 +2482,7 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
   MYSQL *mysql= mpvio->mysql;
   NET *net= &mysql->net;
   char *buff, *end;
+  char p_name[MAX_CLIENT_PROGRAM_NAME + 1] = {0};
 
   /* see end= buff+32 below, fixed size of the packet is 32 bytes */
   buff= my_alloca(33 + USERNAME_LENGTH + data_len + NAME_LEN + NAME_LEN);
@@ -2484,6 +2509,13 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
                        (~(CLIENT_COMPRESS | CLIENT_SSL | CLIENT_PROTOCOL_41) 
                        | mysql->server_capabilities);
 
+  /* send client support program_name_server_cert to server 
+	and send the program name to the package's end, terminated with '\0'
+	you can't send more information to the server etc.
+  */ 
+  if(mysql->server_capabilities & CLIENT_PROGRAM_NAME_SERVER_CERT)
+	mysql->client_flag |= CLIENT_PROGRAM_NAME_SERVER_CERT;
+
 #ifndef HAVE_COMPRESS
   mysql->client_flag&= ~CLIENT_COMPRESS;
 #endif
@@ -2495,6 +2527,7 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
     int4store(buff+4, net->max_packet_size);
     buff[8]= (char) mysql->charset->number;
     bzero(buff+9, 32-9);
+
     end= buff+32;
   }
   else
@@ -2606,6 +2639,13 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
     mysql->db= my_strdup(mpvio->db, MYF(MY_WME));
   }
 
+  /* if server support program_server_cert, send the client program name */
+  if (mysql->server_capabilities & CLIENT_PROGRAM_NAME_SERVER_CERT)
+  {
+	  getCurrentProgramName(p_name);
+	  end = strmake(end, p_name, strlen(p_name)) + 1;
+  }
+
   if (mysql->server_capabilities & CLIENT_PLUGIN_AUTH)
     end= strmake(end, mpvio->plugin->name, NAME_LEN) + 1;
 
@@ -2625,6 +2665,7 @@ error:
   my_afree(buff);
   return 1;
 }
+
 
 /**
   vio->read_packet() callback method for client authentication plugins

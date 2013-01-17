@@ -7847,6 +7847,8 @@ struct MPVIO_EXT :public MYSQL_PLUGIN_VIO
   const ACL_USER *acl_user;
   plugin_ref plugin;        ///< what plugin we're under
   LEX_STRING db;            ///< db name from the handshake packet
+  char* client_program_name; ///< client_program_name from the handshake packet
+
   /** when restarting a plugin this caches the last client reply */
   struct {
     char *plugin, *pkt;     ///< pointers into NET::buff
@@ -7972,6 +7974,9 @@ static bool send_server_handshake_packet(MPVIO_EXT *mpvio,
     mpvio->client_capabilities|= CLIENT_TRANSACTIONS;
 
   mpvio->client_capabilities|= CAN_CLIENT_COMPRESS;
+
+  /* tell the client that tmysql support client_program_name_server_cert */
+  mpvio->client_capabilities |= CLIENT_PROGRAM_NAME_SERVER_CERT;
 
   if (ssl_acceptor_fd)
   {
@@ -8595,6 +8600,7 @@ static ulong parse_client_handshake_packet(MPVIO_EXT *mpvio,
     /*
       Skip 23 remaining filler bytes which have no particular meaning.
     */
+
     end+= AUTH_PACKET_HEADER_SIZE_PROTO_41;
     bytes_remaining_in_packet-= AUTH_PACKET_HEADER_SIZE_PROTO_41;
   }
@@ -8743,6 +8749,14 @@ skip_to_ssl:
       return packet_error;
   }
 
+  size_t pragram_name_len = 0;
+  char *client_program_name = NULL;
+  if (mpvio->client_capabilities & CLIENT_PROGRAM_NAME_SERVER_CERT)
+  {
+	client_program_name = get_string(&end, &bytes_remaining_in_packet, &pragram_name_len);
+	/* we don't raise error here */
+  }
+
   /*
     Set the default for the password supplied flag for non-existing users
     as the default plugin (native passsword authentication) would do it
@@ -8791,6 +8805,11 @@ skip_to_ssl:
     user++;
     user_len-= 2;
   }
+
+  if (mpvio->client_program_name)
+	  my_free(mpvio->client_program_name);
+  if (!(mpvio->client_program_name = my_strndup(client_program_name, pragram_name_len, MYF(MY_WME))))
+	  return packet_error; /* The error is set by my_strdup(). */
 
   if (make_lex_string_root(mpvio->mem_root, 
                            &mpvio->db, db, db_len, 0) == 0)
@@ -9226,6 +9245,7 @@ server_mpvio_initialize(THD *thd, MPVIO_EXT *mpvio, uint connect_errors,
   mpvio->auth_info.user_name_length= 0;
   mpvio->connect_errors= connect_errors;
   mpvio->status= MPVIO_EXT::FAILURE;
+  mpvio->client_program_name = NULL;
 
   mpvio->client_capabilities= thd->client_capabilities;
   mpvio->mem_root= thd->mem_root;
@@ -9248,6 +9268,7 @@ server_mpvio_update_thd(THD *thd, MPVIO_EXT *mpvio)
   if (mpvio->client_capabilities & CLIENT_INTERACTIVE)
     thd->variables.net_wait_timeout= thd->variables.net_interactive_timeout;
   thd->security_ctx->user= mpvio->auth_info.user_name;
+  thd->client_program_name = mpvio->client_program_name;
   if (thd->client_capabilities & CLIENT_IGNORE_SPACE)
     thd->variables.sql_mode|= MODE_IGNORE_SPACE;
 }

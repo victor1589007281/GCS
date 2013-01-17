@@ -2020,6 +2020,20 @@ String *Item_func_database::val_str(String *str)
   return str;
 }
 
+String *Item_func_current_program_name::val_str(String *str)
+{
+	DBUG_ASSERT(fixed == 1);
+	THD *thd= current_thd;
+	if (thd->client_program_name == NULL)
+	{
+		null_value= 1;
+		return 0;
+	}
+	else
+		str->copy(thd->client_program_name, strlen(thd->client_program_name), system_charset_info);
+	return str;
+}
+
 
 /**
   @note USER() is replicated correctly if binlog_format=ROW or (as of

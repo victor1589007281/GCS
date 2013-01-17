@@ -903,6 +903,7 @@ public:
     ip - client IP
   */
   char   *host, *user, *ip;
+  char   *client_program_name;
   char   priv_user[USERNAME_LENGTH];
   char   proxy_user[USERNAME_LENGTH + MAX_HOSTNAME + 5];
   /* The host privilege we are using */
@@ -1442,6 +1443,7 @@ private:
 
 public:
   MDL_context mdl_context;
+  char* client_program_name;  /* name for client program name */
 
   /* Used to execute base64 coded binlog events in MySQL server */
   Relay_log_info* rli_fake;

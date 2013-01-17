@@ -788,6 +788,7 @@ THD::THD()
   security_ctx= &main_security_ctx;
   no_errors= 0;
   password= 0;
+  client_program_name = NULL;
   query_start_used= 0;
   count_cuted_fields= CHECK_FIELD_IGNORE;
   killed= NOT_KILLED;
@@ -1346,6 +1347,8 @@ THD::~THD()
   main_security_ctx.destroy();
   my_free(db);
   db= NULL;
+  my_free(client_program_name);
+  client_program_name = NULL;
   free_root(&transaction.mem_root,MYF(0));
   mysql_mutex_destroy(&LOCK_thd_data);
 #ifndef DBUG_OFF

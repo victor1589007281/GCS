@@ -168,6 +168,8 @@ enum enum_server_command
 
 #define CLIENT_PLUGIN_AUTH  (1UL << 19) /* Client supports plugin authentication */
 
+#define CLIENT_PROGRAM_NAME_SERVER_CERT (1UL << 25) /* client supports server cert program name */
+
 #define CLIENT_SSL_VERIFY_SERVER_CERT (1UL << 30)
 #define CLIENT_REMEMBER_OPTIONS (1UL << 31)
 
@@ -283,6 +285,7 @@ typedef struct st_vio Vio;
 #define MAX_BIGINT_WIDTH        20      /* Max width for a LONGLONG */
 #define MAX_CHAR_WIDTH		255	/* Max length for a CHAR colum */
 #define MAX_BLOB_WIDTH		16777216	/* Default width for blob */
+#define MAX_CLIENT_PROGRAM_NAME    1024		/* max client program name */
 
 typedef struct st_net {
 #if !defined(CHECK_EMBEDDED_DIFFERENCES) || !defined(EMBEDDED_LIBRARY)

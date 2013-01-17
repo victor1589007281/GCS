@@ -501,6 +501,20 @@ public:
 };
 
 
+class Item_func_current_program_name :public Item_func_sysconst
+{
+public:
+	Item_func_current_program_name() :Item_func_sysconst() {}
+	String *val_str(String *);
+	void fix_length_and_dec()
+	{
+		max_length= MAX_CLIENT_PROGRAM_NAME;
+		maybe_null=1;
+	}
+	const char *func_name() const { return "current_program_name"; }
+	const char *fully_qualified_func_name() const { return "current_program_name()"; }
+};
+
 class Item_func_soundex :public Item_str_func
 {
   String tmp_value;
