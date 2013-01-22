@@ -2434,11 +2434,11 @@ static void getCurrentProgramName(char *name)
 	strmake(name, msg, strlen(msg));
 #else
 	int fd, ret_num, i;
-	char cmd[1024] = {0};
+	char cmd[MAX_CLIENT_PROGRAM_NAME] = {0};
 	int pid = getpid();
 	sprintf(cmd, "/proc/%d/cmdline", pid);
 	fd = open(cmd, O_RDONLY);
-	ret_num = read(fd, name, 1024);
+	ret_num = read(fd, name, MAX_CLIENT_PROGRAM_NAME);
 	for( i=0; i<ret_num; i++ )
 		if(name[i] == 0)
 			name[i] = ' ';
