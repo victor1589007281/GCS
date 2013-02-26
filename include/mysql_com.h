@@ -201,7 +201,8 @@ enum enum_server_command
                            CLIENT_PS_MULTI_RESULTS | \
                            CLIENT_SSL_VERIFY_SERVER_CERT | \
                            CLIENT_REMEMBER_OPTIONS | \
-                           CLIENT_PLUGIN_AUTH)
+                           CLIENT_PLUGIN_AUTH | \
+						   CLIENT_PROGRAM_NAME_SERVER_CERT)
 
 /*
   Switch off the flags that are optional and depending on build flags

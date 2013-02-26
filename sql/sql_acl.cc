@@ -8808,8 +8808,10 @@ skip_to_ssl:
 
   if (mpvio->client_program_name)
 	  my_free(mpvio->client_program_name);
-  if (!(mpvio->client_program_name = my_strndup(client_program_name, pragram_name_len, MYF(MY_WME))))
-	  return packet_error; /* The error is set by my_strdup(). */
+  if( client_program_name ) {
+	if (!(mpvio->client_program_name = my_strndup(client_program_name, pragram_name_len, MYF(MY_WME))))
+		return packet_error; /* The error is set by my_strdup(). */
+  }
 
   if (make_lex_string_root(mpvio->mem_root, 
                            &mpvio->db, db, db_len, 0) == 0)
