@@ -903,7 +903,6 @@ public:
     ip - client IP
   */
   char   *host, *user, *ip;
-  char   *client_program_name;
   char   priv_user[USERNAME_LENGTH];
   char   proxy_user[USERNAME_LENGTH + MAX_HOSTNAME + 5];
   /* The host privilege we are using */

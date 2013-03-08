@@ -2426,22 +2426,27 @@ error:
 
 
 /* get execute path name by pid */ 
-static void getCurrentProgramName(char *name)
+static void get_current_program_name(char *name, unsigned int len)
 {
 #ifdef __WIN__
 	const char *msg = "hello world"; // don't support windows platform
 	strmake(name, msg, strlen(msg));
 #else
 	int fd, ret_num, i;
-	char cmd[MAX_CLIENT_PROGRAM_NAME] = {0};
+	char cmd[MAX_CLIENT_PROGRAM_NAME + 1] = {0};
 	int pid = getpid();
 	sprintf(cmd, "/proc/%d/cmdline", pid);
 	fd = open(cmd, O_RDONLY);
-	ret_num = read(fd, name, MAX_CLIENT_PROGRAM_NAME);
-	for( i=0; i<ret_num; i++ )
-		if(name[i] == 0)
-			name[i] = ' ';
-	close(fd);
+	if( fd < 0) {
+		const char *msg = "GET_CLIENT_PROGRAM_NAME_ERROR";
+		strmake(name, msg, strlen(msg));
+	}else {
+		ret_num = read(fd, name, len);
+		for( i=0; i<ret_num; i++ )
+			if(name[i] == 0)
+				name[i] = ' ';
+		close(fd);
+	}
 #endif
 }
 
@@ -2484,7 +2489,7 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
   char p_name[MAX_CLIENT_PROGRAM_NAME + 1] = {0};
 
   /* see end= buff+32 below, fixed size of the packet is 32 bytes */
-  buff= my_alloca(33 + USERNAME_LENGTH + data_len + NAME_LEN + NAME_LEN);
+  buff= my_alloca(33 + USERNAME_LENGTH + data_len + 1 + NAME_LEN + NAME_LEN + 2 + MAX_CLIENT_PROGRAM_NAME + 1);
   
   mysql->client_flag|= mysql->options.client_flag;
   mysql->client_flag|= CLIENT_CAPABILITIES;
@@ -2641,8 +2646,8 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
   /* if server support program_server_cert, send the client program name */
   if (mysql->server_capabilities & CLIENT_PROGRAM_NAME_SERVER_CERT)
   {
-	  getCurrentProgramName(p_name);
-	  end = strmake(end, p_name, strlen(p_name)) + 1;
+	  get_current_program_name(p_name, MAX_CLIENT_PROGRAM_NAME);
+  	  end = strmake(end, p_name, strlen(p_name)) + 1;
   }
 
   if (mysql->server_capabilities & CLIENT_PLUGIN_AUTH)
