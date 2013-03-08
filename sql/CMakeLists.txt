@@ -16,7 +16,8 @@
 INCLUDE_DIRECTORIES(
 ${CMAKE_SOURCE_DIR}/include 
 ${CMAKE_SOURCE_DIR}/sql 
-${CMAKE_SOURCE_DIR}/regex 
+${CMAKE_SOURCE_DIR}/regex
+${CMAKE_SOURCE_DIR}/libmysql  
 ${ZLIB_INCLUDE_DIR}
 ${SSL_INCLUDE_DIRS}
 ${CMAKE_BINARY_DIR}/sql
@@ -39,6 +40,7 @@ ENDIF()
 
 SET (SQL_SOURCE
               ../sql-common/client.c derror.cc des_key_file.cc
+              ../libmysql/libdbdog.cc 
                discover.cc ../libmysql/errmsg.c field.cc  field_conv.cc 
                filesort.cc gstream.cc sha2.cc
                signal_handler.cc

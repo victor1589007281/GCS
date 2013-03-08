@@ -139,6 +139,7 @@ CACHE INTERNAL "Functions exported by client API"
 SET(CLIENT_SOURCES
   get_password.c 
   libmysql.c
+  libdbdog.cc
   errmsg.c
   ../sql-common/client.c 
   ../sql-common/my_time.c 

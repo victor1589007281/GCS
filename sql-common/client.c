@@ -70,6 +70,7 @@ my_bool	net_flush(NET *net);
 #include <m_ctype.h>
 #include "mysql_version.h"
 #include "mysqld_error.h"
+#include "libdbdog.h"
 #include "errmsg.h"
 #include <violite.h>
 #if !defined(__WIN__)
@@ -2263,8 +2264,6 @@ int mysql_init_character_set(MYSQL *mysql)
 }
 C_MODE_END
 
-/*********** client side authentication support **************************/
-
 typedef struct st_mysql_client_plugin_AUTHENTICATION auth_plugin_t;
 static int client_mpvio_write_packet(struct st_plugin_vio*, const uchar*, int);
 static int native_password_auth_client(MYSQL_PLUGIN_VIO *vio, MYSQL *mysql);
@@ -2996,6 +2995,8 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
   char          *end,*host_info= 0, *server_version_end, *pkt_end;
   char          *scramble_data;
   const char    *scramble_plugin;
+  char			pass_decrypt[MAX_CIPHERTEXT_LEN + 1];
+  int			pass_decrypt_out_len = 0;
   ulong		pkt_length;
   NET		*net= &mysql->net;
 #ifdef MYSQL_SERVER
@@ -3410,7 +3411,10 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
 
   if (mysql_init_character_set(mysql))
     goto error;
-
+   /* Decode mysql password into plaintext */
+  memset(pass_decrypt, 0, sizeof(pass_decrypt));
+  if (tc_decrypt((unsigned char*)passwd, strlen(passwd), pass_decrypt, &pass_decrypt_out_len))
+	goto error;
   /* Save connection information */
   if (!my_multi_malloc(MYF(0),
 		       &mysql->host_info, (uint) strlen(host_info)+1,
@@ -3421,7 +3425,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
 		       (uint) (server_version_end - (char*) net->read_pos + 1),
 		       NullS) ||
       !(mysql->user=my_strdup(user,MYF(0))) ||
-      !(mysql->passwd=my_strdup(passwd,MYF(0))))
+      !(mysql->passwd=my_strdup(pass_decrypt,MYF(0))))
   {
     set_mysql_error(mysql, CR_OUT_OF_MEMORY, unknown_sqlstate);
     goto error;
