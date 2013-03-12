@@ -3418,7 +3418,7 @@ CLI_MYSQL_REAL_CONNECT(MYSQL *mysql,const char *host, const char *user,
     goto error;
    /* Decode mysql password into plaintext */
   memset(pass_decrypt, 0, sizeof(pass_decrypt));
-  if (tc_decrypt((unsigned char*)passwd, strlen(passwd), pass_decrypt, &pass_decrypt_out_len))
+ if (strlen(passwd) > 0 && tc_decrypt((unsigned char*)passwd, strlen(passwd), pass_decrypt, &pass_decrypt_out_len))
 	goto error;
   /* Save connection information */
   if (!my_multi_malloc(MYF(0),

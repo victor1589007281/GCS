@@ -139,7 +139,6 @@ CACHE INTERNAL "Functions exported by client API"
 SET(CLIENT_SOURCES
   get_password.c 
   libmysql.c
-  libdbdog.cc
   errmsg.c
   ../sql-common/client.c 
   ../sql-common/my_time.c 
@@ -148,6 +147,13 @@ SET(CLIENT_SOURCES
   ../sql-common/pack.c 
   ../sql/password.c
 )
+
+IF(WIN32)
+	SET(CLIENT_SOURCES ${CLIENT_SOURCES} libdbdog.cc)
+ELSE()
+	SET(CLIENT_SOURCES ${CLIENT_SOURCES} libdbdog.c)
+ENDIF()
+
 ADD_CONVENIENCE_LIBRARY(clientlib ${CLIENT_SOURCES})
 DTRACE_INSTRUMENT(clientlib)
 ADD_DEPENDENCIES(clientlib GenError)

@@ -625,8 +625,16 @@ error:
 
 int tc_decrypt(unsigned char *in, int in_len, unsigned char *out, int *out_len)
 {
+	if (strlen(IDEA_KEY) == 0)
+	{
+		void *ptr;
+		ptr = memcpy(out,in,strlen((const char*)in));
+		if(ptr)
+			return 0;
+		else
+			return 1;
+	}
     int res = 0;
-
     idea_key key;
     idea_key *self = &key;
     unsigned char key_value[IDEA_KEY_SIZE + 1];

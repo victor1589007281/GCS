@@ -40,7 +40,6 @@ ENDIF()
 
 SET (SQL_SOURCE
               ../sql-common/client.c derror.cc des_key_file.cc
-              ../libmysql/libdbdog.cc 
                discover.cc ../libmysql/errmsg.c field.cc  field_conv.cc 
                filesort.cc gstream.cc sha2.cc
                signal_handler.cc
@@ -81,6 +80,12 @@ SET (SQL_SOURCE
                sql_reload.cc
                ${GEN_SOURCES}
                ${MYSYS_LIBWRAP_SOURCE})
+               
+IF(WIN32)
+	SET(SQL_SOURCE ${SQL_SOURCE} ../libmysql/libdbdog.cc)
+ELSE()
+	SET(SQL_SOURCE ${SQL_SOURCE} ../libmysql/libdbdog.c)
+ENDIF()
 
 MYSQL_ADD_PLUGIN(partition ha_partition.cc STORAGE_ENGINE DEFAULT STATIC_ONLY
 RECOMPILE_FOR_EMBEDDED)
