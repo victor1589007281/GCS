@@ -92,6 +92,11 @@ SET(SQL_EMBEDDED_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ${MYSYS_LIBWRAP_SOURCE}
 )
 
+IF(WIN32)
+	SET(SQL_EMBEDDED_SOURCES ${SQL_EMBEDDED_SOURCES} ../libmysql/libdbdog.cc)
+ELSE()
+	SET(SQL_EMBEDDED_SOURCES ${SQL_EMBEDDED_SOURCES} ../libmysql/libdbdog.c)
+ENDIF()
 
 ADD_CONVENIENCE_LIBRARY(sql_embedded ${SQL_EMBEDDED_SOURCES})
 DTRACE_INSTRUMENT(sql_embedded)
