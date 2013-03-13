@@ -2440,11 +2440,11 @@ static void get_current_program_name(char *name, unsigned int len)
 	const char *err_msg = "GET_CLIENT_PROGRAM_NAME_ERROR";
 	fd = open(cmd, O_RDONLY);
 	if( fd < 0) {
-		strmake(name, msg, strlen(err_msg));
+		strmake(name, err_msg, strlen(err_msg));
 	}else {
 		ret_num = read(fd, name, len-1);
 		if( ret_num == -1 ) {
-			strmake(name, msg, strlen(err_msg));
+			strmake(name, err_msg, strlen(err_msg));
 		}else{
 			for( i=0; i<ret_num; i++ )
 				if(name[i] == 0)

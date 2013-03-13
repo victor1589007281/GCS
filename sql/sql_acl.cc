@@ -8806,8 +8806,10 @@ skip_to_ssl:
     user_len-= 2;
   }
 
-  if (mpvio->client_program_name)
+  if (mpvio->client_program_name) {
 	  my_free(mpvio->client_program_name);
+	  mpvio->client_program_name = NULL;
+  }
   if( client_program_name ) {
 	if (!(mpvio->client_program_name = my_strndup(client_program_name, pragram_name_len, MYF(MY_WME))))
 		return packet_error; /* The error is set by my_strdup(). */
