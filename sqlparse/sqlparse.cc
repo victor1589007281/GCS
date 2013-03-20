@@ -20,7 +20,6 @@ parse_result_init(parse_result_t* pr)
 {
     THD* thd;
     int i;
-    int peuso_argc = 0;
 
     memset(pr, sizeof(parse_result_t), 0);
 
@@ -49,7 +48,7 @@ parse_result_init(parse_result_t* pr)
 
     get_charset_number("utf8", MY_CS_PRIMARY);
 
-    mysql_mutex_init(NULL, &LOCK_plugin, MY_MUTEX_INIT_FAST);
+    mysql_mutex_init(-1, &LOCK_plugin, MY_MUTEX_INIT_FAST);
 
     global_system_variables.time_zone= my_tz_SYSTEM;
     global_system_variables.lc_messages= my_default_lc_messages;
