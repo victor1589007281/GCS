@@ -2409,6 +2409,15 @@ public:
     is_slave_error= 0;
     DBUG_VOID_RETURN;
   }
+  /**
+    add for sqlparse
+	get error messaage
+  */
+  const char* get_error()
+  {
+      DBUG_ENTER("get_error");
+      DBUG_RETURN(stmt_da->message());
+  }
 #ifndef EMBEDDED_LIBRARY
   inline bool vio_ok() const { return net.vio != 0; }
   /** Return FALSE if connection to client is broken. */

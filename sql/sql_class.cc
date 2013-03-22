@@ -1267,6 +1267,7 @@ void THD::cleanup(void)
 #error xid_state in the cache should be replaced by the allocated value
   }
 #endif
+  if(!parse_export)
   {
     transaction.xid_state.xa_state= XA_NOTR;
     trans_rollback(this);

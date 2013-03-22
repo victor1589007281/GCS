@@ -8,59 +8,50 @@
 
 extern int parse_export;
 #define PARSE_RESULT_N_TABLE_ARR_INITED 5
+#define PARSE_RESULT_DEFAULT_DB_NAME "<unknow_db>"
 
-int init_thread_environment();
-int mysql_init_variables();
 
-extern mysql_mutex_t LOCK_plugin;
-extern Time_zone * my_tz_SYSTEM;
+
+void my_init_for_sqlparse();
+void my_end_for_sqlparse();
+
+static my_pthread_once_t sqlparse_global_inited = MY_PTHREAD_ONCE_INIT;
+
+void
+parse_global_init()
+{
+    my_pthread_once(&sqlparse_global_inited, my_init_for_sqlparse);
+}
+
+void parse_global_destroy()
+{
+    my_end_for_sqlparse();
+    sqlparse_global_inited = MY_PTHREAD_ONCE_INIT;
+
+#if defined(__WIN__) && defined(_MSC_VER)
+    _CrtSetReportMode( _CRT_WARN, _CRTDBG_MODE_FILE );
+    _CrtSetReportFile( _CRT_WARN, _CRTDBG_FILE_STDERR );
+    _CrtSetReportMode( _CRT_ERROR, _CRTDBG_MODE_FILE );
+    _CrtSetReportFile( _CRT_ERROR, _CRTDBG_FILE_STDERR );
+    _CrtSetReportMode( _CRT_ASSERT, _CRTDBG_MODE_FILE );
+    _CrtSetReportFile( _CRT_ASSERT, _CRTDBG_FILE_STDERR );
+    _CrtCheckMemory();
+    _CrtDumpMemoryLeaks();
+#endif
+}
 
 int
 parse_result_init(parse_result_t* pr)
 {
     THD* thd;
-    int i;
 
-    memset(pr, sizeof(parse_result_t), 0);
+    //_CrtSetBreakAlloc(76);
+    //_CrtSetBreakAlloc(84);
+    //_CrtSetBreakAlloc(110);
 
-    /* set global parse export */
-    parse_export = 1;
-    my_progname = "test";
+    //for safe 
+    parse_global_init();
 
-    if (init_thread_environment() ||
-        mysql_init_variables() )
-        return -1;
-
-    //mysql_mutex_init(key_LOCK_plugin, &LOCK_plugin, MY_MUTEX_INIT_FAST);
-    //mysql_mutex_init(NULL, &LOCK_plugin, MY_MUTEX_INIT_FAST);
-    /*if (plugin_init(&peuso_argc, NULL, 0))
-    {
-        sql_print_error("Failed to initialize plugins.");
-        unireg_abort(1);
-    }*/
-    //plugins_are_initialized= TRUE;  /* Don't separate from init function */
-
-    my_thread_global_init();
-    my_thread_init();
-
-    /* need in THD() */
-    randominit(&sql_rand,(ulong) 1234,(ulong) 1234/2);
-
-    get_charset_number("utf8", MY_CS_PRIMARY);
-
-    mysql_mutex_init(-1, &LOCK_plugin, MY_MUTEX_INIT_FAST);
-
-    global_system_variables.time_zone= my_tz_SYSTEM;
-    global_system_variables.lc_messages= my_default_lc_messages;
-    global_system_variables.collation_server=	 default_charset_info;
-    global_system_variables.collation_database=	 default_charset_info;
-    global_system_variables.collation_connection=  default_charset_info;
-    global_system_variables.character_set_results= default_charset_info;
-    global_system_variables.character_set_client=  default_charset_info;
-    global_system_variables.character_set_filesystem= character_set_filesystem;
-    global_system_variables.lc_time_names= my_default_lc_time_names;
-
-    error_handler_hook= my_message_sql;
     thd= new THD;
 
     thd->thread_id = 0xFFFFFFFF;
@@ -76,18 +67,17 @@ parse_result_init(parse_result_t* pr)
         delete thd;    
         return -1;
     }
-
     thd->security_ctx->skip_grants();
+    thd->set_db(PARSE_RESULT_DEFAULT_DB_NAME, strlen(PARSE_RESULT_DEFAULT_DB_NAME));
+
+    /* init parse_result */
+    memset(pr, 0, sizeof(parse_result_t));
     pr->thd_org = thd;
 
     /* allocate the table name buffer */
     pr->n_tables_alloced = PARSE_RESULT_N_TABLE_ARR_INITED;
     pr->n_tables = 0;
-    pr->table_arr = (char**)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(char*));
-    for(i = 0; i < pr->n_tables_alloced; ++i)
-    {
-        pr->table_arr[i]=(char*)calloc(NAME_LEN*2 + 2, sizeof(char));
-    }
+    pr->table_arr = (parse_table_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_table_t));
 
     return 0;
 }
@@ -96,13 +86,9 @@ int
 parse_result_destroy(parse_result_t* pr)
 {
     THD* thd;
-    int i; 
 
     /* free table name buffer array */
-    if (!pr->table_arr) {
-
-        for(i = 0; i < pr->n_tables_alloced; ++i)
-            free(pr->table_arr[i]);
+    if (pr->table_arr) {
 
         free(pr->table_arr);
         pr->table_arr = NULL;
@@ -120,19 +106,16 @@ parse_result_destroy(parse_result_t* pr)
         */
         thd->catalog= 0;
         thd->reset_query();
+
+        if (thd->db)
+            my_free(thd->db);
         thd->reset_db(NULL, 0);
 
         //close_connection(thd);
-
         delete thd;
 
         pr->thd_org = NULL;
     }
-
-    //clean_up_mutexes();
-    
-    my_thread_end();
-    my_thread_global_end();
 
     return 0;
 }
@@ -148,28 +131,26 @@ parse_result_add_table(
     DBUG_ASSERT(pr->n_tables <= pr->n_tables_alloced);
 
     if (strlen(db_name) > NAME_LEN || strlen(table_name) > NAME_LEN)
+    {
+        sprintf(pr->err_msg, "%s", "too long db_name or table_name");
         return -1;
-
+    }
     //buffer is not enough
     if (pr->n_tables >= pr->n_tables_alloced)
     {
-        char** new_table_arr;
-        int i;
+        parse_table_t* new_table_arr;
 
-        new_table_arr = (char**)calloc(pr->n_tables_alloced * 2, sizeof(char*));
+        new_table_arr = (parse_table_t*)calloc(pr->n_tables_alloced * 2, sizeof(parse_table_t));
 
-        for (i = 0; i < pr->n_tables_alloced; ++i)
-            new_table_arr[i] = pr->table_arr[i]; 
-
-        for (; i < pr->n_tables_alloced * 2; ++i)
-            new_table_arr[i] = (char*)calloc(NAME_LEN*2 + 2, sizeof(char)) ; 
-
+        memcpy(new_table_arr, pr->table_arr, sizeof(parse_table_t) * pr->n_tables_alloced);
         free(pr->table_arr);
+
         pr->table_arr = new_table_arr;
         pr->n_tables_alloced *= 2;
     }
 
-    sprintf(pr->table_arr[pr->n_tables++],"%s.%s", db_name, table_name);
+    strcpy(pr->table_arr[pr->n_tables].dbname, db_name);
+    strcpy(pr->table_arr[pr->n_tables++].tablename, table_name);
 
     return 0;
 }
@@ -187,19 +168,29 @@ query_parse(char* query, parse_result_t* pr)
     thd = (THD*)pr->thd_org;
     DBUG_ASSERT(pr->n_tables_alloced > 0 && thd);
 
-    if (alloc_query(thd, query, strlen(query)))
+    pr->n_tables = 0;
+
+    if (alloc_query(thd, query, strlen(query))) 
+    {
+        sprintf(pr->err_msg, "%s", "alloc_query error");
         return -1;
+    }
     
     if (parser_state.init(thd, thd->query(), thd->query_length()))
+    {
+        sprintf(pr->err_msg, "%s", "parser_state.init error");
         return -1;
+    }
 
     lex_start(thd);
     mysql_reset_thd_for_next_command(thd);
 
     bool err= parse_sql(thd, &parser_state, NULL);
     if (err)
+    {
+        strmake(pr->err_msg, thd->get_error(), sizeof(pr->err_msg) - 1);
         return -1;
-
+    }
     lex = thd->lex;
     /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
     select_lex= &lex->select_lex;
@@ -228,7 +219,6 @@ query_parse(char* query, parse_result_t* pr)
 
 
     pr->query_type = lex->sql_command;
-    pr->n_tables = 0;
 
     switch (lex->sql_command)
     {
@@ -251,26 +241,14 @@ query_parse(char* query, parse_result_t* pr)
     {
         if (parse_result_add_table(pr, table->db, table->table_name))
         {
-            return -2;
+            return -1;
         }
 
     }
 
-    return 0;
-}
-
-int maini(int argc, char **argv)
-{
-    parse_result_t pr;
-    char* query = "select * from t1";
-    char* query1 = "use db";
-
-    parse_result_init(&pr);
-
-    query_parse(query1, &pr);
-    query_parse(query, &pr);
-
-    parse_result_destroy(&pr);
+    thd->end_statement();
+    thd->cleanup_after_query();
 
     return 0;
 }
+

@@ -12,6 +12,8 @@ ${CMAKE_BINARY_DIR}/sqlparse
 )
 
 SET(PARSE_API_FUNCTIONS
+parse_global_init
+parse_global_destroy
 parse_result_init
 parse_result_destroy
 query_parse
