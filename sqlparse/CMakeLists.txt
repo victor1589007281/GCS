@@ -5,6 +5,7 @@ ${CMAKE_SOURCE_DIR}/include
 ${CMAKE_SOURCE_DIR}/sql
 ${CMAKE_SOURCE_DIR}/sqlparse 
 ${CMAKE_SOURCE_DIR}/regex 
+${CMAKE_SOURCE_DIR}/client 
 ${ZLIB_INCLUDE_DIR}
 ${SSL_INCLUDE_DIRS}
 ${CMAKE_BINARY_DIR}/sql
@@ -35,7 +36,14 @@ ADD_CONVENIENCE_LIBRARY(sqlparse_base ${SQL_PARSE_SOURCE})
 DTRACE_INSTRUMENT(sqlparse_base)
 ADD_DEPENDENCIES(sqlparse_base GenError)
 
-SET(PARSE_LIBS sqlparse_base sql mysys)
+SET(PARSE_LIBS sqlparse_base sql mysys dbug vio regex strings ${ZLIB_LIBRARY} ${SSL_LIBRARIES} ${LIBDL} 
+	${MYSQLD_STATIC_PLUGIN_LIBS})
+#    myisam csv heap innobase myisammrg perfschema partition)
+
+IF(WIN32)
+  ADD_DEFINITIONS(-DAUTHENTICATION_WIN)
+  LIST(APPEND PARSE_LIBS auth_win_client)
+ENDIF()
 
 # Merge several convenience libraries into one big mysqlclient
 # and link them together into shared library.
@@ -85,8 +93,9 @@ ENDIF()
 
 
 ##############################
+ADD_DEFINITIONS(-DTMYSQLSQLPARSE)
 
-MYSQL_ADD_EXECUTABLE(sqlparse_test test_ps.c DESTINATION ${INSTALL_SBINDIR} COMPONENT Server)
+MYSQL_ADD_EXECUTABLE(sqlparse_test test_ps.cc DESTINATION ${INSTALL_SBINDIR} COMPONENT Server)
 
 IF(APPLE) 
   # Add CoreServices framework since some dloadable plugins may need it 
@@ -97,10 +106,12 @@ IF(APPLE)
 ENDIF() 
 
 SET_TARGET_PROPERTIES(sqlparse_test PROPERTIES ENABLE_EXPORTS TRUE) 
-TARGET_LINK_LIBRARIES(sqlparse_test sqlparse)
+TARGET_LINK_LIBRARIES(sqlparse_test sqlparselib)
 
 SET(PARSE_INTERFACE_LIBS ${LIBRT})
 IF(PARSE_INTERFACE_LIBS)
  SET_TARGET_PROPERTIES(sqlparse_test PROPERTIES LINK_INTERFACE_LIBRARIES 
   "${PARSE_INTERFACE_LIBS}")
 ENDIF()
+
+REMOVE_DEFINITIONS(-DTMYSQLSQLPARSE)
