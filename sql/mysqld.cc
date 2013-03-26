@@ -8066,7 +8066,7 @@ my_end_for_sqlparse()
 
     my_thread_end();
     my_thread_global_end();
-    clean_up_mutexes();
+//    clean_up_mutexes();
     cleanup_errmsgs();
 	// charset ect.
     my_once_free();

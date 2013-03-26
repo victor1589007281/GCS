@@ -133,6 +133,7 @@ ENDFOREACH()
 
 MERGE_LIBRARIES(mysqlserver STATIC ${EMBEDDED_LIBS} 
   OUTPUT_NAME ${MYSQLSERVER_OUTPUT_NAME} COMPONENT Embedded)
+RESTRICT_SYMBOL_EXPORTS(mysqlserver)
 
 # Visual Studio users need debug  static library 
 IF(MSVC)

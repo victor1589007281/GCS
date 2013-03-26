@@ -6,6 +6,9 @@ ${CMAKE_SOURCE_DIR}/sql
 ${CMAKE_SOURCE_DIR}/sqlparse 
 ${CMAKE_SOURCE_DIR}/regex 
 ${CMAKE_SOURCE_DIR}/client 
+${CMAKE_SOURCE_DIR}/libmysql 
+${CMAKE_SOURCE_DIR}/vio
+${CMAKE_SOURCE_DIR}/strings
 ${ZLIB_INCLUDE_DIR}
 ${SSL_INCLUDE_DIRS}
 ${CMAKE_BINARY_DIR}/sql
@@ -21,10 +24,8 @@ query_parse
 CACHE INTERNAL "Functions exported by sqlparse API"
 )
 
-ADD_DEFINITIONS(-DMYSQL_SERVER -DHAVE_EVENT_SCHEDULER) 
-IF(SSL_DEFINES)
- ADD_DEFINITIONS(${SSL_DEFINES})
-ENDIF()
+ADD_DEFINITIONS(-DMYSQL_SERVER -DEMBEDDED_LIBRARY -DHAVE_EVENT_SCHEDULER) 
+
 
 IF(WIN32)
   SET(SQL_PARSE_SOURCE sqlparse.cc ../sql/nt_servc.cc)
@@ -32,13 +33,18 @@ ELSE()
   SET(SQL_PARSE_SOURCE sqlparse.cc ${DTRACE_PROBES_ALL})
 ENDIF()
 
+
+
+
+SET(SQL_PARSE_SOURCE sqlparse.cc)
+
 ADD_CONVENIENCE_LIBRARY(sqlparse_base ${SQL_PARSE_SOURCE})
 DTRACE_INSTRUMENT(sqlparse_base)
-ADD_DEPENDENCIES(sqlparse_base GenError)
+#ADD_DEPENDENCIES(sqlparse_base mysqlserver)
+############
 
-SET(PARSE_LIBS sqlparse_base sql mysys dbug vio regex strings ${ZLIB_LIBRARY} ${SSL_LIBRARIES} ${LIBDL} 
-	${MYSQLD_STATIC_PLUGIN_LIBS})
-#    myisam csv heap innobase myisammrg perfschema partition)
+
+SET(PARSE_LIBS sqlparse_base mysqlserver)
 
 IF(WIN32)
   ADD_DEFINITIONS(-DAUTHENTICATION_WIN)
@@ -93,8 +99,6 @@ ENDIF()
 
 
 ##############################
-ADD_DEFINITIONS(-DTMYSQLSQLPARSE)
-
 MYSQL_ADD_EXECUTABLE(sqlparse_test test_ps.cc DESTINATION ${INSTALL_SBINDIR} COMPONENT Server)
 
 IF(APPLE) 
@@ -114,4 +118,3 @@ IF(PARSE_INTERFACE_LIBS)
   "${PARSE_INTERFACE_LIBS}")
 ENDIF()
 
-REMOVE_DEFINITIONS(-DTMYSQLSQLPARSE)
