@@ -4903,6 +4903,7 @@ mysql_compare_tables(TABLE *table,
   */
   bool varchar= create_info->varchar;
   bool not_nullable= true;
+
   Alter_inplace_info    *inplace_info = static_cast<Alter_inplace_info*>(inplace_info_arg);
   DBUG_ENTER("mysql_compare_tables");
 
@@ -5368,9 +5369,8 @@ bool fill_alter_inplace_info(
             //    be carried out by simply updating data dictionary without changing
             //    actual data (for example, VARCHAR(300) is changed to VARCHAR(400)).
             //    */
-            //    ha_alter_info->handler_flags|= Alter_inplace_info::
-            //        ALTER_COLUMN_EQUAL_PACK_LENGTH_FLAG;
-            //    break;
+            //    // ha_alter_info->handler_flags|= Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH_FLAG;
+            //    break; 
             //default:
             //    DBUG_ASSERT(0);
             //    /* Safety. */
@@ -5512,13 +5512,20 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
     /* flag for check if can fast alter table add column*/
     bool add_column_simple_flag = true;                                     /* 初始化为true */
     bool varchar_flag = false;
+
+    /* 
+    flag for support mysql fast alter collation to support mysql5.0 upgrade to 5.5
+    from utf8_general_ci/ucs2_general_ci to utf8_general_mysql500_ci/ucs2_general_mysql500_ci
+    */
+    bool fast_collation_alter_flag = true;
   
 	/* judge if there are drop column/alter column/add key operation,if any set add_column_simple_flag false */
 	if(alter_info->drop_list.elements || 
 	    alter_info->alter_list.elements ||
 	    alter_info->key_list.elements
 	  ){
-		add_column_simple_flag = false;
+		add_column_simple_flag = false;   
+        fast_collation_alter_flag = false;
 	}
 
     DBUG_ENTER("mysql_prepare_alter_table");
@@ -5606,13 +5613,17 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
                 break;
         }
         if (def)
-        {						// Field is changed
+        {						// Field is changed            
             def->field=field;
             if (!def->after)
             {
                 new_create_list.push_back(def);
                 def_it.remove();
+            }else{
+                fast_collation_alter_flag = false;
+                alter_info->change_level= ALTER_TABLE_DATA_CHANGED; 
             }
+            
         }
         else
         {
@@ -5673,6 +5684,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
             alter_info->datetime_field= def;
             alter_info->error_if_not_empty= TRUE;
             add_column_simple_flag = false;
+            fast_collation_alter_flag = false;
         }
         
         /** 
@@ -5873,7 +5885,8 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         while ((key=key_it++))			// Add new keys
         {           
             //fast add column temporary not surpport add index at the sametime.
-            add_column_simple_flag = false;           
+            add_column_simple_flag = false;
+            fast_collation_alter_flag = false;
             if (key->type != Key::FOREIGN_KEY)
                 new_key_list.push_back(key);
             if (key->name.str &&
@@ -5946,6 +5959,13 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         4. 调用存储引擎接口判断，只有innodb实现这个接口，其他必定为返回FALSE，存储引擎会判断是否为GCS表等。  --done 
         */
 
+        /* judge the old table version */
+        ulong mysql_version= table->s->mysql_version;
+        //fix the 5.1.24 utf8 collate bug. if the version is newer than 5.1.24,data changed
+        if(fast_collation_alter_flag && mysql_version <= 50124){
+            fast_collation_alter_flag = false;           
+        }
+        
         /*
         NOTE: alter table t add column (id9 int,key(id9));
         the alter operation above would set the ALTER_ADD_INDEX flag when parse,
@@ -5958,12 +5978,17 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 		  so here we skip check the ALTER_OPTIONS!
         */
 	
-		if(alter_info->flags & ~(ALTER_ADD_COLUMN|ALTER_ADD_INDEX|ALTER_OPTIONS) ||  		  
+		if((alter_info->flags & ~(ALTER_ADD_COLUMN|ALTER_ADD_INDEX|ALTER_OPTIONS|ALTER_CHANGE_COLUMN))||
+            (alter_info->flags & (ALTER_CHANGE_COLUMN) && !fast_collation_alter_flag) ||  		  
 		  create_info->options ){    
                /* 
                 1.no other alter op allowed 
                 2.no create options allowd,include HA_LEX_CREATE_TMP_TABLE               
                */
+              if(alter_info->flags & (ALTER_CHANGE_COLUMN) && !fast_collation_alter_flag)
+              {
+                  alter_info->change_level= ALTER_TABLE_DATA_CHANGED;
+              }
             goto err;
         }      
        
@@ -5975,6 +6000,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         if (inplace_info != NULL &&
             !fill_alter_inplace_info(thd, table, varchar_flag, inplace_info))
         {
+
 
             support_flag = table->file->check_if_supported_inplace_alter(thd, table, inplace_info);
         }   

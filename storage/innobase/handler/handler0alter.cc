@@ -2145,6 +2145,174 @@ err_exit:
     
 }
 
+// fast alter collate for a column
+ulint
+innobase_fast_alter_collate_to_dictionary(
+    dict_table_t*           table,
+    dict_col_t*             col,
+    trx_t*                  trx
+    )
+{
+    pars_info_t*	info;
+    ulint   		error_no = DB_SUCCESS;
+
+    info = pars_info_create();  /* que_eval_sql执行完会释放 */   
+
+    pars_info_add_ull_literal(info, "table_id", table->id);
+    pars_info_add_int4_literal(info, "pos", col->ind);
+
+    //get the new column prtype
+    pars_info_add_int4_literal(info, "prtype", col->prtype);
+
+    error_no = que_eval_sql(
+        info,
+        "PROCEDURE SYS_FAST_ALTER_COLLATE_PROC () IS\n"
+        "BEGIN\n"
+        "UPDATE SYS_COLUMNS SET PRTYPE = :prtype WHERE TABLE_ID=:table_id AND POS=:pos;\n"
+        "END;\n",
+        FALSE, trx);
+
+    if (error_no != DB_SUCCESS)
+    {
+        //for safe
+        push_warning_printf(
+            (THD*) trx->mysql_thd,
+            MYSQL_ERROR::WARN_LEVEL_WARN,
+            ER_CANT_CREATE_TABLE,
+            "SYS_FAST_ALTER_COLLATE_PROC error %s %d table_name(%s) colid(%d)", __FILE__, __LINE__, table->name, col->ind);
+    }   
+    return error_no;
+
+}
+
+
+/*
+
+Return
+    true : Error
+    false : success
+*/
+ulint
+innobase_fast_alter_utf8_collate(
+    /*===================*/
+    mem_heap_t*         heap,   /*!< in: temp heap */
+    trx_t*			    trx,    /*!< in: trix  */
+    dict_table_t*       table,  /*!< in/out: origin dict table before fast alter */
+    TABLE*              tmp_table,  /*!< in: new temp table after fast alter table */
+    Alter_inplace_info* inplace_info  /*!< in: inplace alter info */
+    ){
+        ulint   		error_no = DB_SUCCESS;
+        Alter_info*     alter_info = static_cast<Alter_info*>(inplace_info->alter_info);
+        Create_field*   cfield;
+        List_iterator<Create_field> def_it(alter_info->create_list);
+        ulint           prev_add_idx = ULINT_UNDEFINED;
+        ulint           idx = 0;
+        ulint           add_idx = 0;
+        Field           *field;
+        dict_col_t      *col_arr = NULL;
+        ulint           n_add = 0;
+        char*           col_names = NULL;
+        char*           col_name = NULL;
+        ulint           lock_retry = 0;
+        ibool           locked = FALSE;
+
+        DBUG_ENTER("innobase_add_columns_simple");
+
+        DBUG_ASSERT(trx_get_dict_operation(trx) == TRX_DICT_OP_INDEX);
+        ut_ad(trx->dict_operation_lock_mode == RW_X_LATCH);
+        ut_ad(mutex_own(&dict_sys->mutex));
+#ifdef UNIV_SYNC_DEBUG
+        ut_ad(rw_lock_own(&dict_operation_lock, RW_LOCK_EX));
+#endif /* UNIV_SYNC_DEBUG */
+      
+        ut_ad(dict_table_get_n_cols(table) - DATA_N_SYS_COLS == tmp_table->s->fields);
+
+        col_arr = (dict_col_t *)mem_heap_zalloc(heap, sizeof(dict_col_t) * tmp_table->s->fields);
+        col_names = (char*)mem_heap_zalloc(heap, tmp_table->s->fields * 200);       /* 每个字段长度必小于200 */
+        if (col_arr == NULL || col_names == NULL)
+        {
+            push_warning_printf(
+                (THD*) trx->mysql_thd,
+                MYSQL_ERROR::WARN_LEVEL_WARN,
+                ER_CANT_CREATE_TABLE,
+                "mem_heap_alloc error %s %d", __FILE__, __LINE__);
+
+            goto err_exit;
+        }
+
+        col_name = col_names;
+
+        def_it.rewind();
+        while (!!(cfield =def_it++))
+        {
+            //should not got new field!
+            ut_ad(cfield->field);
+            // do a special judge for GEOMETRY TYPE
+            ut_ad(tmp_table->field[idx]->is_equal(cfield) || cfield->sql_type == MYSQL_TYPE_GEOMETRY);
+
+            if (!tmp_table->field[idx]->is_equal(cfield) && !(cfield->sql_type == MYSQL_TYPE_GEOMETRY) )
+            {
+                //for safe
+                goto err_exit;
+            } 
+
+            field = tmp_table->field[idx];
+
+            //fill new collate
+            error_no = innodbase_fill_col_info(trx, &col_arr[idx], table, tmp_table, idx, heap,cfield,inplace_info);
+
+            if (error_no != DB_SUCCESS)
+                goto err_exit;
+
+            //change the column collate here
+
+            error_no = innobase_fast_alter_collate_to_dictionary(table,&col_arr[idx],trx);
+
+            if (error_no != DB_SUCCESS)
+                goto err_exit;
+
+            strcpy(col_name, dict_table_get_col_name(table, idx));
+            col_name += strlen(col_name) + 1;
+
+            idx ++;
+        }       
+
+        while (lock_retry++ < 10)
+        {
+            if (!rw_lock_x_lock_nowait(&btr_search_latch))
+            {
+                /* Sleep for 10ms before trying again. */
+                os_thread_sleep(10000);
+                continue;
+            }
+
+            locked = TRUE;
+            break;
+        }
+
+        if (!locked)
+        {
+            push_warning_printf(
+                (THD*) trx->mysql_thd,
+                MYSQL_ERROR::WARN_LEVEL_WARN,
+                ER_CANT_CREATE_TABLE,
+                "rw_lock_x_lock_nowait(&btr_search_latch) failed %s %d", __FILE__, __LINE__);
+
+            error_no = DB_ERROR;
+
+            goto err_exit;
+        }
+
+       // memcpy(table->cols, col_arr, tmp_table->s->fields * sizeof(dict_col_t));
+       dict_mem_table_fast_alter_collate(table, col_arr, tmp_table->s->fields, col_names, col_name - col_names);
+
+        rw_lock_x_unlock(&btr_search_latch);
+
+err_exit:
+        DBUG_RETURN(error_no);
+}
+
+
 
 /*
 
@@ -2700,12 +2868,15 @@ ha_innobase::check_if_supported_inplace_alter(
             DBUG_RETURN(false);
     }
 
-    
-    /* 除增加字段的标记,还有其他信息，则表示不支持,注意，这里没有增加索引的信息 */
-    if(inplace_info->handler_flags & ~(Alter_inplace_info::ADD_COLUMN_FLAG)){
-        DBUG_RETURN(false);
+    /*
+        1.如果是快速5.0到5.5的UTF8 列collate修改为utf8_general_mysql500_ci,支持快速alter
+        2.除增加字段的标记,还有其他信息，则表示不支持,注意，这里没有增加索引的信息
+    */
+    if((inplace_info->handler_flags & ~(Alter_inplace_info::ALTER_COLUMN_COLLATE_FLAG|
+        Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG)) && 
+        (inplace_info->handler_flags & ~(Alter_inplace_info::ADD_COLUMN_FLAG))){
+            DBUG_RETURN(false);
     }
-    
     
     DBUG_RETURN(true);
 }
@@ -2846,7 +3017,10 @@ ha_innobase::inplace_alter_table(
         err = innobase_alter_row_format_simple(heap,trx,dict_table,tmp_table,ha_alter_info,
                 is_support_fast_rowformat_change(tmp_table->s->row_type,get_row_type()));
 		
-	}else{
+    }else if(ha_alter_info->handler_flags == Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG){
+        //fast alter collate
+        err = innobase_fast_alter_utf8_collate(heap,trx,dict_table,tmp_table,ha_alter_info);
+    }else{
         ut_ad(FALSE);
         /* to do 暂时断言  */
     }

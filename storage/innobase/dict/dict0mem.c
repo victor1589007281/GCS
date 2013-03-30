@@ -994,3 +994,104 @@ dict_mem_realloc_index_fields(
     }        
     return index->fields;
 }
+
+
+
+/**********************************************************************//**
+根据列信息,重构内存对象
+*/
+void
+dict_mem_table_fast_alter_collate(
+    dict_table_t*           table,              /*!< in: 原表字典对象 */
+    dict_col_t*             col_arr,            /*!< in: 增加列后的用户列字典对象,不包含系统列 */
+    ulint                   n_col,              /*!< in: 新增列后表列数量,不包含系统列 */
+    char*                   col_names,          /*!< in: 用户新列所有列名 */
+    ulint                   col_names_len       /*!< in: col_names的长度 */
+)
+{
+    ulint                   org_heap_size = 0;    
+    ulint                   org_n_cols = table->n_def - DATA_N_SYS_COLS; 
+    dict_index_t*           index = NULL;
+    dict_index_t*           clu_index = NULL;
+    dict_field_t*           fields;
+    ulint                   i;
+	ibool					first_alter = FALSE; 
+  
+    ut_ad(table->n_def == n_col + DATA_N_SYS_COLS && table->n_def  == table->n_cols);
+
+    org_heap_size = mem_heap_get_size(table->heap);
+
+    
+
+    /* 拷贝前N列（用户列）及列名 */
+    table->cols = dict_mem_realloc_dict_cols(table,(n_col + DATA_N_SYS_COLS));
+    memcpy(table->cols, col_arr, n_col * sizeof(dict_col_t));
+      
+    table->col_names = dict_mem_realloc_dict_col_names(table,col_names_len);    
+    memcpy(table->col_names, col_names, col_names_len);
+  
+    /* 还原表的列数量信息 */
+    table->n_def = n_col;
+    table->n_cols = n_col + DATA_N_SYS_COLS;
+
+    /* 增加系统列 */
+    table->cached = FALSE;          /* 避免断言 */
+    /* 内存分配修改为直接从系统分配,不从heap分配,此处传入NULL值 */
+    dict_table_add_system_columns(table, NULL);
+    table->cached = TRUE;
+
+    dict_table_set_big_row(table);   
+
+    dict_sys->size -= org_heap_size;
+    dict_sys->size += mem_heap_get_size(table->heap);
+
+    /* 更新索引及索引列信息 */
+    index = UT_LIST_GET_FIRST(table->indexes);
+    while (index)
+    {
+        ulint               n_fields;    
+        ibool               is_gen_clust_index = FALSE;       
+
+        ut_ad(index->n_def == index->n_fields);        
+
+        if (dict_index_is_clust(index))
+        { 
+            clu_index = index;
+            /* 修改主键为rowid的ord_part值 */
+            if (!strcmp(clu_index->name, "GEN_CLUST_INDEX"))
+            {
+                is_gen_clust_index = TRUE;
+            }  
+            /* 聚集索引只处理前n_field列，因新增的若干列已经在上面处理了 */
+            n_fields = index->n_fields;
+        }
+        else
+        {
+            ut_ad(index->n_user_defined_cols + clu_index->n_uniq + 1 >= index->n_fields);
+            ut_ad(clu_index != NULL);
+            n_fields = index->n_fields;
+        }
+
+        fields = index->fields;       
+        
+        /* 修改索引列col和name指针地址 */
+        for (i = 0; i < n_fields; ++i)
+        {         
+            ulint       col_ind = fields[i].col_ind;
+
+            fields[i].col = dict_table_get_nth_col(table, col_ind);
+            fields[i].col_ind = fields[i].col->ind;
+            fields[i].name = dict_table_get_col_name(table, col_ind);
+
+            if (is_gen_clust_index && !strcmp(fields[i].name, "DB_ROW_ID"))
+            {
+                ut_ad(!fields[i].col->ord_part);
+                fields[i].col->ord_part = 1;
+            }
+            
+        }      
+        index = UT_LIST_GET_NEXT(indexes, index);
+    }
+  
+    /* 外键 */
+}

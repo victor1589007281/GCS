@@ -748,6 +748,15 @@ dict_mem_table_add_col_simple(
     ulint                   col_names_len       /*!< in: col_names的长度 */
 );
 
+void
+dict_mem_table_fast_alter_collate(
+ dict_table_t*           table,              /*!< in: 原表字典对象 */
+ dict_col_t*             col_arr,            /*!< in: 修改后的用户列字典对象 */
+ ulint                   n_col,              /*!< in: col_arr的个数 */
+ char*                   col_names,          /*!< in: 用户列所有列名 */
+ ulint                   col_names_len       /*!< in: col_names的长度 */
+ );
+
 /**********************************************************************//**
 直接对字典对象内存删除若干列 
 */

@@ -6359,6 +6359,14 @@ uint Field_str::is_equal(Create_field *new_field)
   if (field_flags_are_binary() != new_field->field_flags_are_binary())
     return 0;
 
+  //for fast UTF8 to UTF8_mysql500
+  if((new_field->sql_type == real_type()) &&
+      new_field->length == max_display_length() &&
+      new_field->charset == &my_charset_utf8_general_mysql500_ci &&
+      field_charset == &my_charset_utf8_general_ci
+      ){
+          return IS_EQUAL_WITH_UTF8_COLLATE;
+  }
   return ((new_field->sql_type == real_type()) &&
 	  new_field->charset == field_charset &&
 	  new_field->length == max_display_length());
@@ -7200,12 +7208,22 @@ uint Field_varstring::is_equal(Create_field *new_field)
   if (new_field->sql_type == real_type() &&
       new_field->charset == field_charset)
   {
-    if (new_field->length == max_display_length())
+    if (new_field->length == max_display_length())  /* 这个地方判断是否有问题? length是字符数,而max_display_length是实际的字节数. */
       return IS_EQUAL_YES;
     if (new_field->length > max_display_length() &&
 	((new_field->length <= 255 && max_display_length() <= 255) ||
 	 (new_field->length > 255 && max_display_length() > 255)))
       return IS_EQUAL_PACK_LENGTH; // VARCHAR, longer variable length
+  }
+
+  //fast alter collate support for 5.0.24 bug
+  if(new_field->sql_type == real_type() &&
+      new_field->charset != field_charset &&
+      new_field->length == max_display_length() &&
+      new_field->charset == &my_charset_utf8_general_mysql500_ci &&
+      field_charset == &my_charset_utf8_general_ci
+      ){
+          return IS_EQUAL_WITH_UTF8_COLLATE;
   }
   return IS_EQUAL_NO;
 }

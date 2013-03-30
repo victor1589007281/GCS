@@ -1209,6 +1209,9 @@ public:
   // Change the column format of column
   static const HA_ALTER_FLAGS ALTER_COLUMN_COLUMN_FORMAT_FLAG = 1L << 20;
 
+  // Column's collate is changed,here we use a higher bit
+  static const HA_ALTER_FLAGS ALTER_COLUMN_COLLATE_FLAG       = 1L << 30;
+
   /**
     Create options (like MAX_ROWS) for the new version of table.
 

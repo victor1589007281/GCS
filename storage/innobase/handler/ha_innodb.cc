@@ -10933,7 +10933,7 @@ ha_innobase::check_if_incompatible_data(
 	HA_CREATE_INFO*	info,
 	uint		table_changes)
 {
-	if (table_changes != IS_EQUAL_YES) {
+	if (table_changes != IS_EQUAL_YES && table_changes != (IS_EQUAL_YES|IS_EQUAL_WITH_UTF8_COLLATE)) {
 
 		return(COMPATIBLE_DATA_NO);
 	}
