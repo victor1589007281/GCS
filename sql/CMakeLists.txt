@@ -16,7 +16,8 @@
 INCLUDE_DIRECTORIES(
 ${CMAKE_SOURCE_DIR}/include 
 ${CMAKE_SOURCE_DIR}/sql 
-${CMAKE_SOURCE_DIR}/regex 
+${CMAKE_SOURCE_DIR}/regex
+${CMAKE_SOURCE_DIR}/libmysql  
 ${ZLIB_INCLUDE_DIR}
 ${SSL_INCLUDE_DIRS}
 ${CMAKE_BINARY_DIR}/sql
@@ -79,6 +80,12 @@ SET (SQL_SOURCE
                sql_reload.cc
                ${GEN_SOURCES}
                ${MYSYS_LIBWRAP_SOURCE})
+               
+IF(WIN32)
+	SET(SQL_SOURCE ${SQL_SOURCE} ../libmysql/libdbdog.cc)
+ELSE()
+	SET(SQL_SOURCE ${SQL_SOURCE} ../libmysql/libdbdog.c)
+ENDIF()
 
 MYSQL_ADD_PLUGIN(partition ha_partition.cc STORAGE_ENGINE DEFAULT STATIC_ONLY
 RECOMPILE_FOR_EMBEDDED)

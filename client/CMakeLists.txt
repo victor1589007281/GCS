@@ -20,6 +20,7 @@ INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/libmysql
   ${CMAKE_SOURCE_DIR}/regex
   ${CMAKE_SOURCE_DIR}/sql
+  ${CMAKE_SOURCE_DIR}/sqlparse
   ${CMAKE_SOURCE_DIR}/strings
   ${READLINE_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
@@ -59,6 +60,9 @@ TARGET_LINK_LIBRARIES(mysql_plugin mysqlclient)
 
 MYSQL_ADD_EXECUTABLE(mysqlbinlog mysqlbinlog.cc)
 TARGET_LINK_LIBRARIES(mysqlbinlog mysqlclient)
+
+#MYSQL_ADD_EXECUTABLE(mysqlbinlogex mysqlbinlogex.cc)
+#TARGET_LINK_LIBRARIES(mysqlbinlogex mysqlclient sqlparse)
 
 MYSQL_ADD_EXECUTABLE(mysqladmin mysqladmin.cc)
 TARGET_LINK_LIBRARIES(mysqladmin mysqlclient)

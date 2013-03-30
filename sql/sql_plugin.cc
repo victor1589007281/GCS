@@ -2655,6 +2655,9 @@ void plugin_thdvar_init(THD *thd)
   thd->variables.dynamic_variables_size= 0;
   thd->variables.dynamic_variables_ptr= 0;
 
+  if (parse_export)
+      DBUG_VOID_RETURN;
+
   mysql_mutex_lock(&LOCK_plugin);
   thd->variables.table_plugin=
         my_intern_plugin_lock(NULL, global_system_variables.table_plugin);
@@ -2699,6 +2702,9 @@ void plugin_thdvar_cleanup(THD *thd)
   uint idx;
   plugin_ref *list;
   DBUG_ENTER("plugin_thdvar_cleanup");
+
+  if (parse_export)
+      DBUG_VOID_RETURN;
 
   mysql_mutex_lock(&LOCK_plugin);
 

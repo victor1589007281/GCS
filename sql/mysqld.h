@@ -323,6 +323,7 @@ extern ulong thread_handling;
 extern MYSQL_PLUGIN_IMPORT char  *mysql_data_home;
 extern "C" MYSQL_PLUGIN_IMPORT char server_version[SERVER_VERSION_LENGTH];
 extern MYSQL_PLUGIN_IMPORT char mysql_real_data_home[];
+extern int parse_export;
 extern char mysql_unpacked_real_data_home[];
 extern MYSQL_PLUGIN_IMPORT struct system_variables global_system_variables;
 extern char default_logfile_name[FN_REFLEN];

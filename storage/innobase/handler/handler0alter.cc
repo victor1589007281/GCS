@@ -2106,7 +2106,7 @@ innobase_add_columns_simple(
 
     ut_ad(dict_table_get_n_cols(table) - DATA_N_SYS_COLS + n_add == tmp_table->s->fields);
 
-    error_no = innobase_update_systable_n_cols_for_gcs(table, tmp_table->s->fields, trx, TRUE,NULL);
+    error_no = innobase_update_systable_n_cols_for_gcs(table, tmp_table->s->fields, trx, TRUE, 0);
     if (error_no != DB_SUCCESS)
         goto err_exit;
 

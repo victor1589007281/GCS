@@ -92,6 +92,10 @@ ELSE()
 ENDIF()
 PROJECT(${MYSQL_PROJECT_NAME})
 
+IF(UNIX)
+	OPTION(WITH_PIC "" ON) # always -fPIC
+ENDIF()
+
 IF(BUILD_CONFIG)
   INCLUDE(
   ${CMAKE_SOURCE_DIR}/cmake/build_configurations/${BUILD_CONFIG}.cmake)
@@ -315,7 +319,8 @@ IF(NOT WITHOUT_SERVER)
    ADD_SUBDIRECTORY(libmysqld)
    ADD_SUBDIRECTORY(libmysqld/examples)
   ENDIF(WITH_EMBEDDED_SERVER)
-
+  #ADD_SUBDIRECTORY(sqlparse)
+  
   ADD_SUBDIRECTORY(mysql-test)
   ADD_SUBDIRECTORY(mysql-test/lib/My/SafeProcess)
   ADD_SUBDIRECTORY(support-files)

@@ -32,6 +32,7 @@ Created 2/2/1994 Heikki Tuuri
 #endif /* !UNIV_HOTBACKUP */
 #include "mtr0log.h"
 #include "page0zip.h"
+#include "rem0cmp.h"
 
 #ifdef UNIV_MATERIALIZE
 #undef UNIV_INLINE

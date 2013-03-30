@@ -1540,7 +1540,7 @@ bool mysql_change_db(THD *thd, const LEX_STRING *new_db_name, bool force_switch)
 
   DEBUG_SYNC(thd, "before_db_dir_check");
 
-  if (check_db_dir_existence(new_db_file_name.str))
+  if (!parse_export && check_db_dir_existence(new_db_file_name.str))
   {
     if (force_switch)
     {

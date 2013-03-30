@@ -903,7 +903,6 @@ public:
     ip - client IP
   */
   char   *host, *user, *ip;
-  char   *client_program_name;
   char   priv_user[USERNAME_LENGTH];
   char   proxy_user[USERNAME_LENGTH + MAX_HOSTNAME + 5];
   /* The host privilege we are using */
@@ -2409,6 +2408,15 @@ public:
       stmt_da->reset_diagnostics_area();
     is_slave_error= 0;
     DBUG_VOID_RETURN;
+  }
+  /**
+    add for sqlparse
+	get error messaage
+  */
+  const char* get_error()
+  {
+      DBUG_ENTER("get_error");
+      DBUG_RETURN(stmt_da->message());
   }
 #ifndef EMBEDDED_LIBRARY
   inline bool vio_ok() const { return net.vio != 0; }
