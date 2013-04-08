@@ -232,7 +232,7 @@
 #define IS_EQUAL_NO 0
 #define IS_EQUAL_YES 1
 #define IS_EQUAL_PACK_LENGTH 2
-#define IS_EQUAL_WITH_UTF8_COLLATE 4
+#define IS_EQUAL_WITH_MYSQL500_COLLATE 4
 
 enum enum_parsing_place
 {

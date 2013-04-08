@@ -1444,6 +1444,7 @@ public:
   MDL_context mdl_context;
   char* client_program_name;  /* name for client program name */
 
+  String mysql_check_ret_msg;  /* point to store msg return by mysql_check */
   /* Used to execute base64 coded binlog events in MySQL server */
   Relay_log_info* rli_fake;
 

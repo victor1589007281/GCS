@@ -699,6 +699,7 @@ static int run_mysqlcheck_upgrade(void)
                   "--check-upgrade",
                   "--all-databases",
                   "--auto-repair",
+                  "--fast-upgrade-collate",
                   opt_write_binlog ? "--write-binlog" : "--skip-write-binlog",
                   NULL);
 }

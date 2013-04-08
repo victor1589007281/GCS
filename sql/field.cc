@@ -1076,6 +1076,30 @@ static void push_numerical_conversion_warning(THD* thd, const char* str,
 
 
 /**
+  Check if the old_charset can upgrade to new_charset
+  
+  @param old_charset         old charset before alter table
+  @param new_charset         new charset for column
+
+  @retval
+    TRUE   support fast collate alter
+  @retval 
+    FALSE  donot support fast collate alter
+ */
+bool check_fast_collate_alter_support(CHARSET_INFO * old_charset,
+                                      CHARSET_INFO * new_charset
+                                      ){
+   if((new_charset == &my_charset_utf8_general_mysql500_ci &&
+      old_charset == &my_charset_utf8_general_ci)||
+       (new_charset == &my_charset_ucs2_general_mysql500_ci &&
+         old_charset == &my_charset_ucs2_general_ci)){
+             return TRUE;
+   }
+
+   return FALSE;
+}
+
+/**
   Check whether a field type can be partially indexed by a key.
 
   This is a static method, rather than a virtual function, because we need
@@ -6359,13 +6383,12 @@ uint Field_str::is_equal(Create_field *new_field)
   if (field_flags_are_binary() != new_field->field_flags_are_binary())
     return 0;
 
-  //for fast UTF8 to UTF8_mysql500
+  //for fast COLLATE to COLLATE_mysql500
   if((new_field->sql_type == real_type()) &&
       new_field->length == max_display_length() &&
-      new_field->charset == &my_charset_utf8_general_mysql500_ci &&
-      field_charset == &my_charset_utf8_general_ci
+      check_fast_collate_alter_support(field_charset,new_field->charset)
       ){
-          return IS_EQUAL_WITH_UTF8_COLLATE;
+          return IS_EQUAL_WITH_MYSQL500_COLLATE;
   }
   return ((new_field->sql_type == real_type()) &&
 	  new_field->charset == field_charset &&
@@ -7208,7 +7231,7 @@ uint Field_varstring::is_equal(Create_field *new_field)
   if (new_field->sql_type == real_type() &&
       new_field->charset == field_charset)
   {
-    if (new_field->length == max_display_length())  /* 这个地方判断是否有问题? length是字符数,而max_display_length是实际的字节数. */
+    if (new_field->length == max_display_length())
       return IS_EQUAL_YES;
     if (new_field->length > max_display_length() &&
 	((new_field->length <= 255 && max_display_length() <= 255) ||
@@ -7220,10 +7243,8 @@ uint Field_varstring::is_equal(Create_field *new_field)
   if(new_field->sql_type == real_type() &&
       new_field->charset != field_charset &&
       new_field->length == max_display_length() &&
-      new_field->charset == &my_charset_utf8_general_mysql500_ci &&
-      field_charset == &my_charset_utf8_general_ci
-      ){
-          return IS_EQUAL_WITH_UTF8_COLLATE;
+      check_fast_collate_alter_support(field_charset,new_field->charset)){
+          return IS_EQUAL_WITH_MYSQL500_COLLATE;
   }
   return IS_EQUAL_NO;
 }
@@ -7829,6 +7850,13 @@ uint Field_blob::is_equal(Create_field *new_field)
   if (field_flags_are_binary() != new_field->field_flags_are_binary())
     return 0;
 
+  if((new_field->sql_type == get_blob_type_from_length(max_data_length())) &&
+      new_field->pack_length == pack_length() &&
+      check_fast_collate_alter_support(field_charset,new_field->charset)
+      ){
+          return IS_EQUAL_WITH_MYSQL500_COLLATE;
+  }
+
   return ((new_field->sql_type == get_blob_type_from_length(max_data_length()))
           && new_field->charset == field_charset &&
           new_field->pack_length == pack_length());
@@ -8397,6 +8425,15 @@ bool Field_enum::eq_def(Field *field)
 uint Field_enum::is_equal(Create_field *new_field)
 {
   TYPELIB *values= new_field->interval;
+
+  /*
+    support fast collate alter
+  */
+  if (new_field->field_flags_are_binary() != field_flags_are_binary() ||
+      new_field->sql_type != real_type() ||     
+      new_field->pack_length != pack_length()||
+      check_fast_collate_alter_support(field_charset,new_field->charset))
+    return IS_EQUAL_WITH_MYSQL500_COLLATE;
 
   /*
     The fields are compatible if they have the same flags,

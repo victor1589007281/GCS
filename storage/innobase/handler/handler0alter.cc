@@ -2193,7 +2193,7 @@ Return
     false : success
 */
 ulint
-innobase_fast_alter_utf8_collate(
+innobase_fast_alter_mysql500_collate(
     /*===================*/
     mem_heap_t*         heap,   /*!< in: temp heap */
     trx_t*			    trx,    /*!< in: trix  */
@@ -2204,19 +2204,13 @@ innobase_fast_alter_utf8_collate(
         ulint   		error_no = DB_SUCCESS;
         Alter_info*     alter_info = static_cast<Alter_info*>(inplace_info->alter_info);
         Create_field*   cfield;
-        List_iterator<Create_field> def_it(alter_info->create_list);
-        ulint           prev_add_idx = ULINT_UNDEFINED;
-        ulint           idx = 0;
-        ulint           add_idx = 0;
-        Field           *field;
+        List_iterator<Create_field> def_it(alter_info->create_list);      
+        ulint           idx = 0; 
         dict_col_t      *col_arr = NULL;
-        ulint           n_add = 0;
-        char*           col_names = NULL;
-        char*           col_name = NULL;
         ulint           lock_retry = 0;
         ibool           locked = FALSE;
 
-        DBUG_ENTER("innobase_add_columns_simple");
+        DBUG_ENTER("innobase_fast_alter_mysql500_collate");
 
         DBUG_ASSERT(trx_get_dict_operation(trx) == TRX_DICT_OP_INDEX);
         ut_ad(trx->dict_operation_lock_mode == RW_X_LATCH);
@@ -2228,8 +2222,7 @@ innobase_fast_alter_utf8_collate(
         ut_ad(dict_table_get_n_cols(table) - DATA_N_SYS_COLS == tmp_table->s->fields);
 
         col_arr = (dict_col_t *)mem_heap_zalloc(heap, sizeof(dict_col_t) * tmp_table->s->fields);
-        col_names = (char*)mem_heap_zalloc(heap, tmp_table->s->fields * 200);       /* 每个字段长度必小于200 */
-        if (col_arr == NULL || col_names == NULL)
+        if (col_arr == NULL)
         {
             push_warning_printf(
                 (THD*) trx->mysql_thd,
@@ -2239,8 +2232,6 @@ innobase_fast_alter_utf8_collate(
 
             goto err_exit;
         }
-
-        col_name = col_names;
 
         def_it.rewind();
         while (!!(cfield =def_it++))
@@ -2256,8 +2247,6 @@ innobase_fast_alter_utf8_collate(
                 goto err_exit;
             } 
 
-            field = tmp_table->field[idx];
-
             //fill new collate
             error_no = innodbase_fill_col_info(trx, &col_arr[idx], table, tmp_table, idx, heap,cfield,inplace_info);
 
@@ -2269,11 +2258,7 @@ innobase_fast_alter_utf8_collate(
             error_no = innobase_fast_alter_collate_to_dictionary(table,&col_arr[idx],trx);
 
             if (error_no != DB_SUCCESS)
-                goto err_exit;
-
-            strcpy(col_name, dict_table_get_col_name(table, idx));
-            col_name += strlen(col_name) + 1;
-
+                goto err_exit;         
             idx ++;
         }       
 
@@ -2303,8 +2288,8 @@ innobase_fast_alter_utf8_collate(
             goto err_exit;
         }
 
-       // memcpy(table->cols, col_arr, tmp_table->s->fields * sizeof(dict_col_t));
-       dict_mem_table_fast_alter_collate(table, col_arr, tmp_table->s->fields, col_names, col_name - col_names);
+        //midify the collate info in the mem.
+        dict_mem_table_fast_alter_collate(table, col_arr);
 
         rw_lock_x_unlock(&btr_search_latch);
 
@@ -2872,9 +2857,8 @@ ha_innobase::check_if_supported_inplace_alter(
         1.如果是快速5.0到5.5的UTF8 列collate修改为utf8_general_mysql500_ci,支持快速alter
         2.除增加字段的标记,还有其他信息，则表示不支持,注意，这里没有增加索引的信息
     */
-    if((inplace_info->handler_flags & ~(Alter_inplace_info::ALTER_COLUMN_COLLATE_FLAG|
-        Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG)) && 
-        (inplace_info->handler_flags & ~(Alter_inplace_info::ADD_COLUMN_FLAG))){
+    if((inplace_info->handler_flags & ~Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG) && 
+        (inplace_info->handler_flags & ~(Alter_inplace_info::ADD_COLUMN_FLAG))){           
             DBUG_RETURN(false);
     }
     
@@ -3019,7 +3003,7 @@ ha_innobase::inplace_alter_table(
 		
     }else if(ha_alter_info->handler_flags == Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG){
         //fast alter collate
-        err = innobase_fast_alter_utf8_collate(heap,trx,dict_table,tmp_table,ha_alter_info);
+        err = innobase_fast_alter_mysql500_collate(heap,trx,dict_table,tmp_table,ha_alter_info);
     }else{
         ut_ad(FALSE);
         /* to do 暂时断言  */

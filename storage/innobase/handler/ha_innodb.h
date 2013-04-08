@@ -274,6 +274,9 @@ class ha_innobase: public handler
         Alter_inplace_info      *inplace_info
     );
 	
+    /* innodb support fast collate upgrade */
+    bool check_if_support_fast_collate_upgrade() { return TRUE; }
+
 	/* check if support fast row_format check*/
 	enum innodb_row_format_change is_support_fast_rowformat_change(
 	  enum row_type new_type,

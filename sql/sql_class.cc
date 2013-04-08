@@ -1350,6 +1350,7 @@ THD::~THD()
   db= NULL;
   my_free(client_program_name);
   client_program_name = NULL;
+  mysql_check_ret_msg.free();
   free_root(&transaction.mem_root,MYF(0));
   mysql_mutex_destroy(&LOCK_thd_data);
 #ifndef DBUG_OFF

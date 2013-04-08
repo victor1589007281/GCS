@@ -166,6 +166,7 @@ bool mysql_compare_tables(TABLE *table,
                           uint **index_add_buffer, uint *index_add_count,
                           uint *candidate_key_count);
 bool mysql_recreate_table(THD *thd, TABLE_LIST *table_list);
+bool mysql_recreate_table_for_collate_upgrade(THD *thd, TABLE_LIST *table_list);
 bool mysql_create_like_table(THD *thd, TABLE_LIST *table,
                              TABLE_LIST *src_table,
                              HA_CREATE_INFO *create_info);

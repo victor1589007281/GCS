@@ -4903,7 +4903,6 @@ mysql_compare_tables(TABLE *table,
   */
   bool varchar= create_info->varchar;
   bool not_nullable= true;
-
   Alter_inplace_info    *inplace_info = static_cast<Alter_inplace_info*>(inplace_info_arg);
   DBUG_ENTER("mysql_compare_tables");
 
@@ -5962,7 +5961,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         /* judge the old table version */
         ulong mysql_version= table->s->mysql_version;
         //fix the 5.1.24 utf8 collate bug. if the version is newer than 5.1.24,data changed
-        if(fast_collation_alter_flag && mysql_version <= 50124){
+        if(fast_collation_alter_flag && mysql_version >= 50124){
             fast_collation_alter_flag = false;           
         }
         
@@ -6000,7 +5999,6 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         if (inplace_info != NULL &&
             !fill_alter_inplace_info(thd, table, varchar_flag, inplace_info))
         {
-
 
             support_flag = table->file->check_if_supported_inplace_alter(thd, table, inplace_info);
         }   
@@ -7986,6 +7984,47 @@ static bool check_engine(THD *thd, const char *db_name,
   }
 
   DBUG_RETURN(false);
+}
+
+/*
+  Fast recreates tables by calling mysql_alter_table()
+  do fast alter collate for upgrading from before5.1.24-> higher version.
+
+  SYNOPSIS
+    mysql_recreate_table()
+    thd			Thread handler
+    tables		Tables to recreate
+
+ RETURN
+    Like mysql_alter_table().
+*/
+bool mysql_recreate_table_for_collate_upgrade(THD *thd, TABLE_LIST *table_list)
+{
+  HA_CREATE_INFO create_info;
+  Alter_info alter_info;
+
+  DBUG_ENTER("mysql_recreate_table");
+  DBUG_ASSERT(!table_list->next_global);
+  /*
+    table_list->table has been closed and freed. Do not reference
+    uninitialized data. open_tables() could fail.
+  */
+  table_list->table= NULL;
+  /* Same applies to MDL ticket. */
+  table_list->mdl_request.ticket= NULL;
+  /* Set lock type which is appropriate for ALTER TABLE. */
+  table_list->lock_type= TL_READ_NO_INSERT;
+  /* Same applies to MDL request. */
+  table_list->mdl_request.set_type(MDL_SHARED_NO_WRITE);
+
+  bzero((char*) &create_info, sizeof(create_info));
+  create_info.row_type=ROW_TYPE_NOT_USED;
+  create_info.default_table_charset=default_charset_info;
+  /* Force alter table to recreate table */
+  alter_info.flags= (ALTER_CHANGE_COLUMN | ALTER_RECREATE);
+  DBUG_RETURN(mysql_alter_table(thd, NullS, NullS, &create_info,
+                                table_list, &alter_info, 0,
+                                (ORDER *) 0, 0));
 }
 
 /*********************************************************************************/

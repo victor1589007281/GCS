@@ -598,6 +598,9 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
     }
 
     DBUG_PRINT("admin", ("calling operator_func '%s'", operator_name));
+
+    /* clear the check msg */
+    thd->mysql_check_ret_msg.free();
     result_code = (table->table->file->*operator_func)(thd, check_opt);
     DBUG_PRINT("admin", ("operator_func returned: %d", result_code));
 
@@ -801,6 +804,14 @@ send_result_message:
       fatal_error=1;
       break;
     }
+
+    // need fast alter column collate
+    case HA_ADMIN_NEEDS_COLLATE_UPGRADE:
+        {
+            protocol->store(STRING_WITH_LEN("collate_upgrade"), system_charset_info);
+            protocol->store(thd->mysql_check_ret_msg.ptr(), thd->mysql_check_ret_msg.length(), system_charset_info);            
+            break;
+        }       
 
     default:				// Probably HA_ADMIN_INTERNAL_ERROR
       {

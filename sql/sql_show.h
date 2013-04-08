@@ -84,6 +84,10 @@ enum find_files_result {
 find_files_result find_files(THD *thd, List<LEX_STRING> *files, const char *db,
                              const char *path, const char *wild, bool dir);
 
+bool get_field_default_value(THD *thd, Field *timestamp_field,
+                             Field *field, String *def_value,
+                             bool quoted);
+
 int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
                       HA_CREATE_INFO  *create_info_arg, bool show_database);
 int view_store_create_info(THD *thd, TABLE_LIST *table, String *buff);
