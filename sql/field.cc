@@ -8429,10 +8429,13 @@ uint Field_enum::is_equal(Create_field *new_field)
   /*
     support fast collate alter
   */
-  if (new_field->field_flags_are_binary() != field_flags_are_binary() ||
-      new_field->sql_type != real_type() ||     
-      new_field->pack_length != pack_length()||
-      check_fast_collate_alter_support(field_charset,new_field->charset))
+  if (new_field->field_flags_are_binary() == field_flags_are_binary() &&
+      new_field->sql_type == real_type() &&     
+      new_field->pack_length == pack_length() &&
+      check_fast_collate_alter_support(field_charset,new_field->charset) &&
+      typelib->count <= values->count &&
+      compare_type_names(field_charset, typelib, new_field->interval)
+      )
     return IS_EQUAL_WITH_MYSQL500_COLLATE;
 
   /*

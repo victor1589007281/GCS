@@ -2822,6 +2822,9 @@ ha_innobase::check_if_supported_inplace_alter(
 
 	HA_CREATE_INFO * create_info = inplace_info->create_info;
 	enum row_type tb_innodb_row_type = get_row_type();
+    /* judge the old table version */
+    ulong mysql_version= table->s->mysql_version;    
+
 
 	/*
 	check for fast alter row_format:
@@ -2856,9 +2859,11 @@ ha_innobase::check_if_supported_inplace_alter(
     /*
         1.如果是快速5.0到5.5的UTF8 列collate修改为utf8_general_mysql500_ci,支持快速alter
         2.除增加字段的标记,还有其他信息，则表示不支持,注意，这里没有增加索引的信息
+        3.如果mysql的frm版本高于5.1.24,则返回false
     */
-    if((inplace_info->handler_flags & ~Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG) && 
-        (inplace_info->handler_flags & ~(Alter_inplace_info::ADD_COLUMN_FLAG))){           
+    if(((inplace_info->handler_flags & ~Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG) && 
+        (inplace_info->handler_flags & ~(Alter_inplace_info::ADD_COLUMN_FLAG)))||
+        (inplace_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG && mysql_version >= 50124)){           
             DBUG_RETURN(false);
     }
     

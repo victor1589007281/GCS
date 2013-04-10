@@ -1007,8 +1007,9 @@ int main(int argc, char **argv)
     uint i;
     if(!opt_silent && table4fastuprade.elements)
         puts("\nFast upgrade old tables' collatation:");
-    if(table4fastuprade.elements < 1)
+   /* if(table4fastuprade.elements < 1)
         puts("\nNo table need to fast collation upgrade.");
+        */
 
      what_to_do = DO_CHECK;
 
