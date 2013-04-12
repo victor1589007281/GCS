@@ -1004,16 +1004,18 @@ dict_mem_realloc_index_fields(
 void
 dict_mem_table_fast_alter_collate(
     dict_table_t*           table,              /*!< in: 原表字典对象 */
-    dict_col_t*             col_arr             /*!< in: 修改列后的用户列字典对象,不包含系统列 */ 
+    dict_col_t*             col_arr,            /*!< in: 修改列后的用户列字典对象,不包含系统列 */ 
+    ulint                   n_modify            /*!< in: col_arr的列数 */
 )
 {
-    ulint idx;
-    ulint n_cols = dict_table_get_n_cols(table) - DATA_N_SYS_COLS;
+    ulint i, ind;
 
-    ut_ad(n_cols < 1024);
+    for(i=0; i < n_modify; i++){
+        /* 只有ind值合法才修改，不合法列没有修改字符集 */
+        ind = col_arr[i].ind;
 
-    for(idx=0; idx < n_cols; idx++){
-        table->cols[idx].prtype = col_arr[idx].prtype;
+        ut_ad(ind < table->n_cols);
+        table->cols[ind].prtype = col_arr[i].prtype;
     }
 }
 

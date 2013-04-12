@@ -161,6 +161,7 @@ class ha_innobase: public handler
 	*/
 	enum row_type get_row_type() const;
     const char* get_row_type_str_for_gcs() const;
+    bool is_def_value_sensitive() const;
 
     bool get_if_row_fast_altered();
 

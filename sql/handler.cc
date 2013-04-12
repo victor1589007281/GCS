@@ -3187,32 +3187,32 @@ int handler::check_collation_compatibility()
         if((mysql_version < 50124) && 
             (cs_number == 33 || /* utf8_general_ci - bug #27877 */
             cs_number == 35 /* ucs2_general_ci - bug #27877 */
-            ) && engine_support_fast_upgrade){
-                if(!ret_flag) 
-                {
-                    ret_flag = HA_ADMIN_NEEDS_COLLATE_UPGRADE;
+            ) && engine_support_fast_upgrade)
+        {
+            if(!ret_flag) 
+            {
+                ret_flag = HA_ADMIN_NEEDS_COLLATE_UPGRADE;
 
-                    packet->append(STRING_WITH_LEN(" ALTER TABLE `"));
-                    packet->append(table->s->db.str, table->s->db.length );
-                    packet->append(STRING_WITH_LEN("`.`"));
-                    packet->append(table->s->table_name.str, table->s->table_name.length);
-                    packet->append(STRING_WITH_LEN("` "));
-                }
+                packet->append(STRING_WITH_LEN(" ALTER TABLE `"));
+                packet->append(table->s->db.str, table->s->db.length );
+                packet->append(STRING_WITH_LEN("`.`"));
+                packet->append(table->s->table_name.str, table->s->table_name.length);
+                packet->append(STRING_WITH_LEN("` "));
+            }
 
-                if(upgrade_cols && !f_flag){
-                    packet->append(STRING_WITH_LEN(", "));
-                }
+            if(upgrade_cols && !f_flag){
+                packet->append(STRING_WITH_LEN(", "));
+            }
 
-                if(!f_flag){
-                    packet->append(STRING_WITH_LEN(" MODIFY COLUMN "));
-                    // packet->append(field->field_name, strlen(field->field_name));
-                    fill_field_create_str(field, packet, thd, table);
+            if(!f_flag){
+                packet->append(STRING_WITH_LEN(" MODIFY COLUMN "));
+                // packet->append(field->field_name, strlen(field->field_name));
+                fill_field_create_str(field, packet, thd, table);
 
-                    upgrade_cols++;
-                }
-                if(ret_flag == HA_ADMIN_NEEDS_COLLATE_UPGRADE){
-                    continue;
-                } /* else run the follow code */
+                upgrade_cols++;
+            }
+
+            continue;
         }
         /* need to upgrade table */
         if ((mysql_version < 50048 &&

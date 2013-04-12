@@ -271,6 +271,7 @@ public:
       const char*	            table_name);
 
   const char* get_row_type_str_for_gcs() const;
+  bool is_def_value_sensitive() const;
   bool get_if_row_fast_altered();
   bool get_if_opened() { return m_handler_status == handler_opened; }
 private:

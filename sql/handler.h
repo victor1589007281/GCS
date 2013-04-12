@@ -1214,6 +1214,12 @@ public:
   // Change the column format of column
   static const HA_ALTER_FLAGS ALTER_COLUMN_COLUMN_FORMAT_FLAG = 1L << 20;
 
+  // Change the column 
+  static const HA_ALTER_FLAGS ALTER_COLUMN_CHANGE             = 1L << 21;
+
+  // change the column collation
+  static const HA_ALTER_FLAGS ALTER_COLUMN_CHANGE_COLLATION   = 1L << 22;
+
   /**
     Create options (like MAX_ROWS) for the new version of table.
 
@@ -1757,6 +1763,9 @@ public:
   virtual enum row_type get_row_type() const { return ROW_TYPE_NOT_USED; }
 
   virtual const char* get_row_type_str_for_gcs() const { return "Gcs"; }
+
+  /* 表示是否对默认值敏感，只有GCS表敏感 */
+  virtual bool is_def_value_sensitive() const { return false; }
 
   /*
     use the judge if the table's SE level table(s) had been fast altered before.

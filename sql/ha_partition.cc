@@ -7498,6 +7498,20 @@ ha_partition::get_row_type_str_for_gcs() const
 	DBUG_RETURN(rf_str);
 }
 
+bool
+ha_partition::is_def_value_sensitive() const
+{
+    DBUG_ENTER("ha_partition::get_row_type_str_for_gcs");
+
+	/*  if here need to judge the other partitions? 
+	    they must be the same row_format. so here we just return the first partition's row_format. 
+    */
+
+    handler ** file;
+    file=m_file;
+    DBUG_RETURN((*file)->is_def_value_sensitive());
+}
+
 /* 
 judge each partition if the parition had been altered before
 return true ;if all partition have been altered before

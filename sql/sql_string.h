@@ -152,6 +152,13 @@ public:
     str_charset=str.str_charset;
   }
 
+  inline bool is_equal(const String& str)
+  {
+    if (str_length != str.str_length ||
+        str_charset != str.str_charset)
+        return false;
+    return memcmp(Ptr, str.ptr(), str_length) == 0;
+  }
 
   /**
      Points the internal buffer to the supplied one. The old buffer is freed.

@@ -750,9 +750,10 @@ dict_mem_table_add_col_simple(
 
 void
 dict_mem_table_fast_alter_collate(
- dict_table_t*           table,              /*!< in: 原表字典对象 */
- dict_col_t*             col_arr             /*!< in: 修改后的用户列字典对象 */
- );
+    dict_table_t*           table,              /*!< in: 原表字典对象 */
+    dict_col_t*             col_arr,            /*!< in: 修改后的用户列字典对象 */
+    ulint                   n_modify            /*!< in: col_arr的列数 */
+);
 
 /**********************************************************************//**
 直接对字典对象内存删除若干列 

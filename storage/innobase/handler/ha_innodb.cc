@@ -3236,6 +3236,23 @@ ha_innobase::get_row_type_str_for_gcs() const
     return("Gcs");
 }
 
+UNIV_INTERN
+bool
+ha_innobase::is_def_value_sensitive() const
+{
+    if (prebuilt && prebuilt->table) {
+        /* 只有加过字段才是敏感的，因为改变默认值会改变在线加字段后记录的内容 */
+        if(dict_table_is_gcs_after_alter_table(prebuilt->table)){
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    ut_ad(0);
+    return false;
+}
+
 /****************************************************************//**
 Get the table flags to use for the statement.
 @return	table flags */

@@ -1074,7 +1074,7 @@ bool get_field_default_value(THD *thd, Field *timestamp_field,
   has_default= (field_type != FIELD_TYPE_BLOB &&
                 !(field->flags & NO_DEFAULT_VALUE_FLAG) &&
                 field->unireg_check != Field::NEXT_NUMBER &&
-                !((thd->variables.sql_mode & (MODE_MYSQL323 | MODE_MYSQL40))
+                !(thd && (thd->variables.sql_mode & (MODE_MYSQL323 | MODE_MYSQL40))
                   && has_now_default));
 
   def_value->length(0);

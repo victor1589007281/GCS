@@ -5285,9 +5285,12 @@ bool fill_alter_inplace_info(
     has really changed we rely on flags set by parser to get an
     approximate value for storage engine flag.
     */
-    if (alter_info->flags & (ALTER_CHANGE_COLUMN |
-        ALTER_CHANGE_COLUMN_DEFAULT))
+    if (alter_info->flags & ALTER_CHANGE_COLUMN_DEFAULT)
         ha_alter_info->handler_flags|= Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG;
+
+    /* 修改列，包括修改字符集，修改默认值等，目前只处理修改字符集 */
+    if (alter_info->flags & ALTER_CHANGE_COLUMN)
+        ha_alter_info->handler_flags|= Alter_inplace_info::ALTER_COLUMN_CHANGE;
     //   if (alter_info->flags & Alter_info::ADD_FOREIGN_KEY)
     //     ha_alter_info->handler_flags|= Alter_inplace_info::ADD_FOREIGN_KEY;
     //   if (alter_info->flags & Alter_info::DROP_FOREIGN_KEY)
@@ -5395,6 +5398,10 @@ bool fill_alter_inplace_info(
                     ha_alter_info->handler_flags|=
                     Alter_inplace_info::ALTER_COLUMN_NULLABLE_FLAG;
             }
+
+            if (new_field->charset != field->charset())
+                ha_alter_info->handler_flags|=
+                    Alter_inplace_info::ALTER_COLUMN_CHANGE_COLLATION;
 
             /*
             We do not detect changes to default values in this loop.
@@ -7959,47 +7966,6 @@ static bool check_engine(THD *thd, const char *db_name,
   }
 
   DBUG_RETURN(false);
-}
-
-/*
-  Fast recreates tables by calling mysql_alter_table()
-  do fast alter collate for upgrading from before5.1.24-> higher version.
-
-  SYNOPSIS
-    mysql_recreate_table()
-    thd			Thread handler
-    tables		Tables to recreate
-
- RETURN
-    Like mysql_alter_table().
-*/
-bool mysql_recreate_table_for_collate_upgrade(THD *thd, TABLE_LIST *table_list)
-{
-  HA_CREATE_INFO create_info;
-  Alter_info alter_info;
-
-  DBUG_ENTER("mysql_recreate_table");
-  DBUG_ASSERT(!table_list->next_global);
-  /*
-    table_list->table has been closed and freed. Do not reference
-    uninitialized data. open_tables() could fail.
-  */
-  table_list->table= NULL;
-  /* Same applies to MDL ticket. */
-  table_list->mdl_request.ticket= NULL;
-  /* Set lock type which is appropriate for ALTER TABLE. */
-  table_list->lock_type= TL_READ_NO_INSERT;
-  /* Same applies to MDL request. */
-  table_list->mdl_request.set_type(MDL_SHARED_NO_WRITE);
-
-  bzero((char*) &create_info, sizeof(create_info));
-  create_info.row_type=ROW_TYPE_NOT_USED;
-  create_info.default_table_charset=default_charset_info;
-  /* Force alter table to recreate table */
-  alter_info.flags= (ALTER_CHANGE_COLUMN | ALTER_RECREATE);
-  DBUG_RETURN(mysql_alter_table(thd, NullS, NullS, &create_info,
-                                table_list, &alter_info, 0,
-                                (ORDER *) 0, 0));
 }
 
 /*********************************************************************************/
