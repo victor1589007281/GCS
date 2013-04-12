@@ -2210,6 +2210,8 @@ innobase_fast_alter_mysql500_collate(
     dict_col_t      *col_arr = NULL;
     ulint           lock_retry = 0;
     ibool           locked = FALSE;
+    /* 修改列个数 */
+    ulint           n_modify = 0;
 
     DBUG_ENTER("innobase_fast_alter_mysql500_collate");
 
@@ -2233,9 +2235,6 @@ innobase_fast_alter_mysql500_collate(
 
         goto err_exit;
     }
-
-    /* 修改列个数 */
-    ulint n_modify = 0;
 
     def_it.rewind();
     while (!!(cfield =def_it++))
