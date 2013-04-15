@@ -299,7 +299,7 @@ class ha_innobase: public handler
         const char*         table_name,
         bool                commit);
 
-	bool check_if_incompatible_data(HA_CREATE_INFO *info,
+	bool check_if_incompatible_data(HA_CREATE_INFO *info, Alter_inplace_info* inplace_alter,
 					uint table_changes);   
 };
 

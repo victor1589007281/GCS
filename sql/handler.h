@@ -2239,7 +2239,7 @@ public:
    Pops the top if condition stack, if stack is not empty.
  */
  virtual void cond_pop() { return; };
- virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info,
+ virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info, Alter_inplace_info* inplae_alter,
 					 uint table_changes)
  { return COMPATIBLE_DATA_NO; }
 

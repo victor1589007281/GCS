@@ -256,7 +256,7 @@ public:
     DBUG_RETURN(0);
   }
   virtual void change_table_ptr(TABLE *table_arg, TABLE_SHARE *share);
-  virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info,
+  virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info, Alter_inplace_info* inplace_alter,
                                           uint table_changes);
   /* check if the partition table support inplace alter */
   virtual bool check_if_supported_inplace_alter(THD *thd, TABLE *table,Alter_inplace_info *inplace_info);

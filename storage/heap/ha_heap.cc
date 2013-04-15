@@ -798,7 +798,7 @@ void ha_heap::get_auto_increment(ulonglong offset, ulonglong increment,
 }
 
 
-bool ha_heap::check_if_incompatible_data(HA_CREATE_INFO *info,
+bool ha_heap::check_if_incompatible_data(HA_CREATE_INFO *info, Alter_inplace_info* inplace_alter,
 					 uint table_changes)
 {
   /* Check that auto_increment value was not changed */

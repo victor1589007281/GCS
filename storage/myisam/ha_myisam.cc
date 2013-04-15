@@ -2063,7 +2063,7 @@ uint ha_myisam::checksum() const
 }
 
 
-bool ha_myisam::check_if_incompatible_data(HA_CREATE_INFO *info,
+bool ha_myisam::check_if_incompatible_data(HA_CREATE_INFO *info, Alter_inplace_info* inplace_alter,
 					   uint table_changes)
 {
   uint options= table->s->db_options_in_use;

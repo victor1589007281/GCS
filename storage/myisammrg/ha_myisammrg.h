@@ -146,7 +146,7 @@ public:
   void append_create_info(String *packet);
   MYRG_INFO *myrg_info() { return file; }
   TABLE *table_ptr() { return table; }
-  bool check_if_incompatible_data(HA_CREATE_INFO *info, uint table_changes);
+  bool check_if_incompatible_data(HA_CREATE_INFO *info, Alter_inplace_info* inplace_alter, uint table_changes);
   int check(THD* thd, HA_CHECK_OPT* check_opt);
   ha_rows records();
 };

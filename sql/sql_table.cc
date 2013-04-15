@@ -5167,7 +5167,7 @@ mysql_compare_tables(TABLE *table,
   }
 
   /* Check if changes are compatible with current handler without a copy */
-  if (table->file->check_if_incompatible_data(create_info, changes))
+  if (table->file->check_if_incompatible_data(create_info, inplace_info, changes))
   {
     *need_copy_table= ALTER_TABLE_DATA_CHANGED;
     DBUG_RETURN(0);
@@ -5516,15 +5516,14 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
     bool rc= TRUE;
     
     /* flag for check if can fast alter table add column*/
-    bool add_column_simple_flag = true;                                     /* 初始化为true */
+    bool inplace_alter_flag = true;                                     /* 初始化为true，表示支持在线alter */
     bool varchar_flag = false;
   
 	/* judge if there are drop column/alter column/add key operation,if any set add_column_simple_flag false */
 	if(alter_info->drop_list.elements || 
-	    alter_info->alter_list.elements ||
-	    alter_info->key_list.elements
-	  ){
-		add_column_simple_flag = false;
+	    alter_info->alter_list.elements ||  /* 仅仅是set default和drop default使用 */
+	    alter_info->key_list.elements ){
+		inplace_alter_flag = false;
 	}
 
     DBUG_ENTER("mysql_prepare_alter_table");
@@ -5678,7 +5677,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         {
             alter_info->datetime_field= def;
             alter_info->error_if_not_empty= TRUE;
-            add_column_simple_flag = false;
+            inplace_alter_flag = false;
         }
         
         /** 
@@ -5701,7 +5700,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
          /* we donot support fast add columns with both MAYBE NULL and DEFUALT VALUE  */
          /************************************************************************/
         if((~def->flags & NOT_NULL_FLAG) && def->def){
-            add_column_simple_flag = false;
+            inplace_alter_flag = false;
         }
 
 
@@ -5879,7 +5878,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         while ((key=key_it++))			// Add new keys
         {           
             //fast add column temporary not surpport add index at the sametime.
-            add_column_simple_flag = false;
+            inplace_alter_flag = false;
             if (key->type != Key::FOREIGN_KEY)
                 new_key_list.push_back(key);
             if (key->name.str &&
@@ -5935,7 +5934,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
     already check the default values of new added column.
     here we donnot check change_level,for normal add column ,the change level is METADATA_ONLY
     */
-    if (add_column_simple_flag && inplace_info_out && alter_info->change_level == ALTER_TABLE_METADATA_ONLY && !thd->lex->ignore)
+    if (inplace_alter_flag && inplace_info_out && alter_info->change_level == ALTER_TABLE_METADATA_ONLY && !thd->lex->ignore)
     {    
         
 		/* 

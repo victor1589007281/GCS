@@ -6747,7 +6747,7 @@ uint ha_partition::alter_table_flags(uint flags)
 /**
   check if copy of data is needed in alter table.
 */
-bool ha_partition::check_if_incompatible_data(HA_CREATE_INFO *create_info,
+bool ha_partition::check_if_incompatible_data(HA_CREATE_INFO *create_info, Alter_inplace_info* inplace_alter,
                                               uint table_changes)
 {
   handler **file;
@@ -6759,7 +6759,7 @@ bool ha_partition::check_if_incompatible_data(HA_CREATE_INFO *create_info,
     the underlying handlers.
   */
   for (file= m_file; *file; file++)
-    if ((ret=  (*file)->check_if_incompatible_data(create_info,
+    if ((ret=  (*file)->check_if_incompatible_data(create_info, inplace_alter,
                                                    table_changes)) !=
         COMPATIBLE_DATA_YES)
       break;

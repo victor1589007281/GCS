@@ -10948,14 +10948,17 @@ UNIV_INTERN
 bool
 ha_innobase::check_if_incompatible_data(
 	HA_CREATE_INFO*	info,
+    Alter_inplace_info* inplace_alter,
 	uint		table_changes)
 {
-	if (table_changes != IS_EQUAL_YES &&
-        table_changes != (IS_EQUAL_YES|IS_EQUAL_WITH_MYSQL500_COLLATE) &&
-        table_changes != IS_EQUAL_WITH_MYSQL500_COLLATE) {
 
-		return(COMPATIBLE_DATA_NO);
-	}
+    /* 除了IS_EQUAL_YES，必须保证inplace_alter不为空 */
+ 
+	if (table_changes != IS_EQUAL_YES)
+		if (!inplace_alter ||
+			table_changes != (IS_EQUAL_YES|IS_EQUAL_WITH_MYSQL500_COLLATE) &&
+        	table_changes != IS_EQUAL_WITH_MYSQL500_COLLATE) 
+			return(COMPATIBLE_DATA_NO);
 
 	/* Check that auto_increment value was not changed */
 	if ((info->used_fields & HA_CREATE_USED_AUTO) &&
