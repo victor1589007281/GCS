@@ -1409,6 +1409,10 @@ static void acl_update_user(const char *user, const char *host,
             strmake_root(&mem, auth->str, auth->length) : const_cast<char*>("");
           acl_user->auth_string.length= auth->length;
         }
+        else
+        {
+          set_user_plugin(acl_user, password_len);
+        }
 	acl_user->access=privileges;
 	if (mqh->specified_limits & USER_RESOURCES::QUERIES_PER_HOUR)
 	  acl_user->user_resource.questions=mqh->questions;
