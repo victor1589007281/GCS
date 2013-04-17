@@ -2086,7 +2086,6 @@ int  fill_field_create_str(Field * field, String * packet, THD* thd, TABLE* tabl
     String type(tmp, sizeof(tmp), system_charset_info);
     String def_value(def_value_buf, sizeof(def_value_buf), system_charset_info);
 
-    TABLE_SHARE *share= table->s;
     bool limited_mysql_mode= (thd->variables.sql_mode & (MODE_NO_FIELD_OPTIONS |
                                                      MODE_MYSQL323 |
                                                      MODE_MYSQL40)) != 0;

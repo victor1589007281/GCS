@@ -1018,7 +1018,7 @@ int main(int argc, char **argv)
         char *name= (char*) dynamic_array_ptr(&tablename4fastupgrade, i);
 
         get_dynamic(&table4fastuprade, (uchar*)&sql, i);       
-        if(fast_upgrade_table(sql)){            
+        if(fast_upgrade_table((char*)sql)){            
             goto end;
         }        
         handle_request_for_tables(name, fixed_name_length(name));        

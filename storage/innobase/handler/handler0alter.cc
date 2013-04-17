@@ -2255,6 +2255,18 @@ innobase_fast_alter_mysql500_collate(
         if (dtype_is_string_type(table->cols[idx].mtype) && /* 字符集类型，非字符集innodb不会存储charset */ 
             tmp_table->field[idx]->charset()->number != dtype_get_charset_coll(table->cols[idx].prtype))
         {
+            if (tmp_table->field[idx]->charset()->number == 8 &&  /* latin1 */
+                dtype_get_charset_coll(table->cols[idx].prtype) == 63 /* binary */)
+            {
+                /*5.5的数字类型，包括数字、decimal、日期类型等使用latin1字符集，与5.0、5.1使用binary不一致
+                    这个不一致会导致这些类型的上层字符集与innodb字符集不相同，会触发以下断言，故跳过
+                */
+
+                idx ++;
+                continue;
+            }
+            
+
             ut_a(tmp_table->field[idx]->charset() == &my_charset_utf8_general_mysql500_ci||
                 tmp_table->field[idx]->charset() == &my_charset_ucs2_general_mysql500_ci); 
 
