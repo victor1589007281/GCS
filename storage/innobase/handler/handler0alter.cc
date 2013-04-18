@@ -2861,8 +2861,15 @@ ha_innobase::check_if_supported_inplace_alter(
 	we returned directly if row_format modified,so the judgement below wouldn't be affected.
 	*/
     case Alter_inplace_info::CHANGE_CREATE_OPTION_FLAG:
-        if (mysql_version < 50124)
+        if (mysql_version < 50048)
             DBUG_RETURN(false);
+        
+        /* 存在字符集兼容性问题，拒绝inplace alter */
+        if (table->file->check_collation_compatibility()) {
+            //TODO: 
+            //thd->mysql_check_ret_msg.free();
+            DBUG_RETURN(false);
+        }
 
         /* 只修改row_format */
         if(create_info->used_fields == HA_CREATE_USED_ROW_FORMAT 
@@ -2872,8 +2879,15 @@ ha_innobase::check_if_supported_inplace_alter(
         break;
 
     case Alter_inplace_info::ADD_COLUMN_FLAG:
-        if (mysql_version < 50124)
+        if (mysql_version < 50048)
             DBUG_RETURN(false);
+ 
+        /* 存在字符集兼容性问题，拒绝inplace alter */
+        if (table->file->check_collation_compatibility()) {
+            //TODO: 
+            //thd->mysql_check_ret_msg.free();
+            DBUG_RETURN(false);
+        }
 
         /* 
             如果行格式不是GCS,或者创建的行格式与底层的行格式不一样,则不能直接快速alter 

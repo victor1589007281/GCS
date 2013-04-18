@@ -3154,6 +3154,8 @@ int handler::check_collation_compatibility()
   thd = current_thd;
 
   String *packet = &thd->mysql_check_ret_msg;
+  /* 先释放当前空间 */
+  packet->free();
   
   /* so far we just support innodb */
   bool  engine_support_fast_upgrade = check_if_support_fast_collate_upgrade();
