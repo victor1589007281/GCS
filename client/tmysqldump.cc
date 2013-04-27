@@ -60,8 +60,11 @@
 #include "zlib.h"
 
 #include "utils.h"
+
+#ifndef __WIN__
 #include <sys/types.h>
 #include <sys/errno.h>
+#endif
 
 /* number of fields, including overflow */
 /* Exit codes */
@@ -115,6 +118,8 @@ static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0,
                 opt_complete_insert= 0, opt_drop_database= 0,
                 opt_replace_into= 0,
                 opt_dump_triggers= 0, opt_routines=0, opt_tz_utc=1,
+                opt_dump_views=0,
+                opt_without_write_binlog=0,
                 opt_slave_apply= 0, 
 		unique_key_check= 0,
 		foreign_key_check= 0,
@@ -142,7 +147,7 @@ static ulong opt_compatible_mode= 0;
 #define MYSQL_OPT_MASTER_DATA_COMMENTED_SQL 2
 #define MYSQL_OPT_SLAVE_DATA_EFFECTIVE_SQL 1
 #define MYSQL_OPT_SLAVE_DATA_COMMENTED_SQL 2
-static uint opt_mysql_port= 0, opt_master_data;
+static uint opt_mysql_port= 0, opt_master_data, opt_flush_wait_timeout=0;
 static uint opt_slave_data;
 static uint my_end_arg;
 static char * opt_mysql_unix_port=0;
@@ -336,7 +341,7 @@ static struct my_option my_long_options[] =
    "Give less verbose output (useful for debugging). Disables structure "
    "comments and header/footer constructs.  Enables options --skip-add-"
    "drop-table --skip-add-locks --skip-comments --skip-disable-keys "
-   "--skip-set-charset.",
+   "--skip-set-charset --skip-without-write-binlog.",
    &opt_compact, &opt_compact, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"complete-insert", 'c', "Use complete insert statements.",
    &opt_complete_insert, &opt_complete_insert, 0, GET_BOOL,
@@ -429,6 +434,11 @@ static struct my_option my_long_options[] =
    "that depends on the data in the mysql database for proper restore. ",
    &flush_privileges, &flush_privileges, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0,
    0, 0},
+  {"flush-wait-timeout", OPT_FLUSH_WAIT_TIMEOUT,
+   "when set to > 0, it means timeout for flush tables and flush tables with read lock."
+   "(valid only >= MySQL 5.5.3)",
+   &opt_flush_wait_timeout, &opt_flush_wait_timeout, 0,
+   GET_UINT, OPT_ARG, 0, 0, 31536000, 0, 0, 0},
   {"force", 'f', "Continue even if we get an SQL error.",
    &ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG,
    0, 0, 0, 0, 0, 0},
@@ -607,8 +617,18 @@ static struct my_option my_long_options[] =
    &verbose, &verbose, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"version",'V', "Output version information and exit.", 0, 0, 0,
    GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
+  {"views", OPT_VIEWS, 
+   "Dump all views(without tables)"
+   "And it must be used with --no-create-db and --no-create-info and --no-data"
+   "but can't use with --gztab",
+   &opt_dump_views, &opt_dump_views, 0, GET_BOOL,
+   NO_ARG, 0, 0, 0, 0, 0, 0},
   {"where", 'w', "Dump only selected records. Quotes are mandatory.",
    &where, &where, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"without-write-binlog", OPT_WRITE_BINLOG,
+   "SET SQL_LOG_BIN TO OFF",
+   &opt_without_write_binlog, &opt_without_write_binlog, 0, GET_BOOL, NO_ARG,
+   0, 0, 0, 0, 0, 0},
   {"xml", 'X', "Dump a database as well formed XML.", 0, 0, 0, GET_NO_ARG,
    NO_ARG, 0, 0, 0, 0, 0, 0},
   {"plugin_dir", OPT_PLUGIN_DIR, "Directory for client-side plugins.",
@@ -762,6 +782,11 @@ static void write_header(FILE *sql_file, char *db_name)
 "\n/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;"
 "\n/*!40101 SET NAMES %s */;\n",default_charset);
 
+    if (opt_without_write_binlog)
+      fprintf(sql_file,
+"\n/*!40101 SET @OLD_SQL_LOG_BIN=@@SQL_LOG_BIN */;"
+"\n/*!40101 SET SQL_LOG_BIN=OFF */;\n");
+
     if (opt_tz_utc)
     {
       fprintf(sql_file, "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n");
@@ -812,6 +837,10 @@ static void write_footer(FILE *sql_file)
     fprintf(sql_file,
             "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;\n");
     fputs("\n", sql_file);
+
+    if (opt_without_write_binlog)
+        fprintf(sql_file,
+"\n/*!40101 SET SQL_LOG_BIN=@OLD_SQL_LOG_BIN */;\n");
 
     if (opt_dump_date)
     {
@@ -1085,7 +1114,7 @@ static int get_options(int *argc, char ***argv)
   if ((opt_databases || opt_alldbs ||gzpath) && path)
   {
     fprintf(stderr,
-            "%s: --databases or --all-databases --gztab can't be used with --tab.\n",
+            "%s: --databases or --all-databases or --gztab can't be used with --tab.\n",
             my_progname);
     return(EX_USAGE);
   }
@@ -1095,6 +1124,21 @@ static int get_options(int *argc, char ***argv)
 	      "%s: --xml can't be used with --gztab.\n",
 	      my_progname);
       return(EX_USAGE);
+  }
+  if (opt_dump_views && gzpath)
+  {
+    fprintf(stderr,
+          "%s: --views cant's be used with --gztab.\n",
+          my_progname);
+    return EX_USAGE;
+  }
+
+  if (opt_dump_views && (!opt_create_db || !opt_no_create_info || !opt_no_data))
+  {
+    fprintf(stderr,
+          "%s: --views must be used with --no-create-db and --no-create-info and --no-data.\n",
+          my_progname);
+    return EX_USAGE;
   }
 
   if (strcmp(default_charset, charset_info->csname) &&
@@ -2578,7 +2622,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
   DBUG_ENTER("get_table_structure");
   DBUG_PRINT("enter", ("db: %s  table: %s", db, table));
 
-  *ignore_flag= check_if_ignore_table(table, table_type);
+  *ignore_flag= check_if_ignore_table(table, table_type); // table_type is output parameter
 
   delayed= opt_delayed;
   if (delayed && (*ignore_flag & IGNORE_INSERT_DELAYED))
@@ -2622,7 +2666,8 @@ static uint get_table_structure(char *table, char *db, char *table_type,
   if (!opt_xml && !mysql_query_with_error_report(mysql, 0, query_buff))
   {
     /* using SHOW CREATE statement */
-    if (!opt_no_create_info)
+    my_bool is_view = (strcmp (table_type, "VIEW") == 0);
+    if (!opt_no_create_info || (opt_dump_views && is_view))
     {
       /* Make an sql-file, if path was given iow. option -T was given */
       char buff[20+FN_REFLEN];
@@ -5034,14 +5079,16 @@ static int dump_selected_tables(char *db, char **table_names, int tables)
   if (!(dump_tables= pos= (char**) alloc_root(&root, tables * sizeof(char *))))
      die(EX_EOM, "alloc_root failure.");
 
-  sprintf(tmp_buf, "%s/%s", gzpath, db);
-  convert_dirname(tmp_path, tmp_buf, NullS);
-  if(my_mkdir(tmp_path, 0777, MYF(0)) < 0)
-  {
-      fprintf(stderr, "Can't create %s", tmp_path);
-      exit(1);
+  if (gzpath) {
+      sprintf(tmp_buf, "%s/%s", gzpath, db);
+      convert_dirname(tmp_path, tmp_buf, NullS);
+      if(my_mkdir(tmp_path, 0777, MYF(0)) < 0)
+      {
+          fprintf(stderr, "Can't create %s", tmp_path);
+          exit(1);
+      }
+      fprintf(META, "%s\t%s\t%s\t%s\n", db, "NULL", "DATABASE", db);
   }
-  fprintf(META, "%s\t%s\t%s\t%s\n", db, "NULL", "DATABASE", db);
 
   init_dynamic_string_checked(&lock_tables_query, "LOCK TABLES ", 256, 1024);
   for (; tables > 0 ; tables-- , table_names++)
@@ -5325,6 +5372,19 @@ static int do_start_slave_sql(MYSQL *mysql_con)
 
 static int do_flush_tables_read_lock(MYSQL *mysql_con)
 {
+  my_bool timeout_flag = FALSE;
+  if (opt_flush_wait_timeout > 0 &&
+      mysql_get_server_version(mysql) >= 50503)
+  {
+    char buf[1024];
+
+    timeout_flag = TRUE;
+    sprintf(buf, "/*!50503 SET lock_wait_timeout = %u; */", opt_flush_wait_timeout);
+    if (mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET @OLD_FLUSH_WAIT_TIMEOUT = @@lock_wait_timeout; */") || 
+        mysql_query_with_error_report(mysql_con, 0, buf))
+        return 1;
+  }
+
   /*
     We do first a FLUSH TABLES. If a long update is running, the FLUSH TABLES
     will wait but will not stall the whole mysqld, and when the long update is
@@ -5333,13 +5393,28 @@ static int do_flush_tables_read_lock(MYSQL *mysql_con)
     and most client connections are stalled. Of course, if a second long
     update starts between the two FLUSHes, we have that bad stall.
   */
-  return
-    ( mysql_query_with_error_report(mysql_con, 0, 
+  /* flush tables 3 times */
+  if( mysql_query_with_error_report(mysql_con, 0, 
+                                    ((opt_master_data != 0) ? 
+                                        "FLUSH /*!40101 LOCAL */ TABLES" : 
+                                        "FLUSH TABLES")) ||
+     mysql_query_with_error_report(mysql_con, 0, 
+                                    ((opt_master_data != 0) ? 
+                                        "FLUSH /*!40101 LOCAL */ TABLES" : 
+                                        "FLUSH TABLES")) ||
+     mysql_query_with_error_report(mysql_con, 0, 
                                     ((opt_master_data != 0) ? 
                                         "FLUSH /*!40101 LOCAL */ TABLES" : 
                                         "FLUSH TABLES")) ||
       mysql_query_with_error_report(mysql_con, 0,
-                                    "FLUSH TABLES WITH READ LOCK") );
+                                    "FLUSH TABLES WITH READ LOCK") )
+    return 1;
+
+  if (timeout_flag && 
+        mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET lock_wait_timeout = @OLD_FLUSH_WAIT_TIMEOUT; */"))
+      return 1;
+
+  return 0;
 }
 
 
@@ -5724,7 +5799,7 @@ static my_bool get_view_structure(char *table, char* db)
   FILE       *sql_file= md_result_file;
   DBUG_ENTER("get_view_structure");
 
-  if (opt_no_create_info) /* Don't write table creation info */
+  if (opt_no_create_info && !opt_dump_views) /* Don't write table creation info */
     DBUG_RETURN(0);
 
   verbose_msg("-- Retrieving view structure for table %s...\n", table);
@@ -6314,6 +6389,11 @@ static void z_write_header(ZFILE sql_file, char *db_name)/*{{{*/
 "\n/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;"
 "\n/*!40101 SET NAMES %s */;\n",default_charset);
 
+    if (opt_without_write_binlog)
+      ZPRINTF(sql_file,
+"\n/*!40101 SET @OLD_SQL_LOG_BIN=@@SQL_LOG_BIN */;"
+"\n/*!40101 SET SQL_LOG_BIN=OFF */;\n");
+
     if (opt_tz_utc)
     {
       ZPRINTF(sql_file, "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n");
@@ -6371,6 +6451,10 @@ static void z_write_footer(ZFILE sql_file)/*{{{*/
     ZPRINTF(sql_file,
             "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;\n");
     ZPUTS("\n", sql_file);
+
+    if (opt_without_write_binlog)
+      ZPRINTF(sql_file,
+"\n/*!40101 SET SQL_LOG_BIN=@OLD_SQL_LOG_BIN */;\n");
 
     if (opt_dump_date)
     {
@@ -6572,7 +6656,7 @@ static uint z_dump_events_for_db(char *db)/*{{{*/
           char *query_str;
 
           if (opt_drop)
-            fprintf(sql_file, "/*!50106 DROP EVENT IF EXISTS %s */%s\n", 
+            ZPRINTF(sql_file, "/*!50106 DROP EVENT IF EXISTS %s */%s\n", 
                 event_name, delimiter);
 
           if (create_delimiter(row[3], delimiter, sizeof(delimiter)) == NULL)
@@ -6582,7 +6666,7 @@ static uint z_dump_events_for_db(char *db)/*{{{*/
             DBUG_RETURN(1);
           }
 
-          fprintf(sql_file, "DELIMITER %s\n", delimiter);
+          ZPRINTF(sql_file, "DELIMITER %s\n", delimiter);
 
           if (mysql_num_fields(event_res) >= 7)
           {
@@ -6638,7 +6722,7 @@ static uint z_dump_events_for_db(char *db)/*{{{*/
 
             if (db_cl_altered)
             {
-              if (restore_db_collation(sql_file, db_name_buff, delimiter,
+              if (z_restore_db_collation(sql_file, db_name_buff, delimiter,
                                        db_cl_name))
                 DBUG_RETURN(1);
             }
