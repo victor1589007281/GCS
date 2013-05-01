@@ -1,0 +1,84 @@
+-- source include/have_innodb.inc
+
+#normal test
+select /*!50000 'comments you can see', */ 'tmysql';
+select /*!60000 'comments you cannot see', */ 'tmysql';
+
+#tmysql special
+select /*!99000 'comments you can see', */ 'tmysql';
+
+select /*!99999 'comments you cannot see', */ 'tmysql';
+select /*!98999 'comments you cannot see', */ 'tmysql';
+
+use test;
+drop table if exists c;
+
+#default row_format
+create table c( id int) engine=innodb;
+show create table c;
+
+#compact
+alter table c row_format=compact;
+show create table c;
+
+#gcs
+alter table c row_format=gcs;
+show create table c;
+
+drop table c;
+
+#test create table ok
+create table c_test(id int) engine = innodb /*!99000 row_format = gcs */;
+show create table c_test;
+
+drop table c_test;
+
+#test other table with high version
+create table c_test(id int) engine = innodb /*!99998 row_format = gcs */;
+show create table c_test;
+drop table c_test;
+
+#test other table with low version
+create table c_test(id int) engine = innodb /*!50000 row_format = gcs */;
+show create table c_test;
+drop table c_test;
+
+create table c_test(id int) engine = innodb /*!50000 row_format = compact */;
+show create table c_test;
+drop table c_test;
+
+#with mysql500 collate
+create table c_utf8_500(id int,c1 varchar(128) charset utf8 collate utf8_general_mysql500_ci) engine = innodb /*!50000 row_format = compact */;
+show create table c_utf8_500;
+drop table c_utf8_500;
+
+create table c_ucs2_500(id int,c1 varchar(128) charset ucs2 collate ucs2_general_mysql500_ci) engine = innodb /*!50000 row_format = compact */;
+show create table c_ucs2_500;
+drop table c_ucs2_500;
+
+create table c_utf8_500(id int,c1 varchar(128) charset utf8 collate utf8_general_mysql500_ci) engine = innodb /*!99000 row_format = compact */;
+show create table c_utf8_500;
+drop table c_utf8_500;
+
+create table c_ucs2_500(id int,c1 varchar(128) charset ucs2 collate ucs2_general_mysql500_ci) engine = innodb /*!99000 row_format = compact */;
+show create table c_ucs2_500;
+drop table c_ucs2_500;
+
+
+#with gcs row_format
+create table c_utf8_500(id int,c1 varchar(128) charset utf8 collate utf8_general_mysql500_ci) engine = innodb /*!99000 row_format = gcs */;
+show create table c_utf8_500;
+drop table c_utf8_500;
+
+create table c_ucs2_500(id int,c1 varchar(128) charset ucs2 collate ucs2_general_mysql500_ci) engine = innodb /*!99000 row_format = gcs */;
+show create table c_ucs2_500;
+drop table c_ucs2_500;
+
+
+create table c_utf8_500(id int,c1 varchar(128) charset utf8 collate utf8_general_mysql500_ci) engine = innodb /*!99998 row_format = gcs */;
+show create table c_utf8_500;
+drop table c_utf8_500;
+
+create table c_ucs2_500(id int,c1 varchar(128) charset ucs2 collate ucs2_general_mysql500_ci) engine = innodb /*!99998 row_format = gcs */;
+show create table c_ucs2_500;
+drop table c_ucs2_500;

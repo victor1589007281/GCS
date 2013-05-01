@@ -2864,12 +2864,12 @@ ha_innobase::check_if_supported_inplace_alter(
         if (mysql_version < 50048)
             DBUG_RETURN(false);
         
-        /* 存在字符集兼容性问题，拒绝inplace alter */
-        if (table->file->check_collation_compatibility()) {
+        /* TODO:存在字符集兼容性问题，拒绝inplace alter, 为兼容5.0升级到5.5,这里允许做行格式的alter操作,需要外围提前做好判断. */
+        //if (table->file->check_collation_compatibility()) {
             //TODO: 
             //thd->mysql_check_ret_msg.free();
-            DBUG_RETURN(false);
-        }
+           // DBUG_RETURN(false);
+        //}
 
         /* 只修改row_format */
         if(create_info->used_fields == HA_CREATE_USED_ROW_FORMAT 
