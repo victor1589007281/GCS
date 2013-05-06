@@ -1516,7 +1516,7 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
       if(create_info.row_type == ROW_TYPE_GCS ){
         /* TMySQL: TMYSQL_VERSION_FLAG version is used for TMYSQL ONLY for compatable with official version */
         char tversion[12];        
-        sprintf(tversion,"%u",TMYSQL_VERSION_START_FLAG);
+        sprintf(tversion,"%u",TMYSQL_VERSION_START_ID);
         
         packet->append(STRING_WITH_LEN(" /*!")); /* ! cannot add any space after the '!'  */
         packet->append(tversion ,5);

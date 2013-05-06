@@ -40,14 +40,6 @@
 #define COLUMN_COMMENT_MAXLEN 1024
 #define INDEX_COMMENT_MAXLEN 1024
 
-/* flags used to identify TMYSQL version only! */
-
-/* TMySQL start version,Should never change it! */
-#define TMYSQL_VERSION_START_FLAG	99000
-
-/* current TMySQL version, may change with TMySQL version: 5 numbers start from 99000 */
-#define TMYSQL_VERSION_FLAG	99000
-
 /*
   USER_HOST_BUFF_SIZE -- length of string buffer, that is enough to contain
   username and hostname parts of the user identifier with trailing zero in
