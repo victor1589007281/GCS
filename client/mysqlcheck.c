@@ -39,7 +39,7 @@ static my_bool opt_alldbs = 0, opt_check_only_changed = 0, opt_extended = 0,
                opt_silent = 0, opt_auto_repair = 0, ignore_errors = 0,
                tty_password= 0, opt_frm= 0, debug_info_flag= 0, debug_check_flag= 0,
                opt_fix_table_names= 0, opt_fix_db_names= 0, opt_upgrade= 0,
-               opt_write_binlog= 1, opt_fast_upgrade_collate=0;
+               opt_write_binlog= 1, opt_fast_upgrade_collate=0, opt_ignore_upgrade_collate=0;
 static uint verbose = 0, opt_mysql_port=0;
 static int my_end_arg;
 static char * opt_mysql_unix_port = 0;
@@ -133,6 +133,11 @@ static struct my_option my_long_options[] =
    NO_ARG, 0, 0, 0, 0, 0, 0},
   {"host",'h', "Connect to host.", &current_host,
    &current_host, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"ignore-upgrade-collate", 'i',
+  "Ignore rebuild and upgrade the collation of tables that created before 5.1.24 from utf8_general_ci/ucs2_general_ci to utf8_general_mysql500_ci/ucs2_general_mysql500_ci "
+  "cannot use with --fast-upgrade-collate the same time",
+  &opt_ignore_upgrade_collate, &opt_ignore_upgrade_collate, 0, GET_BOOL, NO_ARG, 0,
+  0, 0, 0, 0, 0},
   {"medium-check", 'm',
    "Faster than extended-check, but only finds 99.99 percent of all errors. Should be good enough for most cases.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
@@ -802,7 +807,7 @@ static void print_result()
         /* TODO: if the table support fast collation upgrade,i must be 1. */
         assert(i==0);
 
-        if(opt_fast_upgrade_collate)
+        if(opt_fast_upgrade_collate || opt_ignore_upgrade_collate)
         {
             uchar * p_tmp = (uchar*) my_malloc((sizeof(uchar)*strlength(row[3])) +1 ,MYF(MY_WME)); 
 
@@ -854,7 +859,7 @@ static void print_result()
   }
   /* add the last table to be repaired to the list */
   if (found_error && opt_auto_repair && what_to_do != DO_REPAIR &&
-      !(can_fast_collate_upgrade && opt_fast_upgrade_collate)) /* if the table can fast upgrade collation,and set the flag,add it to table4fastuprade already */
+      !(can_fast_collate_upgrade && (opt_fast_upgrade_collate || opt_ignore_upgrade_collate))) /* if the table can fast upgrade collation,and set the flag,added to table4fastuprade already */
   {
     if (table_rebuild)
       insert_dynamic(&tables4rebuild, (uchar*) prev);
@@ -952,6 +957,13 @@ int main(int argc, char **argv)
     puts(" error usage: --fast-upgrade-collate cannot work without --auto-repair, please add the --auto-repair ");
     exit(EX_USAGE);
   }
+
+  if(opt_fast_upgrade_collate && opt_ignore_upgrade_collate)
+  {
+      my_end(my_end_arg);
+      puts(" error usage: --ignore-upgrade-collate cannot work without --fast-upgrade-collate, please confirm it ");
+      exit(EX_USAGE);
+  }
   if (dbConnect(current_host, current_user, opt_password))
     exit(EX_MYSQLERR);
 
@@ -971,7 +983,7 @@ int main(int argc, char **argv)
     goto end;
   }
 
-  if(opt_fast_upgrade_collate && 
+  if((opt_fast_upgrade_collate || opt_ignore_upgrade_collate) && 
       (my_init_dynamic_array(&table4fastuprade, sizeof(uchar*),MAX_FIELDS,64)||
       my_init_dynamic_array(&tablename4fastupgrade,sizeof(char)*(NAME_LEN*2+2),16,64)))
   {
@@ -1032,7 +1044,7 @@ int main(int argc, char **argv)
     delete_dynamic(&tables4rebuild);
   }
 
-  if(opt_fast_upgrade_collate)
+  if(opt_fast_upgrade_collate || opt_ignore_upgrade_collate)
   {
     //todo: delete
       uint i;
