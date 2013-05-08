@@ -177,6 +177,32 @@ drop table upgrade_1;
 --echo
 
 #####################################
+# 快速修改低版本行格式
+--echo # fast alter low .frm version table row_format to GCS
+create table upgrade_1 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_1.frm
+--copy_file std_data/upgrade_1.frm $MYSQLD_DATADIR/test/upgrade_1.frm
+
+# 在线修改行格式
+--enable_info
+alter table `upgrade_1`  row_format=GCS;
+--disable_info
+
+SHOW CREATE TABLE upgrade_1;
+
+drop table upgrade_1;
+--echo
+
+#####################################
 # NOT NULL不一致
 --echo # Nullable different
 create table upgrade_1 (

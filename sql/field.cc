@@ -6412,11 +6412,17 @@ uint Field_str::is_charset_equal(Create_field *new_field)
                     field_charset == &my_charset_utf8_general_ci ) ||
                 (new_field->charset == &my_charset_ucs2_general_mysql500_ci &&
                     field_charset == &my_charset_ucs2_general_ci) )
-                return IS_EQUAL_WITH_MYSQL500_COLLATE;
-            else if (is_part_key())
-                return IS_EQUAL_NO;
-            else if (field_charset == new_field->charset) /* 不是索引键，允许字符集相同 */
-                return IS_EQUAL_YES;
+                return IS_EQUAL_WITH_MYSQL500_COLLATE;            
+            else if (field_charset == new_field->charset)
+            {
+                /* 注意:这里如果该列是索引列,理论上字符集是不相同的,参见5.1.24修复字符集bug. 
+                但此处依靠外围检查,保证允许升级!   */
+                /*
+                if (is_part_key())
+                    return IS_EQUAL_NO;
+                */
+                return IS_EQUAL_YES;   /* 不是索引键，允许字符集相同 */
+            }
         }
     }
 

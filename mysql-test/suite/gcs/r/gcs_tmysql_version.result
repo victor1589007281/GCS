@@ -1,0 +1,130 @@
+select /*!50000 'comments you can see', */ 'tmysql';
+comments you can see	tmysql
+comments you can see	tmysql
+select /*!60000 'comments you cannot see', */ 'tmysql';
+tmysql
+tmysql
+select /*!99000 'comments you can see', */ 'tmysql';
+comments you can see	tmysql
+comments you can see	tmysql
+select /*!99999 'comments you cannot see', */ 'tmysql';
+tmysql
+tmysql
+select /*!98999 'comments you cannot see', */ 'tmysql';
+tmysql
+tmysql
+use test;
+drop table if exists c;
+Warnings:
+Note	1051	Unknown table 'c'
+create table c( id int) engine=innodb;
+show create table c;
+Table	Create Table
+c	CREATE TABLE `c` (
+  `id` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+alter table c row_format=compact;
+show create table c;
+Table	Create Table
+c	CREATE TABLE `c` (
+  `id` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPACT
+alter table c row_format=gcs;
+show create table c;
+Table	Create Table
+c	CREATE TABLE `c` (
+  `id` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 /*!99000 ROW_FORMAT=GCS */ 
+drop table c;
+create table c_test(id int) engine = innodb /*!99000 row_format = gcs */;
+show create table c_test;
+Table	Create Table
+c_test	CREATE TABLE `c_test` (
+  `id` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 /*!99000 ROW_FORMAT=GCS */ 
+drop table c_test;
+create table c_test(id int) engine = innodb /*!99998 row_format = gcs */;
+show create table c_test;
+Table	Create Table
+c_test	CREATE TABLE `c_test` (
+  `id` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+drop table c_test;
+create table c_test(id int) engine = innodb /*!50000 row_format = gcs */;
+show create table c_test;
+Table	Create Table
+c_test	CREATE TABLE `c_test` (
+  `id` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 /*!99000 ROW_FORMAT=GCS */ 
+drop table c_test;
+create table c_test(id int) engine = innodb /*!50000 row_format = compact */;
+show create table c_test;
+Table	Create Table
+c_test	CREATE TABLE `c_test` (
+  `id` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPACT
+drop table c_test;
+create table c_utf8_500(id int,c1 varchar(128) charset utf8 collate utf8_general_mysql500_ci) engine = innodb /*!50000 row_format = compact */;
+show create table c_utf8_500;
+Table	Create Table
+c_utf8_500	CREATE TABLE `c_utf8_500` (
+  `id` int(11) DEFAULT NULL,
+  `c1` varchar(128) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPACT
+drop table c_utf8_500;
+create table c_ucs2_500(id int,c1 varchar(128) charset ucs2 collate ucs2_general_mysql500_ci) engine = innodb /*!50000 row_format = compact */;
+show create table c_ucs2_500;
+Table	Create Table
+c_ucs2_500	CREATE TABLE `c_ucs2_500` (
+  `id` int(11) DEFAULT NULL,
+  `c1` varchar(128) CHARACTER SET ucs2 /*!50521  COLLATE ucs2_general_mysql500_ci */  DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPACT
+drop table c_ucs2_500;
+create table c_utf8_500(id int,c1 varchar(128) charset utf8 collate utf8_general_mysql500_ci) engine = innodb /*!99000 row_format = compact */;
+show create table c_utf8_500;
+Table	Create Table
+c_utf8_500	CREATE TABLE `c_utf8_500` (
+  `id` int(11) DEFAULT NULL,
+  `c1` varchar(128) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPACT
+drop table c_utf8_500;
+create table c_ucs2_500(id int,c1 varchar(128) charset ucs2 collate ucs2_general_mysql500_ci) engine = innodb /*!99000 row_format = compact */;
+show create table c_ucs2_500;
+Table	Create Table
+c_ucs2_500	CREATE TABLE `c_ucs2_500` (
+  `id` int(11) DEFAULT NULL,
+  `c1` varchar(128) CHARACTER SET ucs2 /*!50521  COLLATE ucs2_general_mysql500_ci */  DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=COMPACT
+drop table c_ucs2_500;
+create table c_utf8_500(id int,c1 varchar(128) charset utf8 collate utf8_general_mysql500_ci) engine = innodb /*!99000 row_format = gcs */;
+show create table c_utf8_500;
+Table	Create Table
+c_utf8_500	CREATE TABLE `c_utf8_500` (
+  `id` int(11) DEFAULT NULL,
+  `c1` varchar(128) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 /*!99000 ROW_FORMAT=GCS */ 
+drop table c_utf8_500;
+create table c_ucs2_500(id int,c1 varchar(128) charset ucs2 collate ucs2_general_mysql500_ci) engine = innodb /*!99000 row_format = gcs */;
+show create table c_ucs2_500;
+Table	Create Table
+c_ucs2_500	CREATE TABLE `c_ucs2_500` (
+  `id` int(11) DEFAULT NULL,
+  `c1` varchar(128) CHARACTER SET ucs2 /*!50521  COLLATE ucs2_general_mysql500_ci */  DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 /*!99000 ROW_FORMAT=GCS */ 
+drop table c_ucs2_500;
+create table c_utf8_500(id int,c1 varchar(128) charset utf8 collate utf8_general_mysql500_ci) engine = innodb /*!99998 row_format = gcs */;
+show create table c_utf8_500;
+Table	Create Table
+c_utf8_500	CREATE TABLE `c_utf8_500` (
+  `id` int(11) DEFAULT NULL,
+  `c1` varchar(128) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+drop table c_utf8_500;
+create table c_ucs2_500(id int,c1 varchar(128) charset ucs2 collate ucs2_general_mysql500_ci) engine = innodb /*!99998 row_format = gcs */;
+show create table c_ucs2_500;
+Table	Create Table
+c_ucs2_500	CREATE TABLE `c_ucs2_500` (
+  `id` int(11) DEFAULT NULL,
+  `c1` varchar(128) CHARACTER SET ucs2 /*!50521  COLLATE ucs2_general_mysql500_ci */  DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+drop table c_ucs2_500;

@@ -1259,8 +1259,21 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
       */
       if (!(field->charset()->state & MY_CS_PRIMARY))
       {
-	packet->append(STRING_WITH_LEN(" COLLATE "));
-	packet->append(field->charset()->name);
+          /* 
+          if the field's collate is utf8_general_mysql500_ci/ucs2_general_mysql500_ci,
+          we donot print the collate info for compatable with other official version(no need in fact)
+          refer to  http://bugs.mysql.com/bug.php?id=43593  for detail
+          */
+          bool t_flag = FALSE;
+          if(field->charset()->number == 223 || field->charset()->number == 159){
+              t_flag = TRUE;
+          }
+          if(t_flag)  packet->append(STRING_WITH_LEN(" /*!50521 "));
+
+	      packet->append(STRING_WITH_LEN(" COLLATE "));
+	      packet->append(field->charset()->name);
+
+          if(t_flag)  packet->append(STRING_WITH_LEN(" */ "));
       }
     }
 
@@ -1500,8 +1513,21 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
       packet->append(STRING_WITH_LEN(" DELAY_KEY_WRITE=1"));
     if (create_info.row_type != ROW_TYPE_DEFAULT)
     {
-      packet->append(STRING_WITH_LEN(" ROW_FORMAT="));
-      packet->append(ha_row_type[(uint) create_info.row_type]);
+      if(create_info.row_type == ROW_TYPE_GCS ){
+        /* TMySQL: TMYSQL_VERSION_FLAG version is used for TMYSQL ONLY for compatable with official version */
+        char tversion[12];        
+        sprintf(tversion,"%u",TMYSQL_VERSION_START_ID);
+        
+        packet->append(STRING_WITH_LEN(" /*!")); /* ! cannot add any space after the '!'  */
+        packet->append(tversion ,5);
+        packet->append(STRING_WITH_LEN(" ROW_FORMAT="));
+
+        packet->append(ha_row_type[(uint) create_info.row_type]);
+        packet->append(STRING_WITH_LEN(" */ "));
+      }else{
+        packet->append(STRING_WITH_LEN(" ROW_FORMAT="));
+        packet->append(ha_row_type[(uint) create_info.row_type]);
+      }
     }
     if (table->s->key_block_size)
     {

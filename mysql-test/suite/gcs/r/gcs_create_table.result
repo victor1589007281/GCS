@@ -16,7 +16,7 @@ gcs_tb_1	CREATE TABLE `gcs_tb_1` (
   `c6` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`c1`),
   KEY `idx` (`c2`,`c3`,`c4`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=GCS
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 /*!99000 ROW_FORMAT=GCS */ 
 create table gcs_tb_2(c1 int not null primary key auto_increment,
 c2 varchar(128) not null default 'aa',
 c3 char(24),
