@@ -61,7 +61,7 @@ static char **defaults_argv;
 
 static my_bool not_used; /* Can't use GET_BOOL without a value pointer */
 
-static my_bool opt_write_binlog;
+static my_bool opt_write_binlog,opt_upgrade_collate=0,opt_ignore_upgrade_collate=0;
 
 static struct my_option my_long_options[]=
 {
@@ -100,8 +100,17 @@ static struct my_option my_long_options[]=
    "has already been executed for the current version of MySQL.",
    &opt_force, &opt_force, 0,
    GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+  {"fast-upgrade-collate", 'U',
+  "Fast upgrade the collation of tables that created before 5.1.24 from utf8_general_ci/ucs2_general_ci to utf8_general_mysql500_ci/ucs2_general_mysql500_ci ",
+  &opt_upgrade_collate, &opt_upgrade_collate, 0, GET_BOOL, NO_ARG, 0,
+  0, 0, 0, 0, 0},
   {"host",'h', "Connect to host.", 0,
    0, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"ignore-upgrade-collate", 'i',
+  "Ignore rebuild or upgrade the collation of tables that created before 5.1.24 from utf8_general_ci/ucs2_general_ci to utf8_general_mysql500_ci/ucs2_general_mysql500_ci "
+  ",cannot use with --fast-upgrade-collate the same time",
+  &opt_ignore_upgrade_collate, &opt_ignore_upgrade_collate, 0, GET_BOOL, NO_ARG, 0,
+  0, 0, 0, 0, 0},
   {"password", 'p',
    "Password to use when connecting to server. If password is not given,"
    " it's solicited on the tty.", &opt_password,&opt_password,
@@ -287,6 +296,8 @@ get_one_option(int optid, const struct my_option *opt,
   case 'f': /* --force     */
   case 's':                                     /* --upgrade-system-tables */
   case OPT_WRITE_BINLOG:                        /* --write-binlog */
+  case 'U': /* collate upgrade */
+  case 'i': /* ignore collate upgrade */
     add_option= FALSE;
     break;
 
@@ -699,7 +710,8 @@ static int run_mysqlcheck_upgrade(void)
                   "--check-upgrade",
                   "--all-databases",
                   "--auto-repair",
-                  "--ignore-upgrade-collate", /* tmysql ignore upgrade collate  */
+                  opt_ignore_upgrade_collate? "--ignore-upgrade-collate" : "", /* tmysql ignore upgrade collate  */
+                  opt_upgrade_collate ?  "--fast-upgrade-collate"   : "",
                   opt_write_binlog ? "--write-binlog" : "--skip-write-binlog",
                   NULL);
 }
