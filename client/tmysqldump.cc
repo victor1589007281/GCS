@@ -119,7 +119,6 @@ static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0,
                 opt_replace_into= 0,
                 opt_dump_triggers= 0, opt_routines=0, opt_tz_utc=1,
                 opt_dump_views=0,
-                opt_without_write_binlog=0,
                 opt_slave_apply= 0, 
 		unique_key_check= 0,
 		foreign_key_check= 0,
@@ -341,7 +340,7 @@ static struct my_option my_long_options[] =
    "Give less verbose output (useful for debugging). Disables structure "
    "comments and header/footer constructs.  Enables options --skip-add-"
    "drop-table --skip-add-locks --skip-comments --skip-disable-keys "
-   "--skip-set-charset --skip-without-write-binlog.",
+   "--skip-set-charset.",
    &opt_compact, &opt_compact, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"complete-insert", 'c', "Use complete insert statements.",
    &opt_complete_insert, &opt_complete_insert, 0, GET_BOOL,
@@ -435,7 +434,7 @@ static struct my_option my_long_options[] =
    &flush_privileges, &flush_privileges, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0,
    0, 0},
   {"flush-wait-timeout", OPT_FLUSH_WAIT_TIMEOUT,
-   "when set to > 0, it means timeout for flush tables and flush tables with read lock."
+   "when set to > 0, it means timeout for flush tables and flush tables with read lock. "
    "(valid only >= MySQL 5.5.3)",
    &opt_flush_wait_timeout, &opt_flush_wait_timeout, 0,
    GET_UINT, OPT_ARG, 0, 0, 31536000, 0, 0, 0},
@@ -618,17 +617,13 @@ static struct my_option my_long_options[] =
   {"version",'V', "Output version information and exit.", 0, 0, 0,
    GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"views", OPT_VIEWS, 
-   "Dump all views(without tables)"
-   "And it must be used with --no-create-db and --no-create-info and --no-data"
+   "Dump all views(without tables). "
+   "And it must be used with --no-create-db and --no-create-info and --no-data, "
    "but can't use with --gztab",
    &opt_dump_views, &opt_dump_views, 0, GET_BOOL,
    NO_ARG, 0, 0, 0, 0, 0, 0},
   {"where", 'w', "Dump only selected records. Quotes are mandatory.",
    &where, &where, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
-  {"without-write-binlog", OPT_WRITE_BINLOG,
-   "SET SQL_LOG_BIN TO OFF",
-   &opt_without_write_binlog, &opt_without_write_binlog, 0, GET_BOOL, NO_ARG,
-   0, 0, 0, 0, 0, 0},
   {"xml", 'X', "Dump a database as well formed XML.", 0, 0, 0, GET_NO_ARG,
    NO_ARG, 0, 0, 0, 0, 0, 0},
   {"plugin_dir", OPT_PLUGIN_DIR, "Directory for client-side plugins.",
@@ -782,11 +777,6 @@ static void write_header(FILE *sql_file, char *db_name)
 "\n/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;"
 "\n/*!40101 SET NAMES %s */;\n",default_charset);
 
-    if (opt_without_write_binlog)
-      fprintf(sql_file,
-"\n/*!40101 SET @OLD_SQL_LOG_BIN=@@SQL_LOG_BIN */;"
-"\n/*!40101 SET SQL_LOG_BIN=OFF */;\n");
-
     if (opt_tz_utc)
     {
       fprintf(sql_file, "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n");
@@ -837,10 +827,6 @@ static void write_footer(FILE *sql_file)
     fprintf(sql_file,
             "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;\n");
     fputs("\n", sql_file);
-
-    if (opt_without_write_binlog)
-        fprintf(sql_file,
-"\n/*!40101 SET SQL_LOG_BIN=@OLD_SQL_LOG_BIN */;\n");
 
     if (opt_dump_date)
     {
@@ -6389,11 +6375,6 @@ static void z_write_header(ZFILE sql_file, char *db_name)/*{{{*/
 "\n/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;"
 "\n/*!40101 SET NAMES %s */;\n",default_charset);
 
-    if (opt_without_write_binlog)
-      ZPRINTF(sql_file,
-"\n/*!40101 SET @OLD_SQL_LOG_BIN=@@SQL_LOG_BIN */;"
-"\n/*!40101 SET SQL_LOG_BIN=OFF */;\n");
-
     if (opt_tz_utc)
     {
       ZPRINTF(sql_file, "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n");
@@ -6451,10 +6432,6 @@ static void z_write_footer(ZFILE sql_file)/*{{{*/
     ZPRINTF(sql_file,
             "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;\n");
     ZPUTS("\n", sql_file);
-
-    if (opt_without_write_binlog)
-      ZPRINTF(sql_file,
-"\n/*!40101 SET SQL_LOG_BIN=@OLD_SQL_LOG_BIN */;\n");
 
     if (opt_dump_date)
     {
