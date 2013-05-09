@@ -1887,7 +1887,7 @@ err_len:
         /* 对GCS表，mix_len的高两字节是保存alter table add column前的字段数 */
         n_cols_before_alter_table = (flags2 & 0xFFFF0000) >> 16;
         ut_ad(n_cols_before_alter_table == 0 || is_gcs);
-        flags2 &= flags2 & 0x0000FFFF;
+        flags2 &= 0x0000FFFF;
 
 		if (flags2 & (~0 << (DICT_TF2_BITS - DICT_TF2_SHIFT))) {
 			ut_print_timestamp(stderr);

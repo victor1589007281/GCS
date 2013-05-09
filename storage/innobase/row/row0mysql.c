@@ -3019,9 +3019,6 @@ next_rec:
 
     if (dict_table_is_gcs_after_alter_table(table))
     {
-        /* 只有compact格式table->flags第6 bit表示临时表，所以这样做更安全 */ 
-        ut_ad((table->flags >> DICT_TF2_SHIFT) == 0);
-
         if (create_use_gcs_real_format)
             pars_info_add_int4_literal(info, "mix_len",
                             (table->flags >> DICT_TF2_SHIFT) | ((dict_table_get_n_cols(table) - DATA_N_SYS_COLS) << 16));
