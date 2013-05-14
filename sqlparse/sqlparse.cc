@@ -269,7 +269,7 @@ parse_result_init_db(
     thd->set_db(db, strlen(db));
 }
 
-char*
+const char*
 parse_result_get_stmt_type_str(
     parse_result_t*    pr
 )

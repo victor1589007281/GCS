@@ -8078,8 +8078,8 @@ my_init_for_sqlparse()
     global_system_variables.lc_time_names= my_default_lc_time_names;
 
     int tmp_var = 1;
-    char* proc_name = "parsesql";
-    plugin_init(&tmp_var, &proc_name, PLUGIN_INIT_SKIP_PLUGIN_TABLE | PLUGIN_INIT_SKIP_DYNAMIC_LOADING);
+    const char* proc_name = "parsesql";
+    plugin_init(&tmp_var, (char**)&proc_name, PLUGIN_INIT_SKIP_PLUGIN_TABLE | PLUGIN_INIT_SKIP_DYNAMIC_LOADING);
     //mysql_mutex_init(-1, &LOCK_plugin, MY_MUTEX_INIT_FAST);
 
     error_handler_hook= my_message_sql;

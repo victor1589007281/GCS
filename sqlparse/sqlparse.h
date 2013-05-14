@@ -55,7 +55,7 @@ parse_result_init_db(
 int
 query_parse(char* query, parse_result_t* pr);
 
-char*
+const char*
 parse_result_get_stmt_type_str(
     parse_result_t*    pr
 );

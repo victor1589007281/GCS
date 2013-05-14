@@ -2,6 +2,7 @@
 #include "my_global.h"
 #include "my_sys.h"
 #include <stdio.h>
+#include <string.h>
 
 //#include "mysql.cc"
 
@@ -55,7 +56,4 @@ int main(int argc, char **argv)
 
     return 0;
 }
-
-
-
 
