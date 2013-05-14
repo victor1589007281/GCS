@@ -20,6 +20,8 @@ parse_global_init
 parse_global_destroy
 parse_result_init
 parse_result_destroy
+parse_result_init_db
+parse_result_get_stmt_type_str
 query_parse
 CACHE INTERNAL "Functions exported by sqlparse API"
 )

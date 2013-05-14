@@ -45,8 +45,8 @@ parse_result_init(parse_result_t* pr)
 {
     THD* thd;
 
-    //_CrtSetBreakAlloc(76);
-    //_CrtSetBreakAlloc(84);
+    //_CrtSetBreakAlloc(135);
+    //_CrtSetBreakAlloc(136);
     //_CrtSetBreakAlloc(110);
 
     //for safe 
@@ -170,6 +170,12 @@ query_parse(char* query, parse_result_t* pr)
 
     pr->n_tables = 0;
 
+    if (strlen(query) == 0)
+    {
+        sprintf(pr->err_msg, "%s", "empty string");
+        return -1;
+    }
+
     if (alloc_query(thd, query, strlen(query))) 
     {
         sprintf(pr->err_msg, "%s", "alloc_query error");
@@ -252,3 +258,160 @@ query_parse(char* query, parse_result_t* pr)
     return 0;
 }
 
+void
+parse_result_init_db(
+    parse_result_t* pr,
+    char*           db
+)
+{
+    THD* thd = (THD*)pr->thd_org;
+
+    thd->set_db(db, strlen(db));
+}
+
+char*
+parse_result_get_stmt_type_str(
+    parse_result_t*    pr
+)
+{
+    switch(pr->query_type)
+    {
+    case SQLCOM_SELECT: return "STMT_SELECT";
+    case SQLCOM_CREATE_TABLE: return "STMT_CREATE_TABLE";
+    case SQLCOM_CREATE_INDEX: return "STMT_CREATE_INDEX";
+    case SQLCOM_ALTER_TABLE: return "STMT_ALTER_TABLE";
+    case SQLCOM_UPDATE: return "STMT_UPDATE";
+    case SQLCOM_INSERT: return "STMT_INSERT";
+    case SQLCOM_INSERT_SELECT: return "STMT_INSERT_SELECT";
+    case SQLCOM_DELETE: return "STMT_DELETE";
+    case SQLCOM_TRUNCATE: return "STMT_TRUNCATE";
+    case SQLCOM_DROP_TABLE: return "STMT_DROP_TABLE";
+    case SQLCOM_DROP_INDEX: return "STMT_DROP_INDEX";
+    case SQLCOM_SHOW_DATABASES: return "STMT_SHOW_DATABASES";
+    case SQLCOM_SHOW_TABLES: return "STMT_SHOW_TABLES";
+    case SQLCOM_SHOW_FIELDS: return "STMT_SHOW_FIELDS";
+    case SQLCOM_SHOW_KEYS: return "STMT_SHOW_KEYS";
+    case SQLCOM_SHOW_VARIABLES: return "STMT_SHOW_VARIABLES";
+    case SQLCOM_SHOW_STATUS: return "STMT_SHOW_STATUS";
+    case SQLCOM_SHOW_ENGINE_LOGS: return "STMT_SHOW_ENGINE_LOGS";
+    case SQLCOM_SHOW_ENGINE_STATUS: return "STMT_SHOW_ENGINE_STATUS";
+    case SQLCOM_SHOW_ENGINE_MUTEX: return "STMT_SHOW_ENGINE_MUTEX";
+    case SQLCOM_SHOW_PROCESSLIST: return "STMT_SHOW_PROCESSLIST";
+    case SQLCOM_SHOW_MASTER_STAT: return "STMT_SHOW_MASTER_STAT";
+    case SQLCOM_SHOW_SLAVE_STAT: return "STMT_SHOW_SLAVE_STAT";
+    case SQLCOM_SHOW_GRANTS: return "STMT_SHOW_GRANTS";
+    case SQLCOM_SHOW_CREATE: return "STMT_SHOW_CREATE";
+    case SQLCOM_SHOW_CHARSETS: return "STMT_SHOW_CHARSETS";
+    case SQLCOM_SHOW_COLLATIONS: return "STMT_SHOW_COLLATIONS";
+    case SQLCOM_SHOW_CREATE_DB: return "STMT_SHOW_CREATE_DB";
+    case SQLCOM_SHOW_TABLE_STATUS: return "STMT_SHOW_TABLE_STATUS";
+    case SQLCOM_SHOW_TRIGGERS: return "STMT_SHOW_TRIGGERS";
+    case SQLCOM_LOAD: return "STMT_LOAD";
+    case SQLCOM_SET_OPTION: return "STMT_SET_OPTION";
+    case SQLCOM_LOCK_TABLES: return "STMT_LOCK_TABLES";
+    case SQLCOM_UNLOCK_TABLES: return "STMT_UNLOCK_TABLES";
+    case SQLCOM_GRANT: return "STMT_GRANT";
+    case SQLCOM_CHANGE_DB: return "STMT_CHANGE_DB";
+    case SQLCOM_CREATE_DB: return "STMT_CREATE_DB";
+    case SQLCOM_DROP_DB: return "STMT_DROP_DB";
+    case SQLCOM_ALTER_DB: return "STMT_ALTER_DB";
+    case SQLCOM_REPAIR: return "STMT_REPAIR";
+    case SQLCOM_REPLACE: return "STMT_REPLACE";
+    case SQLCOM_REPLACE_SELECT: return "STMT_REPLACE_SELECT";
+    case SQLCOM_CREATE_FUNCTION: return "STMT_CREATE_FUNCTION";
+    case SQLCOM_DROP_FUNCTION: return "STMT_DROP_FUNCTION";
+    case SQLCOM_REVOKE: return "STMT_REVOKE";
+    case SQLCOM_OPTIMIZE: return "STMT_OPTIMIZE";
+    case SQLCOM_CHECK: return "STMT_CHECK";
+    case SQLCOM_ASSIGN_TO_KEYCACHE: return "STMT_ASSIGN_TO_KEYCACHE";
+    case SQLCOM_PRELOAD_KEYS: return "STMT_PRELOAD_KEYS";
+    case SQLCOM_FLUSH: return "STMT_FLUSH";
+    case SQLCOM_KILL: return "STMT_KILL";
+    case SQLCOM_ANALYZE: return "STMT_ANALYZE";
+    case SQLCOM_ROLLBACK: return "STMT_ROLLBACK";
+    case SQLCOM_ROLLBACK_TO_SAVEPOINT: return "STMT_ROLLBACK_TO_SAVEPOINT";
+    case SQLCOM_COMMIT: return "STMT_COMMIT";
+    case SQLCOM_SAVEPOINT: return "STMT_SAVEPOINT";
+    case SQLCOM_RELEASE_SAVEPOINT: return "STMT_RELEASE_SAVEPOINT";
+    case SQLCOM_SLAVE_START: return "STMT_SLAVE_START";
+    case SQLCOM_SLAVE_STOP: return "STMT_SLAVE_STOP";
+    case SQLCOM_BEGIN: return "STMT_BEGIN";
+    case SQLCOM_CHANGE_MASTER: return "STMT_CHANGE_MASTER";
+    case SQLCOM_RENAME_TABLE: return "STMT_RENAME_TABLE";
+    case SQLCOM_RESET: return "STMT_RESET";
+    case SQLCOM_PURGE: return "STMT_PURGE";
+    case SQLCOM_PURGE_BEFORE: return "STMT_PURGE_BEFORE";
+    case SQLCOM_SHOW_BINLOGS: return "STMT_SHOW_BINLOGS";
+    case SQLCOM_SHOW_OPEN_TABLES: return "STMT_SHOW_OPEN_TABLES";
+    case SQLCOM_HA_OPEN: return "STMT_HA_OPEN";
+    case SQLCOM_HA_CLOSE: return "STMT_HA_CLOSE";
+    case SQLCOM_HA_READ: return "STMT_HA_READ";
+    case SQLCOM_SHOW_SLAVE_HOSTS: return "STMT_SHOW_SLAVE_HOSTS";
+    case SQLCOM_DELETE_MULTI: return "STMT_DELETE_MULTI";
+    case SQLCOM_UPDATE_MULTI: return "STMT_UPDATE_MULTI";
+    case SQLCOM_SHOW_BINLOG_EVENTS: return "STMT_SHOW_BINLOG_EVENTS";
+    case SQLCOM_DO: return "STMT_DO";
+    case SQLCOM_SHOW_WARNS: return "STMT_SHOW_WARNS";
+    case SQLCOM_EMPTY_QUERY: return "STMT_EMPTY_QUERY";
+    case SQLCOM_SHOW_ERRORS: return "STMT_SHOW_ERRORS";
+    case SQLCOM_SHOW_STORAGE_ENGINES: return "STMT_SHOW_STORAGE_ENGINES";
+    case SQLCOM_SHOW_PRIVILEGES: return "STMT_SHOW_PRIVILEGES";
+    case SQLCOM_HELP: return "STMT_HELP";
+    case SQLCOM_CREATE_USER: return "STMT_CREATE_USER";
+    case SQLCOM_DROP_USER: return "STMT_DROP_USER";
+    case SQLCOM_RENAME_USER: return "STMT_RENAME_USER";
+    case SQLCOM_REVOKE_ALL: return "STMT_REVOKE_ALL";
+    case SQLCOM_CHECKSUM: return "STMT_CHECKSUM";
+    case SQLCOM_CREATE_PROCEDURE: return "STMT_CREATE_PROCEDURE";
+    case SQLCOM_CREATE_SPFUNCTION: return "STMT_CREATE_SPFUNCTION";
+    case SQLCOM_CALL: return "STMT_CALL";
+    case SQLCOM_DROP_PROCEDURE: return "STMT_DROP_PROCEDURE";
+    case SQLCOM_ALTER_PROCEDURE: return "STMT_ALTER_PROCEDURE";
+    case SQLCOM_ALTER_FUNCTION: return "STMT_ALTER_FUNCTION";
+    case SQLCOM_SHOW_CREATE_PROC: return "STMT_SHOW_CREATE_PROC";
+    case SQLCOM_SHOW_CREATE_FUNC: return "STMT_SHOW_CREATE_FUNC";
+    case SQLCOM_SHOW_STATUS_PROC: return "STMT_SHOW_STATUS_PROC";
+    case SQLCOM_SHOW_STATUS_FUNC: return "STMT_SHOW_STATUS_FUNC";
+    case SQLCOM_PREPARE: return "STMT_PREPARE";
+    case SQLCOM_EXECUTE: return "STMT_EXECUTE";
+    case SQLCOM_DEALLOCATE_PREPARE: return "STMT_DEALLOCATE_PREPARE";
+    case SQLCOM_CREATE_VIEW: return "STMT_CREATE_VIEW";
+    case SQLCOM_DROP_VIEW: return "STMT_DROP_VIEW";
+    case SQLCOM_CREATE_TRIGGER: return "STMT_CREATE_TRIGGER";
+    case SQLCOM_DROP_TRIGGER: return "STMT_DROP_TRIGGER";
+    case SQLCOM_XA_START: return "STMT_XA_START";
+    case SQLCOM_XA_END: return "STMT_XA_END";
+    case SQLCOM_XA_PREPARE: return "STMT_XA_PREPARE";
+    case SQLCOM_XA_COMMIT: return "STMT_XA_COMMIT";
+    case SQLCOM_XA_ROLLBACK: return "STMT_XA_ROLLBACK";
+    case SQLCOM_XA_RECOVER: return "STMT_XA_RECOVER";
+    case SQLCOM_SHOW_PROC_CODE: return "STMT_SHOW_PROC_CODE";
+    case SQLCOM_SHOW_FUNC_CODE: return "STMT_SHOW_FUNC_CODE";
+    case SQLCOM_ALTER_TABLESPACE: return "STMT_ALTER_TABLESPACE";
+    case SQLCOM_INSTALL_PLUGIN: return "STMT_INSTALL_PLUGIN";
+    case SQLCOM_UNINSTALL_PLUGIN: return "STMT_UNINSTALL_PLUGIN";
+    case SQLCOM_SHOW_AUTHORS: return "STMT_SHOW_AUTHORS";
+    case SQLCOM_BINLOG_BASE64_EVENT: return "STMT_BINLOG_BASE64_EVENT";
+    case SQLCOM_SHOW_PLUGINS: return "STMT_SHOW_PLUGINS";
+    case SQLCOM_SHOW_CONTRIBUTORS: return "STMT_SHOW_CONTRIBUTORS";
+    case SQLCOM_CREATE_SERVER: return "STMT_CREATE_SERVER";
+    case SQLCOM_DROP_SERVER: return "STMT_DROP_SERVER";
+    case SQLCOM_ALTER_SERVER: return "STMT_ALTER_SERVER";
+    case SQLCOM_CREATE_EVENT: return "STMT_CREATE_EVENT";
+    case SQLCOM_ALTER_EVENT: return "STMT_ALTER_EVENT";
+    case SQLCOM_DROP_EVENT: return "STMT_DROP_EVENT";
+    case SQLCOM_SHOW_CREATE_EVENT: return "STMT_SHOW_CREATE_EVENT";
+    case SQLCOM_SHOW_EVENTS: return "STMT_SHOW_EVENTS";
+    case SQLCOM_SHOW_CREATE_TRIGGER: return "STMT_SHOW_CREATE_TRIGGER";
+    case SQLCOM_ALTER_DB_UPGRADE: return "STMT_ALTER_DB_UPGRADE";
+    case SQLCOM_SHOW_PROFILE: return "STMT_SHOW_PROFILE";
+    case SQLCOM_SHOW_PROFILES: return "STMT_SHOW_PROFILES";
+    case SQLCOM_SIGNAL: return "STMT_SIGNAL";
+    case SQLCOM_RESIGNAL: return "STMT_RESIGNAL";
+    case SQLCOM_SHOW_RELAYLOG_EVENTS: return "STMT_SHOW_RELAYLOG_EVENTS";
+    default:
+        break;
+    }
+
+    return "";
+}

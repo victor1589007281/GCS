@@ -489,7 +489,7 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
   if (hton->panic)
     hton->panic(hton, HA_PANIC_CLOSE);
 
-  if (plugin->plugin->deinit)
+  if (!parse_export && plugin->plugin->deinit)
   {
     /*
       Today we have no defined/special behavior for uninstalling
@@ -522,6 +522,62 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
   DBUG_RETURN(0);
 }
 
+legacy_db_type ha_get_dbtype_by_name(
+    const char*           plugin_name
+)
+{
+    if (!strcmp(plugin_name, "InnoDB"))
+    {
+        return DB_TYPE_INNODB;
+    }
+    else if (!strcmp(plugin_name, "MyISAM"))
+    {
+        return DB_TYPE_MYISAM;
+    }
+    else if (!strcmp(plugin_name, "MRG_MYISAM"))
+    {
+        return DB_TYPE_MRG_MYISAM;
+    }
+    else if (!strcmp(plugin_name, "CSV"))
+    {
+        return DB_TYPE_CSV_DB;
+    }
+    else if (!strcmp(plugin_name, "MEMORY"))
+    {
+        return DB_TYPE_HEAP;
+    }
+    else if (!strcmp(plugin_name, "FEDERATED"))
+    {
+        return DB_TYPE_FEDERATED_DB;
+    }
+    else if (!strcmp(plugin_name, "ARCHIVE"))
+    {
+        return DB_TYPE_ARCHIVE_DB;
+    }
+    else if (!strcmp(plugin_name, "EXAMPLE"))
+    {
+        return DB_TYPE_EXAMPLE_DB;
+    }
+    else if (!strcmp(plugin_name, "binlog"))
+    {
+        return DB_TYPE_BINLOG;
+    }
+    else if (!strcmp(plugin_name, "BLACKHOLE"))
+    {
+        return DB_TYPE_BLACKHOLE_DB;
+    }
+    else if (!strcmp(plugin_name, "partition"))
+    {
+        return DB_TYPE_PARTITION_DB;
+    }
+    else if (!strcmp(plugin_name, "PERFORMANCE_SCHEMA"))
+    {
+        return DB_TYPE_PERFORMANCE_SCHEMA;
+    }
+    
+    return DB_TYPE_UNKNOWN;
+}
+
 
 int ha_initialize_handlerton(st_plugin_int *plugin)
 {
@@ -542,13 +598,21 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
   hton->slot= HA_SLOT_UNDEF;
   /* Historical Requirement */
   plugin->data= hton; // shortcut for the future
-  if (plugin->plugin->init && plugin->plugin->init(hton))
-  {
-    sql_print_error("Plugin '%s' init function returned error.",
-                    plugin->name.str);
-    goto err;  
-  }
 
+  if (parse_export && plugin->plugin->init)
+  {
+      hton->state = SHOW_OPTION_YES;
+      hton->db_type = ha_get_dbtype_by_name(plugin->plugin->name);
+  }
+  else 
+  {
+      if (plugin->plugin->init && plugin->plugin->init(hton))
+      {
+          sql_print_error("Plugin '%s' init function returned error.",
+              plugin->name.str);
+          goto err;  
+      }
+  }
   /*
     the switch below and hton->state should be removed when
     command-line options for plugins will be implemented

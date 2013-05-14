@@ -30,8 +30,8 @@ struct parse_result_struct {
 
     int query_type;
 
-    short n_tables_alloced;
-    short n_tables;
+    unsigned short n_tables_alloced;
+    unsigned short n_tables;
     parse_table_t*  table_arr;
     //char** table_arr;       /* table name array, each is <dbname>.<tablename> */
 
@@ -46,8 +46,19 @@ parse_result_init(parse_result_t* pr);
 int
 parse_result_destroy(parse_result_t* pr);
 
+void
+parse_result_init_db(
+    parse_result_t* pr,
+    char*           db
+);
+
 int
 query_parse(char* query, parse_result_t* pr);
+
+char*
+parse_result_get_stmt_type_str(
+    parse_result_t*    pr
+);
 
 void
 parse_global_init();

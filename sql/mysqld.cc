@@ -8023,19 +8023,46 @@ my_init_for_sqlparse()
     randominit(&sql_rand,(ulong) 1234,(ulong) 1234/2);
 
     // TODO: set the errmsgs, but without errmsg.sys, set the messages alone. 
+    unireg_init(opt_specialflag); /* Set up extern variabels */
     my_default_lc_messages= my_locale_by_name(lc_messages);
     if (!my_default_lc_messages->errmsgs->errmsgs) 
     {
-        my_default_lc_messages->errmsgs->errmsgs = (const char **)calloc(sizeof(char*), ER_ERROR_LAST - ER_ERROR_FIRST + 1);
+        //my_default_lc_messages->errmsgs->errmsgs = (const char **)calloc(sizeof(char*), ER_ERROR_LAST - ER_ERROR_FIRST + 1);
 
-        my_default_lc_messages->errmsgs->errmsgs[ER_SYNTAX_ERROR - ER_ERROR_FIRST] = "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use";
-        my_default_lc_messages->errmsgs->errmsgs[ER_PARSE_ERROR - ER_ERROR_FIRST] = "%s near '%-.80s' at line %d";
+        //my_default_lc_messages->errmsgs->errmsgs[ER_SYNTAX_ERROR - ER_ERROR_FIRST] = "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use";
+        //my_default_lc_messages->errmsgs->errmsgs[ER_PARSE_ERROR - ER_ERROR_FIRST] = "%s near '%-.80s' at line %d";
 
         // from check_locale
         /*read_texts(ERRMSG_FILE, my_default_lc_messages->errmsgs->language,
         &my_default_lc_messages->errmsgs->errmsgs,
         ER_ERROR_LAST - ER_ERROR_FIRST + 1);
         */
+
+#if defined(__WIN__)
+        /* convert mysql_home to directory sql */
+        convert_dirname(mysql_home,mysql_home,NullS);
+        int home_len = strlen(mysql_home);
+        if (mysql_home[home_len - 1] == FN_LIBCHAR)
+        {
+            mysql_home[home_len - 1] = '\0';
+            home_len--;
+        }
+        int i;
+        for (i = home_len - 1; i >= 0; i--)
+        {
+            if (mysql_home[i] == FN_LIBCHAR)
+                break;
+        }
+        mysql_home[i + 1] = '\0';
+        strxnmov(mysql_home,sizeof(mysql_home)-1,mysql_home,"sql", NullS);
+#endif
+
+        fix_paths();
+        global_system_variables.lc_messages= my_default_lc_messages;
+        if (init_errmessage())	/* Read error messages from file */
+        {
+            fprintf(stderr, "init_errmessage() error\n");
+        }
     }
 
     // init charset
@@ -8050,7 +8077,10 @@ my_init_for_sqlparse()
     global_system_variables.character_set_filesystem= character_set_filesystem;
     global_system_variables.lc_time_names= my_default_lc_time_names;
 
-    mysql_mutex_init(-1, &LOCK_plugin, MY_MUTEX_INIT_FAST);
+    int tmp_var = 1;
+    char* proc_name = "parsesql";
+    plugin_init(&tmp_var, &proc_name, PLUGIN_INIT_SKIP_PLUGIN_TABLE | PLUGIN_INIT_SKIP_DYNAMIC_LOADING);
+    //mysql_mutex_init(-1, &LOCK_plugin, MY_MUTEX_INIT_FAST);
 
     error_handler_hook= my_message_sql;
 }
@@ -8058,7 +8088,9 @@ my_init_for_sqlparse()
 void
 my_end_for_sqlparse()
 {
-    mysql_mutex_destroy(&LOCK_plugin);
+    //mysql_mutex_destroy(&LOCK_plugin);
+
+    plugin_shutdown();
 
     key_caches.delete_elements((void (*)(const char*, uchar*)) free_key_cache);
     multi_keycache_free();
