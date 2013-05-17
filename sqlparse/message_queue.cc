@@ -7,7 +7,7 @@ my_smp_mb()
 #ifdef __WIN__
     //TODO
 #else
-    smp_mb();
+    //smp_mb();
 #endif // __WIN__
 
 }

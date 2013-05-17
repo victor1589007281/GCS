@@ -41,6 +41,12 @@
 #define BIN_LOG_HEADER_SIZE	4
 #define PROBE_HEADER_LEN	(EVENT_LEN_OFFSET+4)
 
+#ifdef __WIN__
+#define ULONGPF "%u"
+#else
+#define ULONGPF "%ul"
+#endif // _DEBUG
+#include "mysql_event.h"
 
 #define CLIENT_CAPABILITIES	(CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_LOCAL_FILES)
 
@@ -58,7 +64,7 @@ static uint opt_protocol= 0;
 #ifndef DBUG_OFF
 static const char* default_dbug_option = "d:t:o,/tmp/mysqlbinlog.trace";
 #endif
-static const char *load_default_groups[]= { "mysqlbinlog","client",0 };
+static const char *load_default_groups[]= { "tmysqlbinlogex",0 };
 
 static void error(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
 static void warning(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
@@ -1202,13 +1208,13 @@ that may lead to an endless loop.",
    "Used to reserve file descriptors for use by this program.",
    &open_files_limit, &open_files_limit, 0, GET_ULONG,
    REQUIRED_ARG, MY_NFILE, 8, OS_FILE_LIMIT, 0, 1, 0},
-  {0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"with-mysql", OPT_WITH_MYSQL, "mysql path",
    &mysql_path, &mysql_path, 0,
    GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"write-to-file-only", OPT_WRITE_TO_FILE_ONLY, "Only write to file in --sql-files-output-dir, but don't execute. ",
    &write_to_file_only_flag, &write_to_file_only_flag, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0,
    0, 0},
+  {0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
 
 
@@ -2081,6 +2087,9 @@ end:
 }
 
 #include "sqlparse.h"
+#ifndef __WIN__
+#include <sys/times.h>
+#endif
 
 static ulong start_timer(void)
 {
@@ -2108,6 +2117,7 @@ int main(int argc, char** argv)
   DBUG_ENTER("main");
   DBUG_PROCESS(argv[0]);
 
+  //_CrtSetBreakAlloc(82);
   my_init_time(); // for time functions
 
   if (load_defaults("my", load_default_groups, &argc, &argv))
@@ -2248,9 +2258,11 @@ int main(int argc, char** argv)
   //load_processor.destroy();
   /* We cannot free DBUG, it is used in global destructors after exit(). */
 
-  // no need to wait thread exited
-  my_thread_end_wait_time = 0;
+#ifdef __WIN__
+  /* binlogex_destroy()也有调用my_thread_global_end的调用，并认为全局变量是同一个，因此会两次释放。
+     而windows是两个不同的，由于动态调用机制不同 */
   my_end(my_end_arg | MY_DONT_FREE_DBUG);
+#endif // __WIN__
 
   binlogex_destroy();
 
@@ -2586,10 +2598,43 @@ binlogex_task_entry_event_decide_dst_thread_id(
     task_entry_t*           entry
 )
 {
+    uint i;
+    uint min_tid;
     my_assert(entry->type == TASK_ENTRY_TYPE_EVENT);
 
     //TODO
-    binlogex_task_entry_event_set_dst_thread_id(entry, entry->ui.event.thread_id_arr[0]);
+    /*
+        理论上，跨表语句平摊到多个多个线程是效果最好的，如果对于以下情况会出现问题
+        thread 0        thread 1
+        S[1][0]         W[1][0]
+                        binlog1
+        W[0][1]         S[0][1]
+        W[0][1]         S[0][1]
+        binlog2
+        S[1][0]         W[1][0]
+
+        线程1连续两个S[0][1],可能导致thread 0只有一个W[0][1]收到响应，导致死锁。
+
+        解决方式避免类似连续两个S[0][1]
+        这需要跨相同两线程binlog的都在同一线程执行，例如，上述两binlog都在线程0执行
+        thread 0        thread 1
+        W[0][1]         S[0][1]
+        binlog1
+        S[1][0]         W[1][0]
+        W[0][1]         S[0][1]
+        binlog2
+        S[1][0]         W[1][0]
+
+        这样就不会出现连续signal相同信号的情况了
+    */
+    min_tid = entry->ui.event.thread_id_arr[0];
+    for (i = 1; i < entry->ui.event.n_thread_id; i++)
+    {
+        if (min_tid > entry->ui.event.thread_id_arr[i])
+            min_tid = entry->ui.event.thread_id_arr[i];
+    }
+    
+    binlogex_task_entry_event_set_dst_thread_id(entry, min_tid);
 }
 
 task_entry_t*
@@ -2751,9 +2796,10 @@ binlogex_worker_thread_init(
         char cmd[2048] = {0};
 
         //TODO 
-        snprintf(mysql_cmd, sizeof(mysql_cmd), "%s -u%s %s%s -h%s -P%u %s > %s/mysql_%u.log 2>&1 ", 
+        snprintf(mysql_cmd, sizeof(mysql_cmd), "%s -u%s %s%s -h%s -P%d %s > %s/mysql_%u.log 2>&1 ", 
                     mysql_path, remote_user, 
-                    strlen(remote_pass) == 0 ? "" : "-p" , remote_pass,  
+                    (!remote_pass || strlen(remote_pass) == 0) ? "" : "-p" , 
+                    remote_pass ? remote_pass : "",  
                     remote_host, remote_port, 
                     exit_when_error ? "" : "-f", 
                     sql_files_output_dir, vm->thread_id); 
@@ -2871,6 +2917,7 @@ binlogex_worker_thread_deinit(
 
     my_fclose(vm->tmp_file, MYF(0));
 
+
     return 0;
 }
 
@@ -2887,10 +2934,10 @@ binlogex_worker_wait(
 
     if (tsk_entry && tsk_entry->type == TASK_ENTRY_TYPE_SYNC)
     {
-        fprintf(vm->result_file, "# [tmysqlbinlogex] Thread %u is waiting for thread %u(W[%u][%u]), logfile %s offset %u\n", 
+        fprintf(vm->result_file, "# [tmysqlbinlogex] Thread %u is waiting for thread %u(W[%u][%u]), logfile %s offset "ULONGPF"\n", 
                 waiting_thread_id, waitfor_thread_id, 
                 waiting_thread_id, waitfor_thread_id, 
-                tsk_entry->ui.sync.log_file, (unsigned int)tsk_entry->ui.sync.off);
+                tsk_entry->ui.sync.log_file, (ulong)tsk_entry->ui.sync.off);
     }
     else
     {
@@ -2940,10 +2987,10 @@ binlogex_worker_signal(
 
     if (tsk_entry && tsk_entry->type == TASK_ENTRY_TYPE_SYNC)
     {
-        fprintf(vm->result_file, "# [tmysqlbinlogex] Thread %u waiked up thread %u(S[%u][%u]), logfile %s offset %u\n", 
+        fprintf(vm->result_file, "# [tmysqlbinlogex] Thread %u waked up thread %u(S[%u][%u]), logfile %s offset "ULONGPF"\n", 
             signal_thread_id, waiting_thread_id, 
             waiting_thread_id, signal_thread_id,
-            tsk_entry->ui.sync.log_file, (unsigned)tsk_entry->ui.sync.off);
+            tsk_entry->ui.sync.log_file, (ulong)tsk_entry->ui.sync.off);
     }
     else
     {
@@ -3013,16 +3060,16 @@ binlogex_worker_execute_task_entry(
         if (process_event(vm, ev, tsk_entry->ui.event.off, tsk_entry->ui.event.log_file) != OK_CONTINUE)
         {
             //my_assert(0);
-            fprintf(stderr, "[ERROR] Thread %u execute binlog error at %s pos %u\n", vm->thread_id, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off);
+            fprintf(stderr, "[ERROR] Thread %u execute binlog error at %s pos "ULONGPF"\n", vm->thread_id, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off);
             code = WORKER_STATUS_ERROR;
         }
 
-        fprintf(vm->tmp_file, "%s %u before flush %u ", tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off, start_timer());
+        //fprintf(vm->tmp_file, "%s %u before flush %u ", tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off, start_timer());
 
         /* SQL命令仍缓存在buffer中，fflush使其马上执行，以event为单位 */
         fflush(vm->result_file);
 
-        fprintf(vm->tmp_file, "after flush %u\n", start_timer());
+        //fprintf(vm->tmp_file, "after flush %u\n", start_timer());
 
         /* 任务完成后唤醒其他线程 */
         for (i = 0; i < tsk_entry->ui.event.n_thread_id; i++)
@@ -3143,6 +3190,7 @@ binlogex_worker_thread(void *arg)
     }
 
     binlogex_worker_thread_deinit(vm);
+    my_thread_end();
 
     pthread_exit(0);
     return 0;

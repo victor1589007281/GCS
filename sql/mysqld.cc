@@ -8103,6 +8103,10 @@ my_end_for_sqlparse()
 	// charset ect.
     my_once_free();
 
+    // set cleanup()
+    free_tmpdir(&mysql_tmpdir_list);
+    (void) my_error_unregister(ER_ERROR_FIRST, ER_ERROR_LAST); // finish server errs
+
 }
 
 
