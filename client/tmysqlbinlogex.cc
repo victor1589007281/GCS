@@ -44,7 +44,7 @@
 #ifdef __WIN__
 #define ULONGPF "%u"
 #else
-#define ULONGPF "%ul"
+#define ULONGPF "%lu"
 #endif // _DEBUG
 #include "mysql_event.h"
 
@@ -114,6 +114,7 @@ static char* remote_user = 0;
 static char* remote_pass = 0;
 static char* remote_host = 0;
 static int remote_port = 0;
+static char* remote_sock= 0;
 static char* table_split = 0;
 static my_bool exit_when_error = FALSE;
 static char* sql_files_output_dir = 0; 
@@ -1134,6 +1135,9 @@ static struct my_option my_long_options[] =
    0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"result-file", 'r', "Direct output to a given file.", 0, 0, 0, GET_STR,
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"remote-socket", OPT_REMOTE_SOCK, "The socket file to remote-user for connection.",
+   &remote_sock, &remote_sock, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0,
+   0, 0},
   {"server-id", OPT_SERVER_ID,
    "Extract only binlog entries created by the server having the given id.",
    &server_id, &server_id, 0, GET_ULONG,
@@ -3145,7 +3149,6 @@ binlogex_worker_thread(void *arg)
     Worker_vm*  vm = (Worker_vm*)arg;
     Worker_status   status;
     my_bool     is_over = FALSE;
-    my_bool     write_file = TRUE;
 
     my_thread_init();
     if(binlogex_worker_thread_init(vm))
@@ -3168,7 +3171,7 @@ binlogex_worker_thread(void *arg)
             my_sleep(1000);
         } 
 
-        my_assert(msg.Msg != -1);
+        my_assert(msg.Msg != INVALID_MESSAGE);
         tsk_entry = (task_entry_t*)msg.PARAM_1;
         my_assert(tsk_entry);
 
@@ -3304,8 +3307,7 @@ Exit_status binlogex_process_event(Log_event *ev,
 {
   //char ll_buff[21];
   Log_event_type ev_type= ev->get_type_code();
-  my_bool destroy_evt= TRUE;
-  DBUG_ENTER("process_event");
+  DBUG_ENTER("binlogex_process_event");
   //print_event_info->short_form= short_form;
   Exit_status retval= OK_CONTINUE;
   uint i; 
@@ -3331,7 +3333,7 @@ Exit_status binlogex_process_event(Log_event *ev,
       if (parse_result_init(&parse_result))
       {
           parse_result_inited = 0;
-          fprintf(stderr, "[ERROR] parse_result_init failed, rec_count %d\n", rec_count);
+          fprintf(stderr, "[ERROR] parse_result_init failed, rec_count "ULONGPF"\n", (ulong)rec_count);
           return OK_STOP;
       }
       parse_result_inited = 1;
@@ -3956,7 +3958,6 @@ Exit_status binlogex_process_event(Log_event *ev,
 
   goto end;
 
-err:
   retval= ERROR_STOP;
 end:
   rec_count++;
