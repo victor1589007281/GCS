@@ -210,6 +210,12 @@ sub create_process {
   $pipe->writer();
   print $pipe "ready\n";
 
+unless( $^O =~ /WIN/i ){
+    use FindBin qw($Bin);
+    my $libPath = "$Bin/../lib";
+    $ENV{LD_PRELOAD}="$libPath/libtcmalloc_minimal.so";
+}
+
   if ( !exec($path, @$args) ){
     croak("Failed to exec '$path': $!");
   }
