@@ -39,7 +39,8 @@ static my_bool opt_alldbs = 0, opt_check_only_changed = 0, opt_extended = 0,
                opt_silent = 0, opt_auto_repair = 0, ignore_errors = 0,
                tty_password= 0, opt_frm= 0, debug_info_flag= 0, debug_check_flag= 0,
                opt_fix_table_names= 0, opt_fix_db_names= 0, opt_upgrade= 0,
-               opt_write_binlog= 1, opt_fast_upgrade_collate=0, opt_ignore_upgrade_collate=0;
+               opt_write_binlog= 1, opt_fast_upgrade_collate=0, opt_ignore_upgrade_collate=0,
+               opt_grace_print=0;
 static uint verbose = 0, opt_mysql_port=0;
 static int my_end_arg;
 static char * opt_mysql_unix_port = 0;
@@ -129,6 +130,10 @@ static struct my_option my_long_options[] =
    "If you are using this option with CHECK TABLE, it will ensure that the table is 100 percent consistent, but will take a long time. If you are using this option with REPAIR TABLE, it will force using old slow repair with keycache method, instead of much faster repair by sorting.",
    &opt_extended, &opt_extended, 0, GET_BOOL, NO_ARG, 0, 0, 0,
    0, 0, 0},
+  {"grace-print", 'G',
+  "Print simply mysqlcheck result in only one line.",
+  &opt_grace_print, &opt_grace_print, 0, GET_BOOL, NO_ARG, 0, 0, 0,
+  0, 0, 0},
   {"help", '?', "Display this help message and exit.", 0, 0, 0, GET_NO_ARG,
    NO_ARG, 0, 0, 0, 0, 0, 0},
   {"host",'h', "Connect to host.", &current_host,
@@ -844,7 +849,11 @@ static void print_result()
       printf("%-50s %s", row[0], row[3]);
     else if (!status && changed)
     {
-      printf("%s\n%-9s: %s", row[0], row[2], row[3]);
+        /* if set the grace print flag, print mysqlcheck result in one line. */
+      if(opt_grace_print)
+          printf("%-50s %s: %s", row[0], row[2], row[3]);
+      else
+          printf("%s\n%-9s: %s", row[0], row[2], row[3]);
       if (strcmp(row[2],"note"))
       {
 	    found_error=1;
@@ -852,8 +861,13 @@ static void print_result()
           table_rebuild=1;
       }
     }
-    else
-      printf("%-9s: %s", row[2], row[3]);
+    else{
+        /* if set the grace print flag, print the same table twice! */
+        if(opt_grace_print)
+            printf("%-50s %s: %s", row[0], row[2], row[3]);
+        else
+            printf("%-9s: %s", row[2], row[3]);
+    }
     strmov(prev, row[0]);
     putchar('\n');
   }
