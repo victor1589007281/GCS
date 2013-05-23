@@ -463,7 +463,9 @@ bool LOGGER::is_log_table_enabled(uint log_table_type)
   case QUERY_LOG_SLOW:
     return (table_log_handler != NULL) && opt_slow_log;
   case QUERY_LOG_GENERAL:
-    return (table_log_handler != NULL) && opt_log ;
+    return (table_log_handler != NULL) && opt_log;
+  case QUERY_LOG_ALTER:
+    return (table_log_handler != NULL) && opt_alter_log;
   default:
     DBUG_ASSERT(0);
     return FALSE;                             /* make compiler happy */
@@ -496,6 +498,15 @@ int check_if_log_table(size_t db_len, const char *db, size_t table_name_len,
     {
       if (!check_if_opened || logger.is_log_table_enabled(QUERY_LOG_SLOW))
         return QUERY_LOG_SLOW;
+      return 0;
+    }
+
+    if (table_name_len == 9 && !(lower_case_table_names ?
+          my_strcasecmp(system_charset_info, table_name, "alter_log") :
+      strcmp(table_name, "alter_log")))
+    {
+      if (!check_if_opened || logger.is_log_table_enabled(QUERY_LOG_ALTER))
+        return QUERY_LOG_ALTER;
       return 0;
     }
   }
@@ -873,6 +884,208 @@ err:
   DBUG_RETURN(result);
 }
 
+/*
+  Log a inplace alter query to the alter log table
+
+  SYNOPSIS
+    log_slow()
+    thd               THD of the query
+    current_time      current timestamp
+    query_start_arg   command start timestamp
+    user_host         the pointer to the string with user@host info
+    user_host_len     length of the user_host string. this is computed once
+                      and passed to all general log event handlers
+    query_time        Amount of time the query took to execute (in microseconds)
+    lock_time         Amount of time the query was locked (in microseconds)
+    is_command        The flag, which determines, whether the sql_text is a
+                      query or an administrator command (these are treated
+                      differently by the old logging routines)
+    sql_text          the very text of the query or administrator command
+                      processed
+    sql_text_len      the length of sql_text string
+
+  DESCRIPTION
+
+   Log a inplace alter query to the alter log table
+
+  RETURN
+    FALSE - OK
+    TRUE - error occured
+*/
+
+bool Log_to_csv_event_handler::
+  log_alter(THD *thd, time_t current_time, time_t query_start_arg,
+           const char *user_host, uint user_host_len,
+           ulonglong query_utime, ulonglong lock_utime, 
+           const char *sql_text, uint sql_text_len,
+           ulonglong affected_rows, 
+           const char *db_name, uint db_name_len,
+           const char *table_name, uint table_name_len,
+           const char *engine, uint engine_len,
+           const char *row_format, uint row_format_len,
+           int is_partitoned,
+           ulonglong data_len, ulonglong index_len, ulonglong free_len, ulonglong n_records)
+{
+  TABLE_LIST table_list;
+  TABLE *table;
+  bool result= TRUE;
+  bool need_close= FALSE;
+  bool need_rnd_end= FALSE;
+  Silence_log_table_errors error_handler;
+  Open_tables_backup open_tables_backup;
+  CHARSET_INFO *client_cs= thd->variables.character_set_client;
+  bool save_time_zone_used;
+  DBUG_ENTER("Log_to_csv_event_handler::log_slow");
+
+  thd->push_internal_handler(& error_handler);
+  /*
+    CSV uses TIME_to_timestamp() internally if table needs to be repaired
+    which will set thd->time_zone_used
+  */
+  save_time_zone_used= thd->time_zone_used;
+
+  table_list.init_one_table(MYSQL_SCHEMA_NAME.str, MYSQL_SCHEMA_NAME.length,
+                            ALTER_LOG_NAME.str, ALTER_LOG_NAME.length,
+                            ALTER_LOG_NAME.str,
+                            TL_WRITE_CONCURRENT_INSERT);
+
+  if (!(table= open_log_table(thd, &table_list, &open_tables_backup)))
+    goto err;
+
+  need_close= TRUE;
+
+  if (table->file->extra(HA_EXTRA_MARK_AS_LOG_TABLE) ||
+      table->file->ha_rnd_init(0))
+    goto err;
+
+  need_rnd_end= TRUE;
+
+  /* Honor next number columns if present */
+  table->next_number_field= table->found_next_number_field;
+
+  restore_record(table, s->default_values);    // Get empty record
+
+  /* check that all columns exist */
+  if (table->s->fields < 15)
+    goto err;
+
+  /* store the time and user values */
+  DBUG_ASSERT(table->field[0]->type() == MYSQL_TYPE_TIMESTAMP);
+  ((Field_timestamp*) table->field[0])->store_timestamp((my_time_t)
+                                                        current_time);
+  if (table->field[1]->store(user_host, user_host_len, client_cs))
+    goto err;
+
+  if (query_start_arg)
+  {
+    longlong query_time= (longlong) (query_utime/1000000);
+    longlong lock_time=  (longlong) (lock_utime/1000000);
+    /*
+      A TIME field can not hold the full longlong range; query_time or
+      lock_time may be truncated without warning here, if greater than
+      839 hours (~35 days)
+    */
+    MYSQL_TIME t;
+    t.neg= 0;
+
+    /* fill in query_time field */
+    calc_time_from_sec(&t, (long) min(query_time, (longlong) TIME_MAX_VALUE_SECONDS), 0);
+    if (table->field[2]->store_time(&t, MYSQL_TIMESTAMP_TIME))
+      goto err;
+    table->field[2]->set_notnull();
+    /* lock_time */
+    calc_time_from_sec(&t, (long) min(lock_time, (longlong) TIME_MAX_VALUE_SECONDS), 0);
+    if (table->field[3]->store_time(&t, MYSQL_TIMESTAMP_TIME))
+      goto err;
+    table->field[3]->set_notnull();
+  }
+  else
+  {
+    table->field[2]->set_null();
+    table->field[3]->set_null();
+  }
+
+  /* fill db field */
+  if (table->field[4]->store(db_name, db_name_len, client_cs))
+    goto err;
+
+  /* fill table_name field */
+  if (table->field[5]->store(table_name, table_name_len, client_cs))
+    goto err;
+
+  /* fill engine field */
+  if (table->field[6]->store(engine, engine_len, client_cs))
+      goto err;
+
+  /* fill row_format field */
+  if (table->field[7]->store(row_format, row_format_len, client_cs))
+      goto err;
+
+  /* fill is_partitioned field */
+  if (table->field[8]->store(is_partitoned, false))
+      goto err;
+  
+  /*
+    Column sql_text.
+    A positive return value in store() means truncation.
+    Still logging a message in the log in this case.
+  */
+  if (table->field[9]->store(sql_text, sql_text_len, client_cs) < 0)
+    goto err;
+
+  /* fill affected_rows field */
+  if (table->field[10]->store((longlong)affected_rows, TRUE))
+      goto err;
+
+  /* fill data_length field */
+  if (table->field[11]->store((longlong)data_len, TRUE))
+      goto err;
+
+  /* fill index_length field */
+  if (table->field[12]->store(index_len, TRUE))
+      goto err;
+
+  /* fill free_length field */
+  if (table->field[13]->store(free_len, TRUE))
+      goto err;
+
+  /* fill table_rows field */
+  if (table->field[14]->store(n_records, TRUE))
+      goto err;
+
+  /* log table entries are not replicated */
+  if (table->file->ha_write_row(table->record[0]))
+    goto err;
+
+  result= FALSE;
+
+err:
+  thd->pop_internal_handler();
+
+  /* if failed, only print warnings */
+  if (result && !thd->killed)
+  {
+    push_warning_printf(
+          (THD*) thd,
+          MYSQL_ERROR::WARN_LEVEL_WARN,
+          ER_CANT_CREATE_TABLE,
+          "Failed to write to mysql.alter_log: %s. Please check mysql.alter_log or set global alter_query_log = off.", error_handler.message());
+
+    sql_print_warning("Failed to write to mysql.alter_log: %s. Please check mysql.alter_log or set global alter_query_log = off.", error_handler.message());
+  }
+
+  if (need_rnd_end)
+  {
+    table->file->ha_rnd_end();
+    table->file->ha_release_auto_increment();
+  }
+  if (need_close)
+    close_log_table(thd, &open_tables_backup);
+  thd->time_zone_used= save_time_zone_used;
+  DBUG_RETURN(result);
+}
+
+
 int Log_to_csv_event_handler::
   activate_log(THD *thd, uint log_table_type)
 {
@@ -888,11 +1101,14 @@ int Log_to_csv_event_handler::
   {
     log_name= &GENERAL_LOG_NAME;
   }
+  else if (log_table_type == QUERY_LOG_SLOW)
+  {
+    log_name= &SLOW_LOG_NAME;
+  }
   else
   {
-    DBUG_ASSERT(log_table_type == QUERY_LOG_SLOW);
-
-    log_name= &SLOW_LOG_NAME;
+    DBUG_ASSERT(log_table_type == QUERY_LOG_ALTER);
+    log_name= &ALTER_LOG_NAME;
   }
   table_list.init_one_table(MYSQL_SCHEMA_NAME.str, MYSQL_SCHEMA_NAME.length,
                             log_name->str, log_name->length, log_name->str,
@@ -1164,6 +1380,75 @@ bool LOGGER::flush_general_log()
   return 0;
 }
 
+bool LOGGER::alter_log_print(THD *thd, const char *query, uint query_length,
+                            ulonglong current_utime,
+                            const char* db, uint db_len,
+                            const char* table, uint table_len,
+                            const char* engine, const char* row_format, int is_partitoned,
+                            ulonglong affected_rows,
+                            ulonglong data_len, ulonglong index_len, ulonglong free_len, ulonglong n_records)
+
+{
+  bool error= FALSE;
+  bool is_command= FALSE;
+  char user_host_buff[MAX_USER_HOST_SIZE + 1];
+  Security_context *sctx= thd->security_ctx;
+  uint user_host_len= 0;
+  ulonglong query_utime, lock_utime;
+
+  //DBUG_ASSERT(thd->enable_slow_log);
+  /*
+    Print the message to the buffer if we have slow log enabled
+  */
+
+  if (table_log_handler)
+  {
+    time_t current_time;
+
+    lock_shared();
+    if (!opt_alter_log)
+    {
+      unlock();
+      return 0;
+    }
+
+    /* fill in user_host value: the format is "%s[%s] @ %s [%s]" */
+    user_host_len= (strxnmov(user_host_buff, MAX_USER_HOST_SIZE,
+                             sctx->priv_user ? sctx->priv_user : "", "[",
+                             sctx->user ? sctx->user : "", "] @ ",
+                             sctx->host ? sctx->host : "", " [",
+                             sctx->ip ? sctx->ip : "", "]", NullS) -
+                    user_host_buff);
+
+    current_time= my_time_possible_from_micro(current_utime);
+    if (thd->start_utime)
+    {
+      query_utime= (current_utime - thd->start_utime);
+      lock_utime=  (thd->utime_after_lock - thd->start_utime);
+    }
+    else
+    {
+      query_utime= lock_utime= 0;
+    }
+
+    if (!query)
+    {
+      is_command= TRUE;
+      query= command_name[thd->command].str;
+      query_length= command_name[thd->command].length;
+    }
+
+    error= table_log_handler->log_alter(thd, current_time, thd->start_time,
+                                            user_host_buff, user_host_len,
+                                            query_utime, lock_utime, 
+                                            query, query_length, affected_rows, db, db_len, table, table_len, 
+                                            engine, strlen(engine), row_format, strlen(row_format), is_partitoned,
+                                            data_len, index_len, free_len, n_records);
+
+    unlock();
+  }
+  return error;
+}
 
 /*
   Log slow query with all enabled log event handlers
@@ -1424,6 +1709,20 @@ bool LOGGER::activate_log_handler(THD* thd, uint log_type)
       }
     }
     break;
+  case QUERY_LOG_ALTER:
+    if (!opt_alter_log)
+    {
+      if (table_log_handler->activate_log(thd, QUERY_LOG_ALTER))
+      {
+        /* Error */
+        res= TRUE;
+      }
+      else
+      {
+        opt_alter_log= TRUE;
+      }
+    }
+    break;
   default:
     DBUG_ASSERT(0);
   }
@@ -1446,6 +1745,10 @@ void LOGGER::deactivate_log_handler(THD *thd, uint log_type)
     tmp_opt= &opt_log;
     file_log= file_log_handler->get_mysql_log();
     break;
+  case QUERY_LOG_ALTER:
+    tmp_opt= &opt_alter_log;
+    file_log= NULL;
+    break;
   default:
     MY_ASSERT_UNREACHABLE();
   }
@@ -1454,7 +1757,8 @@ void LOGGER::deactivate_log_handler(THD *thd, uint log_type)
     return;
 
   lock_exclusive();
-  file_log->close(0);
+  if (file_log)
+    file_log->close(0);
   *tmp_opt= FALSE;
   unlock();
 }
@@ -5085,6 +5389,14 @@ bool slow_log_print(THD *thd, const char *query, uint query_length,
                     ulonglong current_utime)
 {
   return logger.slow_log_print(thd, query, query_length, current_utime);
+}
+
+bool alter_log_print(THD *thd, const char *query, uint query_length,
+                     ulonglong current_utime, const char *db, uint db_len, const char *table, uint table_len,
+                     const char *engine, const char *row_format, int is_partitioned, ulonglong affected_rows,
+                     ulonglong data_len, ulonglong index_len, ulonglong free_len, ulonglong n_records)
+{
+  return logger.alter_log_print(thd, query, query_length, current_utime, db, db_len, table, table_len, engine, row_format, is_partitioned, affected_rows, data_len, index_len, free_len, n_records);
 }
 
 

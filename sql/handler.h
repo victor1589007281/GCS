@@ -1762,6 +1762,8 @@ public:
   */
   virtual enum row_type get_row_type() const { return ROW_TYPE_NOT_USED; }
 
+  virtual const char* get_row_type_str() const;
+
   virtual const char* get_row_type_str_for_gcs() const { return "Gcs"; }
 
   /* 表示是否对默认值敏感，只有GCS表敏感 */

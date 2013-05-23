@@ -1857,7 +1857,7 @@ innobase_update_systable_n_cols_for_gcs(
         }
     }
 
-    pars_info_add_int4_literal(info, "mix_len", (table->flags >> DICT_TF2_SHIFT) | n_cols_before_alter << 16);     /* 存在高两字节！ */
+    pars_info_add_int4_literal(info, "mix_len", (table->flags >> DICT_TF2_SHIFT) | (n_cols_before_alter << 16));     /* 存在高两字节！ */
     pars_info_add_str_literal(info, "table_name", table->name);
 
     /* 更新列数 */
@@ -2542,6 +2542,7 @@ innobase_alter_row_format_simple(
     
 	//for modify the memory
 	ibool			locked = FALSE;
+    ibool           real_gcs = FALSE;
 
     
 	DBUG_ENTER("innobase_alter_row_format_simple");
@@ -2565,6 +2566,8 @@ innobase_alter_row_format_simple(
     if(change_flag == INNODB_ROW_FORMAT_COMACT_TO_GCS){
 	    //compact -> gcs
         pars_info_add_int4_literal(info,"n_col",new_table->s->fields | (1<<31)|(1<<30));
+        real_gcs = srv_create_use_gcs_real_format;
+
     }else if(change_flag == INNODB_ROW_FORMAT_GCS_TO_COMPACT){
         //gcs -> compact
         ut_a(!dict_table_is_gcs_after_alter_table(dict_table));
@@ -2576,11 +2579,16 @@ innobase_alter_row_format_simple(
 
 	pars_info_add_str_literal(info, "table_name", dict_table->name);
 
+    if (real_gcs)
+        pars_info_add_int4_literal(info, "mix_len", (dict_table->flags >> DICT_TF2_SHIFT) | (new_table->s->fields << 16));     /* 存在高两字节！ */
+    else
+        pars_info_add_int4_literal(info, "mix_len", (dict_table->flags >> DICT_TF2_SHIFT));     
+
     error_no = que_eval_sql(
         info,
         "PROCEDURE UPDATE_SYS_TABLES_FAST_ALTER_ROWFOMAT () IS\n"
         "BEGIN\n"
-        "UPDATE SYS_TABLES SET N_COLS = :n_col \n"
+        "UPDATE SYS_TABLES SET N_COLS = :n_col, MIX_LEN = :mix_len \n"
         "WHERE NAME = :table_name;\n"
         "END;\n",
         FALSE, trx);	
@@ -2628,8 +2636,22 @@ innobase_alter_row_format_simple(
      if(change_flag == INNODB_ROW_FORMAT_COMACT_TO_GCS){
          ut_ad(!dict_table->is_gcs);
          dict_table->is_gcs = TRUE;
+         
+         if (real_gcs) {
+            dict_index_t* clut_index;
+
+            dict_table->n_cols_before_alter_table = dict_table->n_cols;
+            clut_index = dict_table_get_first_index(dict_table);
+
+            ut_a(dict_index_is_clust(clut_index));
+
+            clut_index->n_fields_before_alter = clut_index->n_fields;
+            clut_index->n_nullable_before_alter = clut_index->n_nullable;
+         }
+
      }else if(change_flag == INNODB_ROW_FORMAT_GCS_TO_COMPACT){
          ut_ad(dict_table->is_gcs);
+         ut_ad(!dict_table_is_gcs_after_alter_table(dict_table));
          dict_table->is_gcs = FALSE;
      }else{
          //never come to here!
