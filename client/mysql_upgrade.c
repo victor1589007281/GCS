@@ -61,7 +61,7 @@ static char **defaults_argv;
 
 static my_bool not_used; /* Can't use GET_BOOL without a value pointer */
 
-static my_bool opt_write_binlog,opt_upgrade_collate=0,opt_ignore_upgrade_collate=0;
+static my_bool opt_write_binlog,opt_upgrade_collate=0,opt_ignore_upgrade_collate=0,opt_grace_print=0;
 
 static struct my_option my_long_options[]=
 {
@@ -104,6 +104,10 @@ static struct my_option my_long_options[]=
   "Fast upgrade the collation of tables that created before 5.1.24 from utf8_general_ci/ucs2_general_ci to utf8_general_mysql500_ci/ucs2_general_mysql500_ci ",
   &opt_upgrade_collate, &opt_upgrade_collate, 0, GET_BOOL, NO_ARG, 0,
   0, 0, 0, 0, 0},
+  {"grace-print", 'G',
+  "Print simply mysqlcheck result in only one line.",
+  &opt_grace_print, &opt_grace_print, 0, GET_BOOL, NO_ARG, 0, 0, 0,
+  0, 0, 0},
   {"host",'h', "Connect to host.", 0,
    0, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"ignore-upgrade-collate", 'i',
