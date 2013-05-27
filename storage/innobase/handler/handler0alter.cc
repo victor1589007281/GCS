@@ -3026,8 +3026,11 @@ ha_innobase::inplace_alter_table(
     DBUG_ASSERT(check_if_supported_inplace_alter(thd, table, ha_alter_info));
 
     /* inplace alter table 开始日志 */
-    ut_print_timestamp(stderr);
-    fprintf(stderr, "  [InnoDB inplace alter table]  start, query: %s; db_name:%s; tmp_name: %s \n", ha_query(), table->s->db.str, tmp_table->alias);
+    if (!ha_alter_info->print_flag)
+    {
+        ut_print_timestamp(stderr);
+        fprintf(stderr, "  [InnoDB inplace alter table]  start, query: %s; db_name:%s; tmp_name: %s \n", ha_query(), table->s->db.str, tmp_table->alias);
+    }
 
     /* Get the transaction associated with the current thd, or create one
 	if not yet created */
@@ -3118,22 +3121,29 @@ ha_innobase::inplace_alter_table(
     {
         trx_commit_for_mysql(trx);
 
-        /* inplace alter table commit日志 */
-        ut_print_timestamp(stderr);
-        fprintf(stderr, "  [InnoDB inplace alter table]  commit, query: %s; db_name:%s; tmp_name: %s \n", ha_query(), table->s->db.str, tmp_table->alias);
+        if (!ha_alter_info->print_flag)
+        {
+            /* inplace alter table commit日志 */
+            ut_print_timestamp(stderr);
+            fprintf(stderr, "  [InnoDB inplace alter table]  commit, query: %s; db_name:%s; tmp_name: %s \n", ha_query(), table->s->db.str, tmp_table->alias);
+        }
     }
     else
     {
         trx_rollback_for_mysql(trx);
 
-        /* inplace alter table rollback日志 */
-        ut_print_timestamp(stderr);
-        fprintf(stderr, "  [InnoDB inplace alter table]  rollback, error no : "ULINTPF",  query: %s; db_name:%s; tmp_name: %s \n", err, ha_query(), table->s->db.str, tmp_table->alias);
+        if (!ha_alter_info->print_flag) 
+        {
+            /* inplace alter table rollback日志 */
+            ut_print_timestamp(stderr);
+            fprintf(stderr, "  [InnoDB inplace alter table]  rollback, error no : "ULINTPF",  query: %s; db_name:%s; tmp_name: %s \n", err, ha_query(), table->s->db.str, tmp_table->alias);
+        }
     }
 
+    /* 保证日志只打一次，避免分区表的多次打印 */
+    ha_alter_info->print_flag = true;
+
    /* 锁什么时候释放 */
-
-
     //dict_table_remove_from_cache(dict_table);
 
     row_mysql_unlock_data_dictionary(trx);

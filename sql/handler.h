@@ -1298,6 +1298,8 @@ public:
   /** true for ALTER IGNORE TABLE ... */
   const bool ignore;
 
+  bool print_flag;  /* to control partitoned table only print one [Inplace alter table] */
+
   /* used for backup alter info before alter */
   ALTER_INFO_BAK* alter_info_bak;
 
@@ -1315,6 +1317,7 @@ public:
 //     index_add_buffer(NULL),
 //     handler_ctx(NULL),
     handler_flags(0),
+    print_flag(0),
     ignore(ignore_arg)
   {}
 
