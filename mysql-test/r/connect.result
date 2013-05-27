@@ -1,6 +1,7 @@
 drop table if exists t1,t2;
 show tables;
 Tables_in_mysql
+alter_log
 columns_priv
 db
 event
