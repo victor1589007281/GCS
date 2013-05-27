@@ -1,5 +1,7 @@
 #ifndef __MESSAGE_QUEUE_H
 
+#define INVALID_MESSAGE ((unsigned)-1)
+
 //message_queue.h
 //Òì²½ÏûÏ¢
 typedef struct tagMessage

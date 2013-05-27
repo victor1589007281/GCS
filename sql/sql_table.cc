@@ -6121,6 +6121,15 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
     int  filename_len;
     handler * h_file = NULL;
 
+    ulonglong data_len = 0;
+    ulonglong free_len = 0;
+    ulonglong index_len = 0;
+    ulonglong n_records = 0;
+    bool write_to_alter_log = false;
+    const char *engine_str = "";
+    const char *row_format_str = "";
+    int is_partitioned = 0;
+
     DBUG_ENTER("mysql_alter_table");
 
     /*
@@ -7158,6 +7167,35 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
         }
     }
 	
+    if (opt_alter_log)
+    {
+        write_to_alter_log = true;
+
+        if (table->file) 
+        {
+            /* fast info */
+            table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);
+
+            data_len = table->file->stats.data_file_length;
+            free_len = table->file->stats.delete_length;
+            index_len = table->file->stats.index_file_length;
+            n_records = (ulonglong)table->file->stats.records;
+
+            row_format_str = table->file->get_row_type_str();
+        }
+        handlerton *tmp_db_type= table->s->db_type();
+
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+        if (tmp_db_type == partition_hton &&
+            table->s->partition_info_str_len)
+        {
+            tmp_db_type= table->s->default_part_db_type;
+            is_partitioned= TRUE;
+        }
+#endif
+        engine_str = (char *) ha_resolve_storage_engine_name(tmp_db_type);
+    }
+
     close_all_tables_for_name(thd, table->s,
         new_name != table_name || new_db != db);
 
@@ -7235,6 +7273,16 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
 
 
 end_inplace_alter:
+    //if (!error)
+    //{
+    //    if (opt_alter_log && 
+    //        need_copy_table == ALTER_TABLE_METADATA_ONLY && inplace_info &&
+    //        (alter_info->flags & ALTER_ADD_COLUMN) && !(alter_info->flags & ~ALTER_ADD_COLUMN)) /* Only add column */
+    //    {
+    //        write_to_alter_log = true;
+    //    }
+    //}
+    
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
     /* we should clear the .par file of temp table that created in inplace_alter_table */ 
@@ -7364,6 +7412,13 @@ end_inplace_alter:
     }
 
 end_temporary:
+    if (write_to_alter_log)
+    {
+        /* 记录在线加字段的信息，同时忽略其返回值,可能产生告警 */
+        alter_log_print(thd, thd->query(), thd->query_length(), thd->current_utime(), new_db, strlen(new_db),
+            new_alias, strlen(new_alias), engine_str, row_format_str, is_partitioned, copied + deleted, data_len, index_len, free_len, n_records); 
+    }
+
     my_snprintf(tmp_name, sizeof(tmp_name), ER(ER_INSERT_INFO),
         (ulong) (copied + deleted), (ulong) deleted,
         (ulong) thd->warning_info->statement_warn_count());

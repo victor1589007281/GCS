@@ -5444,6 +5444,57 @@ void signal_log_not_needed(struct handlerton, char *log_file)
 }
 
 
+const char* handler::get_row_type_str() const
+{
+    enum row_type row_type = get_row_type();
+    const char* tmp_buff;
+
+    switch (row_type) {
+      case ROW_TYPE_NOT_USED:
+      case ROW_TYPE_DEFAULT:
+          if (table_share)
+          {
+              tmp_buff = ((table_share->db_options_in_use &
+                  HA_OPTION_COMPRESS_RECORD) ? "Compressed" :
+                  (table_share->db_options_in_use & HA_OPTION_PACK_RECORD) ?
+                  "Dynamic" : "Fixed");
+          }
+          else
+          {
+              tmp_buff = "Fixed";
+          }
+          
+          break;
+      case ROW_TYPE_FIXED:
+          tmp_buff= "Fixed";
+          break;
+      case ROW_TYPE_DYNAMIC:
+          tmp_buff= "Dynamic";
+          break;
+      case ROW_TYPE_COMPRESSED:
+          tmp_buff= "Compressed";
+          break;
+      case ROW_TYPE_REDUNDANT:
+          tmp_buff= "Redundant";
+          break;
+      case ROW_TYPE_COMPACT:
+          tmp_buff= "Compact";
+          break;
+      case ROW_TYPE_GCS: /* added for gcs row_format */
+          tmp_buff= get_row_type_str_for_gcs();
+          break;
+      case ROW_TYPE_PAGE:
+          tmp_buff= "Paged";
+          break;
+	  default :
+	      tmp_buff= "";
+		  break;
+    }
+
+    return tmp_buff;
+}
+
+
 
 /******************************************************** 5.6 ********************************************************/
 /*
