@@ -167,7 +167,7 @@ drop database mysqldump_test_db;
 --echo # if it is explicitely set.
 
 CREATE TABLE t1 (a  CHAR(10));
-INSERT INTO t1  VALUES (_latin1 'джэъ');
+INSERT INTO t1  VALUES (_latin1 'е√щ÷');
 --exec $MYSQL_DUMP --character-sets-dir=$MYSQL_SHAREDIR/charsets --skip-comments test t1
 
 --echo #
@@ -1422,7 +1422,7 @@ insert into u1 values (4);
 create view v1 (c1) as select * from t1;
 
 # Backup should not fail for Bug#21527. Flush priviliges test begins.
---exec $MYSQL_DUMP --skip-comments --add-drop-table --flush-privileges --ignore-table=mysql.general_log --ignore-table=mysql.slow_log --databases mysqldump_myDB mysql > $MYSQLTEST_VARDIR/tmp/bug21527.sql
+--exec $MYSQL_DUMP --skip-comments --add-drop-table --flush-privileges --ignore-table=mysql.general_log --ignore-table=mysql.slow_log --ignore-table=mysql.alter_log --databases mysqldump_myDB mysql > $MYSQLTEST_VARDIR/tmp/bug21527.sql
 
 # Clean up
 connection root;
@@ -1834,8 +1834,8 @@ CREATE DATABASE mysqldump_test_db;
 
 set names koi8r;
 
-CREATE VIEW mysqldump_test_db.v2 AS SELECT 1 AS колонка1;
-CREATE VIEW mysqldump_test_db.v1 AS SELECT колонка1 FROM mysqldump_test_db.v2;
+CREATE VIEW mysqldump_test_db.v2 AS SELECT 1 AS л▐м▐о▀О©╫;
+CREATE VIEW mysqldump_test_db.v1 AS SELECT л▐м▐о▀О©╫ FROM mysqldump_test_db.v2;
 
 set names latin1;
 
