@@ -75,6 +75,7 @@ TABLE_PRIVILEGES
 TRIGGERS
 USER_PRIVILEGES
 VIEWS
+alter_log
 columns_priv
 db
 event
