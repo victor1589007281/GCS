@@ -6134,7 +6134,7 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
 
     /*
     Check if we attempt to alter mysql.slow_log or
-    mysql.general_log table and return an error if
+    mysql.general_log or mysql.alter_log table and return an error if
     it is the case.
     TODO: this design is obsolete and will be removed.
     */

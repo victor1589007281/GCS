@@ -288,6 +288,7 @@ DROP USER u1@localhost,u2@localhost;
 FLUSH PRIVILEGES;
 mtr.global_suppressions                            OK
 mtr.test_suppressions                              OK
+mysql.alter_log                                    OK
 mysql.columns_priv                                 OK
 mysql.db                                           OK
 mysql.event                                        OK
@@ -416,6 +417,7 @@ ALTER TABLE mysql.user MODIFY authentication_string TEXT NOT NULL;
 Run mysql_upgrade on a 5.5.10 external authentication column layout
 mtr.global_suppressions                            OK
 mtr.test_suppressions                              OK
+mysql.alter_log                                    OK
 mysql.columns_priv                                 OK
 mysql.db                                           OK
 mysql.event                                        OK
