@@ -40,7 +40,20 @@ IF(NOT ${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
     ${CMAKE_CURRENT_BINARY_DIR}/mysql-test-run.pl
     @ONLY
   )
+  
+IF(UNIX)
+  EXECUTE_PROCESS(
+  COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/test_mysql_suite.pl ${CMAKE_CURRENT_BINARY_DIR}/test_mysql_suite.pl
+  )
 ENDIF()
+IF(WIN32)
+ EXECUTE_PROCESS(
+  COMMAND copy ${CMAKE_CURRENT_SOURCE_DIR}/test_mysql_suite.pl ${CMAKE_CURRENT_BINARY_DIR}/test_mysql_suite.pl
+  )
+ENDIF()
+ 
+ENDIF()
+
 IF(UNIX)
   EXECUTE_PROCESS(
   COMMAND chmod +x  mysql-test-run.pl

@@ -302,6 +302,7 @@ get_one_option(int optid, const struct my_option *opt,
   case OPT_WRITE_BINLOG:                        /* --write-binlog */
   case 'U': /* collate upgrade */
   case 'i': /* ignore collate upgrade */
+  case 'G': /* ignore grace print */
     add_option= FALSE;
     break;
 
@@ -716,6 +717,7 @@ static int run_mysqlcheck_upgrade(void)
                   "--auto-repair",
                   opt_ignore_upgrade_collate? "--ignore-upgrade-collate" : "", /* tmysql ignore upgrade collate  */
                   opt_upgrade_collate ?  "--fast-upgrade-collate"   : "",
+                  opt_grace_print ?      "--grace-print":"",
                   opt_write_binlog ? "--write-binlog" : "--skip-write-binlog",
                   NULL);
 }

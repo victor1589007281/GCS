@@ -915,6 +915,8 @@ static int get_options(int *argc, char ***argv)
                      (uchar*) my_strdup("mysql.schema", MYF(MY_WME))) ||
       my_hash_insert(&ignore_table,
                      (uchar*) my_strdup("mysql.general_log", MYF(MY_WME))) ||
+	  my_hash_insert(&ignore_table,
+					 (uchar*) my_strdup("mysql.alter_log", MYF(MY_WME))) ||
       my_hash_insert(&ignore_table,
                      (uchar*) my_strdup("mysql.slow_log", MYF(MY_WME))))
     return(EX_EOM);

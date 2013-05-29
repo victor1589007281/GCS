@@ -13908,10 +13908,16 @@ static void enable_query_logs(int truncate)
   rc= mysql_query(mysql, "set @save_global_slow_query_log=@@global.slow_query_log");
   myquery(rc);
 
+  rc= mysql_query(mysql, "/*!99103 set @save_global_alter_query_log=@@global.alter_query_log */");
+  myquery(rc);
+
   rc= mysql_query(mysql, "set @@global.general_log=on");
   myquery(rc);
 
   rc= mysql_query(mysql, "set @@global.slow_query_log=on");
+  myquery(rc);
+
+  rc= mysql_query(mysql, "/*!99103 set @@global.alter_query_log=on */");
   myquery(rc);
 
 
@@ -13922,6 +13928,9 @@ static void enable_query_logs(int truncate)
 
     rc= mysql_query(mysql, "truncate mysql.slow_log");
     myquery(rc);
+
+	rc= mysql_query(mysql, "/*!99103 truncate mysql.alter_log */");
+	myquery(rc);
   }
 }
 
@@ -13933,6 +13942,9 @@ static void restore_query_logs()
   myquery(rc);
 
   rc= mysql_query(mysql, "set @@global.slow_query_log=@save_global_slow_query_log");
+  myquery(rc);
+
+  rc= mysql_query(mysql, "/*!99103 set @@global.alter_query_log=@save_global_alter_query_log */");
   myquery(rc);
 }
 
