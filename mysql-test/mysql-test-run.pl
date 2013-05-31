@@ -2124,6 +2124,21 @@ sub mysqldump_arguments ($) {
   return mtr_args2str($exe, @$args);
 }
 
+sub tmysqldump_arguments ($) {
+  my($group_suffix) = @_;
+  my $exe= mtr_exe_exists("$path_client_bindir/tmysqldump");
+
+  my $args;
+  mtr_init_args(\$args);
+  mtr_add_arg($args, "--defaults-file=%s", $path_config_file);
+  mtr_add_arg($args, "--defaults-group-suffix=%s", $group_suffix);
+  mtr_add_arg($args, "--skip-unique-key-check");
+  mtr_add_arg($args, "--skip-foreign-key-check");
+  client_debug_arg($args, "mysqldump-$group_suffix");
+  return mtr_args2str($exe, @$args);
+}
+
+
 
 sub mysql_client_test_arguments(){
   my $exe;
@@ -2386,8 +2401,8 @@ sub environment_setup {
   # mysql clients
   # ----------------------------------------------------
   $ENV{'MYSQL_CHECK'}=              client_arguments("mysqlcheck");
-  $ENV{'MYSQL_DUMP'}=               mysqldump_arguments(".1");
-  $ENV{'MYSQL_DUMP_SLAVE'}=         mysqldump_arguments(".2");
+  $ENV{'MYSQL_DUMP'}=               tmysqldump_arguments(".1");
+  $ENV{'MYSQL_DUMP_SLAVE'}=         tmysqldump_arguments(".2");
   $ENV{'MYSQL_SLAP'}=               mysqlslap_arguments();
   $ENV{'MYSQL_IMPORT'}=             client_arguments("mysqlimport");
   $ENV{'MYSQL_SHOW'}=               client_arguments("mysqlshow");
