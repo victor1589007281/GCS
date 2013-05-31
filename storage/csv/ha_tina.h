@@ -154,7 +154,7 @@ public:
   int extra(enum ha_extra_function operation);
   int delete_all_rows(void);
   int create(const char *name, TABLE *form, HA_CREATE_INFO *create_info);
-  bool check_if_incompatible_data(HA_CREATE_INFO *info,
+  bool check_if_incompatible_data(HA_CREATE_INFO *info, Alter_inplace_info* inplace_alter,
                                   uint table_changes);
 
   THR_LOCK_DATA **store_lock(THD *thd, THR_LOCK_DATA **to,

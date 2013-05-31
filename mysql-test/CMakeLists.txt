@@ -40,10 +40,18 @@ IF(NOT ${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
     ${CMAKE_CURRENT_BINARY_DIR}/mysql-test-run.pl
     @ONLY
   )
+  
+  CONFIGURE_FILE(
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_mysql_suite.pl 
+    ${CMAKE_CURRENT_BINARY_DIR}/test_mysql_suite.pl
+    @ONLY
+  )
 ENDIF()
+
 IF(UNIX)
   EXECUTE_PROCESS(
-  COMMAND chmod +x  mysql-test-run.pl
+  COMMAND chmod +x mysql-test-run.pl
+  COMMAND chmod +x test_mysql_suite.pl
   COMMAND ${CMAKE_COMMAND} -E create_symlink 
    ./mysql-test-run.pl mtr
   COMMAND ${CMAKE_COMMAND} -E create_symlink 

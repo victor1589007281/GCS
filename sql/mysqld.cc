@@ -356,6 +356,7 @@ static mysql_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 bool opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log;
+my_bool opt_alter_log;
 ulonglong log_output_options;
 my_bool opt_log_queries_not_using_indexes= 0;
 bool opt_error_log= IF_WIN(1,0);
@@ -577,6 +578,8 @@ const char *mysql_real_data_home_ptr= mysql_real_data_home;
 char server_version[SERVER_VERSION_LENGTH];
 char *mysqld_unix_port, *opt_mysql_tmpdir;
 ulong thread_handling;
+
+int parse_export;
 
 /** name of reference on left expression in rewritten IN subquery */
 const char *in_left_expr_name= "<left expr>";
@@ -4195,9 +4198,12 @@ static void test_lc_time_sz()
     {
       DBUG_PRINT("Wrong max day name(or month name) length for locale:",
                  ("%s", (*loc)->name));
-      //DBUG_ASSERT(0);
+#ifdef __WIN__
       (*loc)->max_month_name_length = max_month_len;
-      (*loc)->max_day_name_length = max_day_len;   
+      (*loc)->max_day_name_length = max_day_len; 
+#else
+        DBUG_ASSERT(0);
+#endif // WIN32
     }
   }
   DBUG_VOID_RETURN;
@@ -6719,7 +6725,7 @@ static int mysql_init_variables(void)
   opt_skip_slave_start= opt_reckless_slave = 0;
   mysql_home[0]= pidfile_name[0]= log_error_file[0]= 0;
   myisam_test_invalid_symlink= test_if_data_home_dir;
-  opt_log= opt_slow_log= 0;
+  opt_log= opt_slow_log= opt_alter_log = 0;
   opt_bin_log= 0;
   opt_disable_networking= opt_skip_show_db=0;
   opt_skip_name_resolve= 0;
@@ -7984,4 +7990,124 @@ void init_server_psi_keys(void)
 }
 
 #endif /* HAVE_PSI_INTERFACE */
+
+/* only use for sqlparse */
+extern mysql_mutex_t LOCK_plugin;
+
+void
+my_init_for_sqlparse()
+{
+    /* use for THD */
+    parse_export = 1;
+    my_progname = "parse_test";
+
+    if (init_thread_environment() ||
+        mysql_init_variables() ) {
+
+        fprintf(stderr, "init_thread_environment or mysql_init_variables error \n");
+        return ;
+    }
+
+    //mysql_mutex_init(key_LOCK_plugin, &LOCK_plugin, MY_MUTEX_INIT_FAST);
+    //mysql_mutex_init(NULL, &LOCK_plugin, MY_MUTEX_INIT_FAST);
+    /*if (plugin_init(&peuso_argc, NULL, 0))
+    {
+        sql_print_error("Failed to initialize plugins.");
+        unireg_abort(1);
+    }*/
+    //plugins_are_initialized= TRUE;  /* Don't separate from init function */
+
+    my_thread_global_init();
+    my_thread_init();
+
+    /* need in THD() */
+    randominit(&sql_rand,(ulong) 1234,(ulong) 1234/2);
+
+    // TODO: set the errmsgs, but without errmsg.sys, set the messages alone. 
+    unireg_init(opt_specialflag); /* Set up extern variabels */
+    my_default_lc_messages= my_locale_by_name(lc_messages);
+    if (!my_default_lc_messages->errmsgs->errmsgs) 
+    {
+        //my_default_lc_messages->errmsgs->errmsgs = (const char **)calloc(sizeof(char*), ER_ERROR_LAST - ER_ERROR_FIRST + 1);
+
+        //my_default_lc_messages->errmsgs->errmsgs[ER_SYNTAX_ERROR - ER_ERROR_FIRST] = "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use";
+        //my_default_lc_messages->errmsgs->errmsgs[ER_PARSE_ERROR - ER_ERROR_FIRST] = "%s near '%-.80s' at line %d";
+
+        // from check_locale
+        /*read_texts(ERRMSG_FILE, my_default_lc_messages->errmsgs->language,
+        &my_default_lc_messages->errmsgs->errmsgs,
+        ER_ERROR_LAST - ER_ERROR_FIRST + 1);
+        */
+
+#if defined(__WIN__)
+        /* convert mysql_home to directory sql */
+        convert_dirname(mysql_home,mysql_home,NullS);
+        int home_len = strlen(mysql_home);
+        if (mysql_home[home_len - 1] == FN_LIBCHAR)
+        {
+            mysql_home[home_len - 1] = '\0';
+            home_len--;
+        }
+        int i;
+        for (i = home_len - 1; i >= 0; i--)
+        {
+            if (mysql_home[i] == FN_LIBCHAR)
+                break;
+        }
+        mysql_home[i + 1] = '\0';
+        strxnmov(mysql_home,sizeof(mysql_home)-1,mysql_home,"sql", NullS);
+#endif
+
+        fix_paths();
+        global_system_variables.lc_messages= my_default_lc_messages;
+        if (init_errmessage())	/* Read error messages from file */
+        {
+            fprintf(stderr, "init_errmessage() error\n");
+        }
+    }
+
+    // init charset
+    get_charset_number("utf8", MY_CS_PRIMARY);
+    global_system_variables.time_zone= my_tz_SYSTEM;
+    global_system_variables.lc_messages= my_default_lc_messages;
+    global_system_variables.collation_server=	 default_charset_info;
+    global_system_variables.collation_database=	 default_charset_info;
+    global_system_variables.collation_connection=  default_charset_info;
+    global_system_variables.character_set_results= default_charset_info;
+    global_system_variables.character_set_client=  default_charset_info;
+    global_system_variables.character_set_filesystem= character_set_filesystem;
+    global_system_variables.lc_time_names= my_default_lc_time_names;
+
+    int tmp_var = 1;
+    const char* proc_name = "parsesql";
+    plugin_init(&tmp_var, (char**)&proc_name, PLUGIN_INIT_SKIP_PLUGIN_TABLE | PLUGIN_INIT_SKIP_DYNAMIC_LOADING);
+    //mysql_mutex_init(-1, &LOCK_plugin, MY_MUTEX_INIT_FAST);
+
+    error_handler_hook= my_message_sql;
+}
+
+void
+my_end_for_sqlparse()
+{
+    //mysql_mutex_destroy(&LOCK_plugin);
+
+    plugin_shutdown();
+
+    key_caches.delete_elements((void (*)(const char*, uchar*)) free_key_cache);
+    multi_keycache_free();
+    free_charsets();
+
+    my_thread_end();
+    my_thread_global_end();
+//    clean_up_mutexes();
+    cleanup_errmsgs();
+	// charset ect.
+    my_once_free();
+
+    // set cleanup()
+    free_tmpdir(&mysql_tmpdir_list);
+    (void) my_error_unregister(ER_ERROR_FIRST, ER_ERROR_LAST); // finish server errs
+
+}
+
 

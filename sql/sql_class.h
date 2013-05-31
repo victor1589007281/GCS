@@ -1444,6 +1444,7 @@ public:
   MDL_context mdl_context;
   char* client_program_name;  /* name for client program name */
 
+  String mysql_check_ret_msg;  /* point to store msg return by mysql_check */
   /* Used to execute base64 coded binlog events in MySQL server */
   Relay_log_info* rli_fake;
 
@@ -2408,6 +2409,15 @@ public:
       stmt_da->reset_diagnostics_area();
     is_slave_error= 0;
     DBUG_VOID_RETURN;
+  }
+  /**
+    add for sqlparse
+	get error messaage
+  */
+  const char* get_error()
+  {
+      DBUG_ENTER("get_error");
+      DBUG_RETURN(stmt_da->message());
   }
 #ifndef EMBEDDED_LIBRARY
   inline bool vio_ok() const { return net.vio != 0; }

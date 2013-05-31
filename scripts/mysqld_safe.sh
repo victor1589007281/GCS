@@ -727,7 +727,7 @@ fi
 #then
 #  ulimit -n 256 > /dev/null 2>&1		# Fix for BSD and FreeBSD systems
 #fi
-
+set_malloc_lib "tcmalloc"
 cmd="`mysqld_ld_preload_text`$NOHUP_NICENESS"
 
 for i in  "$ledir/$MYSQLD" "$defaults" "--basedir=$MY_BASEDIR_VERSION" \

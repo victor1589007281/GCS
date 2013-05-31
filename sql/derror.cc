@@ -34,7 +34,7 @@ static void init_myfunc_errs(void);
 C_MODE_START
 static const char **get_server_errmsgs()
 {
-  if (!current_thd)
+  if (!current_thd || parse_export)
     return DEFAULT_ERRMSGS;
   return CURRENT_THD_ERRMSGS;
 }

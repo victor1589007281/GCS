@@ -1,0 +1,82 @@
+#test create gcs temporary table
+create table tt(
+id int primary key not null auto_increment,
+c1 int not null default 1,
+c2 varchar(128),
+c3 float,
+key idx_1(c1),
+key idx_2(c2)) engine=innodb row_format=gcs;
+show create table tt;
+insert into tt set id=1;
+select * from tt;
+
+#create normal table
+create table t1(id int);
+insert into t1 set id=100;
+
+create temporary table t1(
+id int primary key not null auto_increment,
+c1 int not null default 1,
+c2 varchar(128),
+c3 float,
+key idx_1(c1),
+key idx_2(c2)) engine=innodb row_format=gcs;
+insert into t1 set id=10;
+show create table t1;
+
+#ddl test
+--enable_info
+alter table t1 add column c4 int;
+alter table t1 row_format=compact;
+alter table t1 row_format=gcs;
+truncate table t1;
+--disable_info
+
+#dml test
+insert into t1 set id=1;
+insert into t1 set id=2;
+insert into t1 set c2='aaaa';
+delete from t1 where c2='1';
+delete from t1 where id=1;
+update t1 set id=1 where c2='aaaa';
+select * from t1;
+
+#test create like
+create temporary table t2 like tt;
+show create table t2;
+--enable_info
+insert into t2 set id=10;
+--error 1062
+insert into t2 set id=10;
+select * from t2;
+alter table t2 row_format=gcs;
+--disable_info
+
+#test create as select
+create temporary table t3 as select * from t1;
+show create table t3;
+select * from t3;
+truncate table t3;
+
+#truncate table t1;
+truncate table t1;
+drop table t1;
+show create table t1;
+select * from t1;
+drop table t1;
+drop table t2;
+drop table t3;
+
+
+--disable_warnings
+DROP TEMPORARY TABLE IF EXISTS bug48067.t1;
+DROP DATABASE IF EXISTS bug48067;
+--enable_warnings
+CREATE DATABASE bug48067;
+CREATE TABLE bug48067.t1 (c1 int) engine=innodb row_format=gcs;
+INSERT INTO bug48067.t1 values (1);
+CREATE TEMPORARY TABLE bug48067.t1 (c1 int)engine=innodb row_format=gcs;
+DROP DATABASE bug48067;
+DROP TEMPORARY table bug48067.t1;
+
+drop table tt;

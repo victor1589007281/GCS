@@ -1744,7 +1744,7 @@ int ha_tina::check(THD* thd, HA_CHECK_OPT* check_opt)
 }
 
 
-bool ha_tina::check_if_incompatible_data(HA_CREATE_INFO *info,
+bool ha_tina::check_if_incompatible_data(HA_CREATE_INFO *info, Alter_inplace_info* inplace_alter,
 					   uint table_changes)
 {
   return COMPATIBLE_DATA_YES;

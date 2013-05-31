@@ -20,6 +20,7 @@ INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/libmysql
   ${CMAKE_SOURCE_DIR}/regex
   ${CMAKE_SOURCE_DIR}/sql
+  ${CMAKE_SOURCE_DIR}/sqlparse
   ${CMAKE_SOURCE_DIR}/strings
   ${READLINE_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
@@ -44,6 +45,9 @@ TARGET_LINK_LIBRARIES(mysqlcheck mysqlclient)
 MYSQL_ADD_EXECUTABLE(mysqldump mysqldump.c ../sql-common/my_user.c)
 TARGET_LINK_LIBRARIES(mysqldump mysqlclient)
 
+MYSQL_ADD_EXECUTABLE(tmysqldump tmysqldump.cc ../sql-common/my_user.c)
+TARGET_LINK_LIBRARIES(tmysqldump mysqlclient)
+
 MYSQL_ADD_EXECUTABLE(mysqlimport mysqlimport.c)
 TARGET_LINK_LIBRARIES(mysqlimport mysqlclient)
 
@@ -59,6 +63,15 @@ TARGET_LINK_LIBRARIES(mysql_plugin mysqlclient)
 
 MYSQL_ADD_EXECUTABLE(mysqlbinlog mysqlbinlog.cc)
 TARGET_LINK_LIBRARIES(mysqlbinlog mysqlclient)
+
+#MYSQL_ADD_EXECUTABLE(tmysqlbinlogex tmysqlbinlogex.cc ../sqlparse/message_queue.cc)
+#TARGET_LINK_LIBRARIES(tmysqlbinlogex mysqlclient sqlparse)
+
+#IF(MSVC)
+#	 ADD_CUSTOM_COMMAND(TARGET tmysqlbinlogex
+#                     POST_BUILD 
+#                     COMMAND copy ..\\sqlparse\\Debug\\sqlparse.dll Debug\\sqlparse.dll)
+#ENDIF()
 
 MYSQL_ADD_EXECUTABLE(mysqladmin mysqladmin.cc)
 TARGET_LINK_LIBRARIES(mysqladmin mysqlclient)

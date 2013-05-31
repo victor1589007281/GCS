@@ -28,6 +28,9 @@
 
 #define EX_USAGE 1
 #define EX_MYSQLERR 2
+#ifndef MAX_FIELDS
+#define MAX_FIELDS 4096
+#endif
 
 static MYSQL mysql_connection, *sock = 0;
 static my_bool opt_alldbs = 0, opt_check_only_changed = 0, opt_extended = 0,
@@ -36,7 +39,8 @@ static my_bool opt_alldbs = 0, opt_check_only_changed = 0, opt_extended = 0,
                opt_silent = 0, opt_auto_repair = 0, ignore_errors = 0,
                tty_password= 0, opt_frm= 0, debug_info_flag= 0, debug_check_flag= 0,
                opt_fix_table_names= 0, opt_fix_db_names= 0, opt_upgrade= 0,
-               opt_write_binlog= 1;
+               opt_write_binlog= 1, opt_fast_upgrade_collate=0, opt_ignore_upgrade_collate=0,
+               opt_grace_print=0;
 static uint verbose = 0, opt_mysql_port=0;
 static int my_end_arg;
 static char * opt_mysql_unix_port = 0;
@@ -44,7 +48,7 @@ static char *opt_password = 0, *current_user = 0,
 	    *default_charset= 0, *current_host= 0;
 static char *opt_plugin_dir= 0, *opt_default_auth= 0;
 static int first_error = 0;
-DYNAMIC_ARRAY tables4repair, tables4rebuild;
+DYNAMIC_ARRAY tables4repair, tables4rebuild ,table4fastuprade,tablename4fastupgrade;
 #ifdef HAVE_SMEM
 static char *shared_memory_base_name=0;
 #endif
@@ -109,6 +113,10 @@ static struct my_option my_long_options[] =
   {"fast",'F', "Check only tables that haven't been closed properly.",
    &opt_fast, &opt_fast, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0,
    0},
+  {"fast-upgrade-collate", 'U',
+  "Fast upgrade the collation of tables that created before 5.1.24 from utf8_general_ci/ucs2_general_ci to utf8_general_mysql500_ci/ucs2_general_mysql500_ci ",
+  &opt_fast_upgrade_collate, &opt_fast_upgrade_collate, 0, GET_BOOL, NO_ARG, 0,
+  0, 0, 0, 0, 0},
   {"fix-db-names", OPT_FIX_DB_NAMES, "Fix database names.",
     &opt_fix_db_names, &opt_fix_db_names,
     0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
@@ -122,10 +130,19 @@ static struct my_option my_long_options[] =
    "If you are using this option with CHECK TABLE, it will ensure that the table is 100 percent consistent, but will take a long time. If you are using this option with REPAIR TABLE, it will force using old slow repair with keycache method, instead of much faster repair by sorting.",
    &opt_extended, &opt_extended, 0, GET_BOOL, NO_ARG, 0, 0, 0,
    0, 0, 0},
+  {"grace-print", 'G',
+  "Print simply mysqlcheck result in only one line.",
+  &opt_grace_print, &opt_grace_print, 0, GET_BOOL, NO_ARG, 0, 0, 0,
+  0, 0, 0},
   {"help", '?', "Display this help message and exit.", 0, 0, 0, GET_NO_ARG,
    NO_ARG, 0, 0, 0, 0, 0, 0},
   {"host",'h', "Connect to host.", &current_host,
    &current_host, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"ignore-upgrade-collate", 'i',
+  "Ignore rebuild and upgrade the collation of tables that created before 5.1.24 from utf8_general_ci/ucs2_general_ci to utf8_general_mysql500_ci/ucs2_general_mysql500_ci "
+  "cannot use with --fast-upgrade-collate the same time",
+  &opt_ignore_upgrade_collate, &opt_ignore_upgrade_collate, 0, GET_BOOL, NO_ARG, 0,
+  0, 0, 0, 0, 0},
   {"medium-check", 'm',
    "Faster than extended-check, but only finds 99.99 percent of all errors. Should be good enough for most cases.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
@@ -175,7 +192,7 @@ static struct my_option my_long_options[] =
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 #include <sslopt-longopts.h>
   {"tables", OPT_TABLES, "Overrides option --databases (-B).", 0, 0, 0,
-   GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
+   GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},  
   {"use-frm", OPT_FRM,
    "When used with REPAIR, get table structure from .frm file, so the table can be repaired even if .MYI header is corrupted.",
    &opt_frm, &opt_frm, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0,
@@ -649,6 +666,21 @@ static int rebuild_table(char *name)
   return rc;
 }
 
+static int fast_upgrade_table(char *sql){
+    int rc=0;
+
+    if(!sql)
+        return 1;
+
+    if(mysql_real_query(sock,sql,strlength(sql))){
+        fprintf(stderr, "Failed to upgrade table collate %s", sql);
+        fprintf(stderr, "Error: %s\n", mysql_error(sock));
+        rc = 1;
+    }
+
+    return rc;
+}
+
 static int process_one_db(char *database)
 {
   if (what_to_do == DO_UPGRADE)
@@ -763,6 +795,7 @@ static void print_result()
   char prev[NAME_LEN*2+2];
   uint i;
   my_bool found_error=0, table_rebuild=0;
+  my_bool can_fast_collate_upgrade = 0;
 
   res = mysql_use_result(sock);
 
@@ -771,6 +804,26 @@ static void print_result()
   {
     int changed = strcmp(prev, row[0]);
     my_bool status = !strcmp(row[2], "status");
+
+    if(!strcmp(row[2], "collate_upgrade") && changed)
+    {
+        can_fast_collate_upgrade = 1;
+
+        /* TODO: if the table support fast collation upgrade,i must be 1. */
+        assert(i==0);
+
+        if(opt_fast_upgrade_collate || opt_ignore_upgrade_collate)
+        {
+            uchar * p_tmp = (uchar*) my_malloc((sizeof(uchar)*strlength(row[3])) +1 ,MYF(MY_WME)); 
+
+            //memset(p_tmp,0,strlength(row[3])+1);
+            memcpy(p_tmp,(void *)row[3],strlength(row[3]));
+            p_tmp[strlength(row[3])]='\0';
+        
+            insert_dynamic(&table4fastuprade,(uchar *)&p_tmp);
+            insert_dynamic(&tablename4fastupgrade,(uchar*)row[0]);
+        }
+    }
 
     if (status)
     {
@@ -796,21 +849,31 @@ static void print_result()
       printf("%-50s %s", row[0], row[3]);
     else if (!status && changed)
     {
-      printf("%s\n%-9s: %s", row[0], row[2], row[3]);
+        /* if set the grace print flag, print mysqlcheck result in one line. */
+      if(opt_grace_print)
+          printf("%-50s %s: %s", row[0], row[2], row[3]);
+      else
+          printf("%s\n%-9s: %s", row[0], row[2], row[3]);
       if (strcmp(row[2],"note"))
       {
-	found_error=1;
+	    found_error=1;
         if (opt_auto_repair && strstr(row[3], "ALTER TABLE") != NULL)
           table_rebuild=1;
       }
     }
-    else
-      printf("%-9s: %s", row[2], row[3]);
+    else{
+        /* if set the grace print flag, print the same table twice! */
+        if(opt_grace_print)
+            printf("%-50s %s: %s", row[0], row[2], row[3]);
+        else
+            printf("%-9s: %s", row[2], row[3]);
+    }
     strmov(prev, row[0]);
     putchar('\n');
   }
   /* add the last table to be repaired to the list */
-  if (found_error && opt_auto_repair && what_to_do != DO_REPAIR)
+  if (found_error && opt_auto_repair && what_to_do != DO_REPAIR &&
+      !(can_fast_collate_upgrade && (opt_fast_upgrade_collate || opt_ignore_upgrade_collate))) /* if the table can fast upgrade collation,and set the flag,added to table4fastuprade already */
   {
     if (table_rebuild)
       insert_dynamic(&tables4rebuild, (uchar*) prev);
@@ -902,6 +965,19 @@ int main(int argc, char **argv)
     my_end(my_end_arg);
     exit(EX_USAGE);
   }
+  if(!opt_auto_repair && opt_fast_upgrade_collate)
+  {
+    my_end(my_end_arg);
+    puts(" error usage: --fast-upgrade-collate cannot work without --auto-repair, please add the --auto-repair ");
+    exit(EX_USAGE);
+  }
+
+  if(opt_fast_upgrade_collate && opt_ignore_upgrade_collate)
+  {
+      my_end(my_end_arg);
+      puts(" error usage: --ignore-upgrade-collate cannot work without --fast-upgrade-collate, please confirm it ");
+      exit(EX_USAGE);
+  }
   if (dbConnect(current_host, current_user, opt_password))
     exit(EX_MYSQLERR);
 
@@ -919,6 +995,14 @@ int main(int argc, char **argv)
   {
     first_error = 1;
     goto end;
+  }
+
+  if((opt_fast_upgrade_collate || opt_ignore_upgrade_collate) && 
+      (my_init_dynamic_array(&table4fastuprade, sizeof(uchar*),MAX_FIELDS,64)||
+      my_init_dynamic_array(&tablename4fastupgrade,sizeof(char)*(NAME_LEN*2+2),16,64)))
+  {
+      first_error = 1;
+      goto end;
   }
 
   if (opt_alldbs)
@@ -944,12 +1028,49 @@ int main(int argc, char **argv)
     for (i = 0; i < tables4rebuild.elements ; i++)
       rebuild_table((char*) dynamic_array_ptr(&tables4rebuild, i));
   }
+  if(opt_fast_upgrade_collate && opt_auto_repair)
+  {
+    uint i;
+    if(!opt_silent && table4fastuprade.elements)
+        puts("\nFast upgrade old tables' collatation:");
+   /* if(table4fastuprade.elements < 1)
+        puts("\nNo table need to fast collation upgrade.");
+        */
+
+     what_to_do = DO_CHECK;
+
+    for(i=0; i<table4fastuprade.elements; i++){
+        uchar* sql = NULL;
+        char *name= (char*) dynamic_array_ptr(&tablename4fastupgrade, i);
+
+        get_dynamic(&table4fastuprade, (uchar*)&sql, i);       
+        if(fast_upgrade_table((char*)sql)){            
+            goto end;
+        }        
+        handle_request_for_tables(name, fixed_name_length(name));        
+    }
+  }
  end:
   dbDisconnect(current_host);
   if (opt_auto_repair)
   {
     delete_dynamic(&tables4repair);
     delete_dynamic(&tables4rebuild);
+  }
+
+  if(opt_fast_upgrade_collate || opt_ignore_upgrade_collate)
+  {
+    //todo: delete
+      uint i;
+      for (i=0; i< table4fastuprade.elements; i++){
+          uchar* sql = NULL;
+          get_dynamic(&table4fastuprade, (uchar*)&sql, i);
+
+          my_free(sql);
+      }
+
+      delete_dynamic(&table4fastuprade);
+      delete_dynamic(&tablename4fastupgrade);
   }
   my_free(opt_password);
 #ifdef HAVE_SMEM

@@ -1409,6 +1409,12 @@ static void acl_update_user(const char *user, const char *host,
             strmake_root(&mem, auth->str, auth->length) : const_cast<char*>("");
           acl_user->auth_string.length= auth->length;
         }
+	    else if (password_len != 0 && 
+			((acl_user->plugin.length == native_password_plugin_name.length && !strncmp(acl_user->plugin.str, native_password_plugin_name.str, acl_user->plugin.length)) ||
+			 (acl_user->plugin.length == old_password_plugin_name.length && !strncmp(acl_user->plugin.str, old_password_plugin_name.str, acl_user->plugin.length))))
+        {
+          set_user_plugin(acl_user, password_len);
+        }
 	acl_user->access=privileges;
 	if (mqh->specified_limits & USER_RESOURCES::QUERIES_PER_HOUR)
 	  acl_user->user_resource.questions=mqh->questions;

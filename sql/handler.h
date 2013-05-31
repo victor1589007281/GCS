@@ -52,6 +52,11 @@
 #define HA_ADMIN_NEEDS_UPGRADE  -10
 #define HA_ADMIN_NEEDS_ALTER    -11
 #define HA_ADMIN_NEEDS_CHECK    -12
+/*
+  table need upgrade column's collate to upgrade,for fix the incompatible change in 5.1.24
+  here define the ERROR CODE directly to -33 in case of new RET status be added to mysql
+*/
+#define HA_ADMIN_NEEDS_COLLATE_UPGRADE    -33
 
 /**
    Return values for check_if_supported_inplace_alter().
@@ -1209,6 +1214,12 @@ public:
   // Change the column format of column
   static const HA_ALTER_FLAGS ALTER_COLUMN_COLUMN_FORMAT_FLAG = 1L << 20;
 
+  // Change the column 
+  static const HA_ALTER_FLAGS ALTER_COLUMN_CHANGE             = 1L << 21;
+
+  // change the column collation
+  static const HA_ALTER_FLAGS ALTER_COLUMN_CHANGE_COLLATION   = 1L << 22;
+
   /**
     Create options (like MAX_ROWS) for the new version of table.
 
@@ -1751,7 +1762,12 @@ public:
   */
   virtual enum row_type get_row_type() const { return ROW_TYPE_NOT_USED; }
 
+  virtual const char* get_row_type_str() const;
+
   virtual const char* get_row_type_str_for_gcs() const { return "Gcs"; }
+
+  /* 表示是否对默认值敏感，只有GCS表敏感 */
+  virtual bool is_def_value_sensitive() const { return false; }
 
   /*
     use the judge if the table's SE level table(s) had been fast altered before.
@@ -2225,10 +2241,12 @@ public:
    Pops the top if condition stack, if stack is not empty.
  */
  virtual void cond_pop() { return; };
- virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info,
+ virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info, Alter_inplace_info* inplae_alter,
 					 uint table_changes)
  { return COMPATIBLE_DATA_NO; }
 
+ virtual bool check_if_support_fast_collate_upgrade()
+ { return FALSE; }
   /**
     use_hidden_primary_key() is called in case of an update/delete when
     (table_flags() and HA_PRIMARY_KEY_REQUIRED_FOR_DELETE) is defined
@@ -2676,5 +2694,8 @@ inline const char *table_case_name(HA_CREATE_INFO *info, const char *name)
 {
   return ((lower_case_table_names == 2 && info->alias) ? info->alias : name);
 }
+
+/* fill the packet String with the correspond  field's creation string */
+int  fill_field_create_str(Field * field, String * packet,THD* thd, TABLE* table);
 
 #endif /* HANDLER_INCLUDED */

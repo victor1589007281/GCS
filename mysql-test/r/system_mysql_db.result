@@ -1,5 +1,6 @@
 show tables;
 Tables_in_db
+alter_log
 columns_priv
 db
 event

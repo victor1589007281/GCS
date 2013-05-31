@@ -3,6 +3,7 @@
 #
 mtr.global_suppressions                            OK
 mtr.test_suppressions                              OK
+mysql.alter_log                                    OK
 mysql.columns_priv                                 OK
 mysql.db                                           OK
 mysql.event                                        OK

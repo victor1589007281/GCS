@@ -3236,6 +3236,23 @@ ha_innobase::get_row_type_str_for_gcs() const
     return("Gcs");
 }
 
+UNIV_INTERN
+bool
+ha_innobase::is_def_value_sensitive() const
+{
+    if (prebuilt && prebuilt->table) {
+        /* 只有加过字段才是敏感的，因为改变默认值会改变在线加字段后记录的内容 */
+        if(dict_table_is_gcs_after_alter_table(prebuilt->table)){
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    ut_ad(0);
+    return false;
+}
+
 /****************************************************************//**
 Get the table flags to use for the statement.
 @return	table flags */
@@ -7266,36 +7283,18 @@ ha_innobase::create(
 			ER_ILLEGAL_HA_CREATE_OPTION,
 			"InnoDB: assuming ROW_FORMAT=GCS.");
 	case ROW_TYPE_DEFAULT:
-        if (!(create_info->options & HA_LEX_CREATE_TMP_TABLE))  
+       /* 指定GCS为默认格式时，默认为GCS表 */
+        if (srv_is_gcs_default)
         {
-            /* 指定GCS为默认格式时，默认为GCS表 */
-            if (srv_is_gcs_default)
-            {
-                is_gcs = TRUE;                              /* 非临时表,分区表,设置为 gcs row_format,否则设置为compact  */
-            }
-        }
+            is_gcs = TRUE;                             
+        }       
 	case ROW_TYPE_COMPACT:
 		flags = DICT_TF_COMPACT;
 		break;
 
     case ROW_TYPE_GCS:   
-        /* for GCS row_format */
-
-        if ((create_info->options & HA_LEX_CREATE_TMP_TABLE) )
-        {
-            /* error: cannot create a table of gcs row_format for tmp_table or partition_table */
-            /*push_warning(
-                thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                ER_ILLEGAL_HA_CREATE_OPTION,
-                "InnoDB: assuming ROW_FORMAT=COMPACT. Cannot create a GCS table for tmp table or partition table."); 
-            */
-            my_error(ER_CANT_CREATE_TABLE,MYF(0),create_info->alias,ER_CANT_CREATE_TABLE);
-            
-            DBUG_RETURN(-1);
-        }else{
-            /* set row_format as gcs */
-            is_gcs = TRUE;
-        }
+        /* for GCS row_format,here allowed to create a temporary GCS table. */
+        is_gcs = TRUE;
         flags = DICT_TF_COMPACT;
         break;
 
@@ -10931,12 +10930,17 @@ UNIV_INTERN
 bool
 ha_innobase::check_if_incompatible_data(
 	HA_CREATE_INFO*	info,
+    Alter_inplace_info* inplace_alter,
 	uint		table_changes)
 {
-	if (table_changes != IS_EQUAL_YES) {
 
-		return(COMPATIBLE_DATA_NO);
-	}
+    /* 除了IS_EQUAL_YES，必须保证inplace_alter不为空 */
+ 
+	if (table_changes != IS_EQUAL_YES)
+		if (!inplace_alter ||
+			table_changes != (IS_EQUAL_YES|IS_EQUAL_WITH_MYSQL500_COLLATE) &&
+        	table_changes != IS_EQUAL_WITH_MYSQL500_COLLATE) 
+			return(COMPATIBLE_DATA_NO);
 
 	/* Check that auto_increment value was not changed */
 	if ((info->used_fields & HA_CREATE_USED_AUTO) &&

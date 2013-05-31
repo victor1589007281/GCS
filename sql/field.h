@@ -148,6 +148,9 @@ public:
   Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
         uchar null_bit_arg, utype unireg_check_arg,
         const char *field_name_arg);
+  /* return true if is part of index key, include prefix index */
+  inline bool is_part_key() { return (flags & PART_KEY_FLAG) ;}
+  inline ulong get_mysql_version() { return table ? table->s->mysql_version : MYSQL_VERSION_ID;}
   virtual ~Field() {}
   /* Store functions returns 1 on overflow and -1 on fatal error */
   virtual int  store(const char *to, uint length,CHARSET_INFO *cs)=0;
@@ -498,6 +501,7 @@ public:
     determine if data needs to be copied over (table data change).
   */
   virtual uint is_equal(Create_field *new_field);
+  bool is_def_value_equal(Create_field *new_field);
   /* convert decimal to longlong with overflow check */
   longlong convert_decimal2longlong(const my_decimal *val, bool unsigned_flag,
                                     int *err);
@@ -780,6 +784,7 @@ public:
   my_decimal *val_decimal(my_decimal *);
   virtual bool str_needs_quotes() { return TRUE; }
   uint is_equal(Create_field *new_field);
+  uint is_charset_equal(Create_field *new_field);
 };
 
 

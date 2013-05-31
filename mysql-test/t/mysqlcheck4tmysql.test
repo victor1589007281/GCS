@@ -1,0 +1,258 @@
+# Embedded server doesn't support external clients
+--source include/not_embedded.inc
+
+--source include/have_innodb.inc
+
+let $MYSQLD_DATADIR= `select @@datadir`;
+
+use test;
+
+--echo
+
+#####################################
+# 正常升级操作
+--echo # Normal upgrade
+create table upgrade_1 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_1.frm
+--copy_file std_data/upgrade_1.frm $MYSQLD_DATADIR/test/upgrade_1.frm
+
+--echo # Should indicate that ALTER TABLE ... MODIFY is needed
+CHECK TABLE upgrade_1 FOR UPGRADE;
+
+##
+--enable_info
+ALTER TABLE `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL;
+--disable_info
+
+CHECK TABLE upgrade_1 FOR UPGRADE;
+
+SHOW CREATE TABLE upgrade_1;
+
+drop table upgrade_1;
+
+# UCS2
+create table upgrade_2 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=ucs2 row_format=compact;
+
+insert into upgrade_2 values (1,1,1,1,1);
+flush table upgrade_2;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_2.frm
+--copy_file std_data/upgrade_2.frm $MYSQLD_DATADIR/test/upgrade_2.frm
+
+--echo # Should indicate that ALTER TABLE ... MODIFY is needed
+CHECK TABLE upgrade_2 FOR UPGRADE;
+
+##
+--enable_info
+ALTER TABLE upgrade_2 MODIFY COLUMN c2 char(20) CHARACTER SET ucs2 COLLATE ucs2_general_mysql500_ci NOT NULL DEFAULT 'aa',  
+MODIFY COLUMN c3 varchar(50) CHARACTER SET ucs2 COLLATE ucs2_general_mysql500_ci DEFAULT NULL;
+--disable_info
+
+CHECK TABLE upgrade_2 FOR UPGRADE;
+
+SHOW CREATE TABLE upgrade_2;
+
+drop table upgrade_2;
+
+--echo
+
+#####################################
+# 混合多个操作
+--echo # Multi OP
+create table upgrade_1 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_1.frm
+--copy_file std_data/upgrade_1.frm $MYSQLD_DATADIR/test/upgrade_1.frm
+
+# 修改字符集和加索引操作
+--enable_info
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL,
+add index idx_c5 (c5(30));
+--disable_info
+
+SHOW CREATE TABLE upgrade_1;
+
+drop table upgrade_1;
+
+create table upgrade_1 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_1.frm
+--copy_file std_data/upgrade_1.frm $MYSQLD_DATADIR/test/upgrade_1.frm
+
+# 修改字符集和rename操作
+--enable_info
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL,
+rename to upgrade_2;
+--disable_info
+
+SHOW CREATE TABLE upgrade_2;
+
+drop table upgrade_2;
+--echo
+
+#####################################
+# 只修改部分列
+--echo # Alter part of column
+create table upgrade_1 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_1.frm
+--copy_file std_data/upgrade_1.frm $MYSQLD_DATADIR/test/upgrade_1.frm
+
+#只修改一列
+--enable_info
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa';
+--disable_info
+
+SHOW CREATE TABLE upgrade_1;
+
+drop table upgrade_1;
+--echo
+
+#####################################
+# 字符长度不一致
+--echo # Length different
+create table upgrade_1 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_1.frm
+--copy_file std_data/upgrade_1.frm $MYSQLD_DATADIR/test/upgrade_1.frm
+
+# 长度不一
+--enable_info
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(40) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL;
+--disable_info
+
+SHOW CREATE TABLE upgrade_1;
+
+drop table upgrade_1;
+--echo
+
+#####################################
+# 快速修改低版本行格式
+--echo # fast alter low .frm version table row_format to GCS
+create table upgrade_1 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_1.frm
+--copy_file std_data/upgrade_1.frm $MYSQLD_DATADIR/test/upgrade_1.frm
+
+# 在线修改行格式
+--enable_info
+alter table `upgrade_1`  row_format=GCS;
+--disable_info
+
+SHOW CREATE TABLE upgrade_1;
+
+drop table upgrade_1;
+--echo
+
+#####################################
+# NOT NULL不一致
+--echo # Nullable different
+create table upgrade_1 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_1.frm
+--copy_file std_data/upgrade_1.frm $MYSQLD_DATADIR/test/upgrade_1.frm
+
+--enable_info
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL;
+--disable_info
+
+SHOW CREATE TABLE upgrade_1;
+
+drop table upgrade_1;
+--echo
+
+#####################################
+# 默认值不一致
+--echo # Default value different
+create table upgrade_1 (
+  c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+  key idx_mi (c2, c4(5)),
+  key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+
+--echo # Replace the FRM with a 5.0.67 FRM that will require upgrade
+--remove_file $MYSQLD_DATADIR/test/upgrade_1.frm
+--copy_file std_data/upgrade_1.frm $MYSQLD_DATADIR/test/upgrade_1.frm
+
+##
+--enable_info
+ALTER TABLE `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aaa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL;
+--disable_info
+
+SHOW CREATE TABLE upgrade_1;
+
+drop table upgrade_1;
+
+--echo
+

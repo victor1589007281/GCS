@@ -994,3 +994,28 @@ dict_mem_realloc_index_fields(
     }        
     return index->fields;
 }
+
+
+
+/**********************************************************************//**
+快速修改列字符集,修改表对象内存中列的字符集.
+直接修改table->cols列对象的字符集规则即可.除了列字符集修改,表对象的其他成员均无变化
+*/
+void
+dict_mem_table_fast_alter_collate(
+    dict_table_t*           table,              /*!< in: 原表字典对象 */
+    dict_col_t*             col_arr,            /*!< in: 修改列后的用户列字典对象,不包含系统列 */ 
+    ulint                   n_modify            /*!< in: col_arr的列数 */
+)
+{
+    ulint i, ind;
+
+    for(i=0; i < n_modify; i++){
+        /* 只有ind值合法才修改，不合法列没有修改字符集 */
+        ind = col_arr[i].ind;
+
+        ut_ad(ind < table->n_cols);
+        table->cols[ind].prtype = col_arr[i].prtype;
+    }
+}
+

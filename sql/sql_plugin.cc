@@ -1322,7 +1322,7 @@ int plugin_init(int *argc, char **argv, int flags)
         tmp.load_option= PLUGIN_FORCE;
 
       free_root(&tmp_root, MYF(MY_MARK_BLOCKS_FREE));
-      if (test_plugin_options(&tmp_root, &tmp, argc, argv))
+      if (!parse_export && test_plugin_options(&tmp_root, &tmp, argc, argv))
         tmp.state= PLUGIN_IS_DISABLED;
       else
         tmp.state= PLUGIN_IS_UNINITIALIZED;
@@ -2655,6 +2655,9 @@ void plugin_thdvar_init(THD *thd)
   thd->variables.dynamic_variables_size= 0;
   thd->variables.dynamic_variables_ptr= 0;
 
+  if (parse_export)
+      DBUG_VOID_RETURN;
+
   mysql_mutex_lock(&LOCK_plugin);
   thd->variables.table_plugin=
         my_intern_plugin_lock(NULL, global_system_variables.table_plugin);
@@ -2699,6 +2702,9 @@ void plugin_thdvar_cleanup(THD *thd)
   uint idx;
   plugin_ref *list;
   DBUG_ENTER("plugin_thdvar_cleanup");
+
+  if (parse_export)
+      DBUG_VOID_RETURN;
 
   mysql_mutex_lock(&LOCK_plugin);
 

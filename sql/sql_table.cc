@@ -5167,7 +5167,7 @@ mysql_compare_tables(TABLE *table,
   }
 
   /* Check if changes are compatible with current handler without a copy */
-  if (table->file->check_if_incompatible_data(create_info, changes))
+  if (table->file->check_if_incompatible_data(create_info, inplace_info, changes))
   {
     *need_copy_table= ALTER_TABLE_DATA_CHANGED;
     DBUG_RETURN(0);
@@ -5285,9 +5285,12 @@ bool fill_alter_inplace_info(
     has really changed we rely on flags set by parser to get an
     approximate value for storage engine flag.
     */
-    if (alter_info->flags & (ALTER_CHANGE_COLUMN |
-        ALTER_CHANGE_COLUMN_DEFAULT))
+    if (alter_info->flags & ALTER_CHANGE_COLUMN_DEFAULT)
         ha_alter_info->handler_flags|= Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG;
+
+    /* 修改列，包括修改字符集，修改默认值等，目前只处理修改字符集 */
+    if (alter_info->flags & ALTER_CHANGE_COLUMN)
+        ha_alter_info->handler_flags|= Alter_inplace_info::ALTER_COLUMN_CHANGE;
     //   if (alter_info->flags & Alter_info::ADD_FOREIGN_KEY)
     //     ha_alter_info->handler_flags|= Alter_inplace_info::ADD_FOREIGN_KEY;
     //   if (alter_info->flags & Alter_info::DROP_FOREIGN_KEY)
@@ -5368,9 +5371,8 @@ bool fill_alter_inplace_info(
             //    be carried out by simply updating data dictionary without changing
             //    actual data (for example, VARCHAR(300) is changed to VARCHAR(400)).
             //    */
-            //    ha_alter_info->handler_flags|= Alter_inplace_info::
-            //        ALTER_COLUMN_EQUAL_PACK_LENGTH_FLAG;
-            //    break;
+            //    // ha_alter_info->handler_flags|= Alter_inplace_info::ALTER_COLUMN_EQUAL_PACK_LENGTH_FLAG;
+            //    break; 
             //default:
             //    DBUG_ASSERT(0);
             //    /* Safety. */
@@ -5396,6 +5398,10 @@ bool fill_alter_inplace_info(
                     ha_alter_info->handler_flags|=
                     Alter_inplace_info::ALTER_COLUMN_NULLABLE_FLAG;
             }
+
+            if (new_field->charset != field->charset())
+                ha_alter_info->handler_flags|=
+                    Alter_inplace_info::ALTER_COLUMN_CHANGE_COLLATION;
 
             /*
             We do not detect changes to default values in this loop.
@@ -5510,15 +5516,14 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
     bool rc= TRUE;
     
     /* flag for check if can fast alter table add column*/
-    bool add_column_simple_flag = true;                                     /* 初始化为true */
+    bool inplace_alter_flag = true;                                     /* 初始化为true，表示支持在线alter */
     bool varchar_flag = false;
   
 	/* judge if there are drop column/alter column/add key operation,if any set add_column_simple_flag false */
 	if(alter_info->drop_list.elements || 
-	    alter_info->alter_list.elements ||
-	    alter_info->key_list.elements
-	  ){
-		add_column_simple_flag = false;
+	    alter_info->alter_list.elements ||  /* 仅仅是set default和drop default使用 */
+	    alter_info->key_list.elements ){
+		inplace_alter_flag = false;
 	}
 
     DBUG_ENTER("mysql_prepare_alter_table");
@@ -5606,7 +5611,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
                 break;
         }
         if (def)
-        {						// Field is changed
+        {						// Field is changed            
             def->field=field;
             if (!def->after)
             {
@@ -5672,7 +5677,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         {
             alter_info->datetime_field= def;
             alter_info->error_if_not_empty= TRUE;
-            add_column_simple_flag = false;
+            inplace_alter_flag = false;
         }
         
         /** 
@@ -5695,7 +5700,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
          /* we donot support fast add columns with both MAYBE NULL and DEFUALT VALUE  */
          /************************************************************************/
         if((~def->flags & NOT_NULL_FLAG) && def->def){
-            add_column_simple_flag = false;
+            inplace_alter_flag = false;
         }
 
 
@@ -5873,7 +5878,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         while ((key=key_it++))			// Add new keys
         {           
             //fast add column temporary not surpport add index at the sametime.
-            add_column_simple_flag = false;           
+            inplace_alter_flag = false;
             if (key->type != Key::FOREIGN_KEY)
                 new_key_list.push_back(key);
             if (key->name.str &&
@@ -5929,7 +5934,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
     already check the default values of new added column.
     here we donnot check change_level,for normal add column ,the change level is METADATA_ONLY
     */
-    if (add_column_simple_flag && inplace_info_out && alter_info->change_level == ALTER_TABLE_METADATA_ONLY && !thd->lex->ignore)
+    if (inplace_alter_flag && inplace_info_out && alter_info->change_level == ALTER_TABLE_METADATA_ONLY && !thd->lex->ignore)
     {    
         
 		/* 
@@ -5958,7 +5963,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 		  so here we skip check the ALTER_OPTIONS!
         */
 	
-		if(alter_info->flags & ~(ALTER_ADD_COLUMN|ALTER_ADD_INDEX|ALTER_OPTIONS) ||  		  
+		if((alter_info->flags & ~(ALTER_ADD_COLUMN|ALTER_ADD_INDEX|ALTER_OPTIONS|ALTER_CHANGE_COLUMN))||
 		  create_info->options ){    
                /* 
                 1.no other alter op allowed 
@@ -6116,11 +6121,20 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
     int  filename_len;
     handler * h_file = NULL;
 
+    ulonglong data_len = 0;
+    ulonglong free_len = 0;
+    ulonglong index_len = 0;
+    ulonglong n_records = 0;
+    bool write_to_alter_log = false;
+    const char *engine_str = "";
+    const char *row_format_str = "";
+    int is_partitioned = 0;
+
     DBUG_ENTER("mysql_alter_table");
 
     /*
     Check if we attempt to alter mysql.slow_log or
-    mysql.general_log table and return an error if
+    mysql.general_log or mysql.alter_log table and return an error if
     it is the case.
     TODO: this design is obsolete and will be removed.
     */
@@ -7153,6 +7167,35 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
         }
     }
 	
+    if (opt_alter_log)
+    {
+        write_to_alter_log = true;
+
+        if (table->file) 
+        {
+            /* fast info */
+            table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);
+
+            data_len = table->file->stats.data_file_length;
+            free_len = table->file->stats.delete_length;
+            index_len = table->file->stats.index_file_length;
+            n_records = (ulonglong)table->file->stats.records;
+
+            row_format_str = table->file->get_row_type_str();
+        }
+        handlerton *tmp_db_type= table->s->db_type();
+
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+        if (tmp_db_type == partition_hton &&
+            table->s->partition_info_str_len)
+        {
+            tmp_db_type= table->s->default_part_db_type;
+            is_partitioned= TRUE;
+        }
+#endif
+        engine_str = (char *) ha_resolve_storage_engine_name(tmp_db_type);
+    }
+
     close_all_tables_for_name(thd, table->s,
         new_name != table_name || new_db != db);
 
@@ -7230,6 +7273,16 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
 
 
 end_inplace_alter:
+    //if (!error)
+    //{
+    //    if (opt_alter_log && 
+    //        need_copy_table == ALTER_TABLE_METADATA_ONLY && inplace_info &&
+    //        (alter_info->flags & ALTER_ADD_COLUMN) && !(alter_info->flags & ~ALTER_ADD_COLUMN)) /* Only add column */
+    //    {
+    //        write_to_alter_log = true;
+    //    }
+    //}
+    
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
     /* we should clear the .par file of temp table that created in inplace_alter_table */ 
@@ -7359,6 +7412,13 @@ end_inplace_alter:
     }
 
 end_temporary:
+    if (write_to_alter_log)
+    {
+        /* 记录在线加字段的信息，同时忽略其返回值,可能产生告警 */
+        alter_log_print(thd, thd->query(), thd->query_length(), thd->current_utime(), new_db, strlen(new_db),
+            new_alias, strlen(new_alias), engine_str, row_format_str, is_partitioned, copied + deleted, data_len, index_len, free_len, n_records); 
+    }
+
     my_snprintf(tmp_name, sizeof(tmp_name), ER(ER_INSERT_INFO),
         (ulong) (copied + deleted), (ulong) deleted,
         (ulong) thd->warning_info->statement_warn_count());

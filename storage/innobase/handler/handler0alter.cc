@@ -1857,13 +1857,7 @@ innobase_update_systable_n_cols_for_gcs(
         }
     }
 
-
-    ut_a(!(table->flags >> DICT_TF2_SHIFT));
-    /*
-        TODO(GCS): 如果table->flags增加标记为,需要修改这个地方的赋值.
-        这里直接将mix_len的高位2字节置为表字段的数量了.
-    */
-    pars_info_add_int4_literal(info, "mix_len", n_cols_before_alter << 16);     /* 存在高两字节！ */
+    pars_info_add_int4_literal(info, "mix_len", (table->flags >> DICT_TF2_SHIFT) | (n_cols_before_alter << 16));     /* 存在高两字节！ */
     pars_info_add_str_literal(info, "table_name", table->name);
 
     /* 更新列数 */
@@ -2106,7 +2100,7 @@ innobase_add_columns_simple(
 
     ut_ad(dict_table_get_n_cols(table) - DATA_N_SYS_COLS + n_add == tmp_table->s->fields);
 
-    error_no = innobase_update_systable_n_cols_for_gcs(table, tmp_table->s->fields, trx, TRUE,NULL);
+    error_no = innobase_update_systable_n_cols_for_gcs(table, tmp_table->s->fields, trx, TRUE, 0);
     if (error_no != DB_SUCCESS)
         goto err_exit;
 
@@ -2144,6 +2138,184 @@ err_exit:
     DBUG_RETURN(error_no);
     
 }
+
+// fast alter collate for a column
+ulint
+innobase_fast_alter_collate_to_dictionary(
+    dict_table_t*           table,
+    dict_col_t*             col,
+    trx_t*                  trx
+    )
+{
+    pars_info_t*	info;
+    ulint   		error_no = DB_SUCCESS;
+
+    info = pars_info_create();  /* que_eval_sql执行完会释放 */   
+
+    pars_info_add_ull_literal(info, "table_id", table->id);
+    pars_info_add_int4_literal(info, "pos", col->ind);
+
+    //get the new column prtype
+    pars_info_add_int4_literal(info, "prtype", col->prtype);
+
+    error_no = que_eval_sql(
+        info,
+        "PROCEDURE SYS_FAST_ALTER_COLLATE_PROC () IS\n"
+        "BEGIN\n"
+        "UPDATE SYS_COLUMNS SET PRTYPE = :prtype WHERE TABLE_ID=:table_id AND POS=:pos;\n"
+        "END;\n",
+        FALSE, trx);
+
+    if (error_no != DB_SUCCESS)
+    {
+        //for safe
+        push_warning_printf(
+            (THD*) trx->mysql_thd,
+            MYSQL_ERROR::WARN_LEVEL_WARN,
+            ER_CANT_CREATE_TABLE,
+            "SYS_FAST_ALTER_COLLATE_PROC error %s %d table_name(%s) colid(%d)", __FILE__, __LINE__, table->name, col->ind);
+    }   
+    return error_no;
+
+}
+
+
+/*
+
+Return
+    true : Error
+    false : success
+*/
+ulint
+innobase_fast_alter_mysql500_collate(
+    /*===================*/
+    mem_heap_t*         heap,   /*!< in: temp heap */
+    trx_t*			    trx,    /*!< in: trix  */
+    dict_table_t*       table,  /*!< in/out: origin dict table before fast alter */
+    TABLE*              tmp_table,  /*!< in: new temp table after fast alter table */
+    Alter_inplace_info* inplace_info  /*!< in: inplace alter info */
+)
+{
+    ulint   		error_no = DB_SUCCESS;
+    Alter_info*     alter_info = static_cast<Alter_info*>(inplace_info->alter_info);
+    Create_field*   cfield;
+    List_iterator<Create_field> def_it(alter_info->create_list);      
+    ulint           idx = 0; 
+    dict_col_t      *col_arr = NULL;
+    ulint           lock_retry = 0;
+    ibool           locked = FALSE;
+    /* 修改列个数 */
+    ulint           n_modify = 0;
+
+    DBUG_ENTER("innobase_fast_alter_mysql500_collate");
+
+    DBUG_ASSERT(trx_get_dict_operation(trx) == TRX_DICT_OP_INDEX);
+    ut_ad(trx->dict_operation_lock_mode == RW_X_LATCH);
+    ut_ad(mutex_own(&dict_sys->mutex));
+#ifdef UNIV_SYNC_DEBUG
+    ut_ad(rw_lock_own(&dict_operation_lock, RW_LOCK_EX));
+#endif /* UNIV_SYNC_DEBUG */
+
+    ut_ad(dict_table_get_n_cols(table) - DATA_N_SYS_COLS == tmp_table->s->fields);
+
+    col_arr = (dict_col_t *)mem_heap_zalloc(heap, sizeof(dict_col_t) * tmp_table->s->fields);
+    if (col_arr == NULL)
+    {
+        push_warning_printf(
+            (THD*) trx->mysql_thd,
+            MYSQL_ERROR::WARN_LEVEL_WARN,
+            ER_CANT_CREATE_TABLE,
+            "mem_heap_alloc error %s %d", __FILE__, __LINE__);
+
+        goto err_exit;
+    }
+
+    def_it.rewind();
+    while (!!(cfield =def_it++))
+    {
+        //should not got new field!
+        ut_ad(cfield->field);
+        // do a special judge for GEOMETRY TYPE
+
+        ut_ad(tmp_table->field[idx]->is_equal(cfield) || cfield->sql_type == MYSQL_TYPE_GEOMETRY);
+
+        if (!tmp_table->field[idx]->is_equal(cfield) && !(cfield->sql_type == MYSQL_TYPE_GEOMETRY) )
+        {
+            //for safe
+            goto err_exit;
+        } 
+
+        /* 如果字符集不相同，则修改 */
+        if (dtype_is_string_type(table->cols[idx].mtype) && /* 字符集类型，非字符集innodb不会存储charset */ 
+            tmp_table->field[idx]->charset()->number != dtype_get_charset_coll(table->cols[idx].prtype))
+        {
+            if (tmp_table->field[idx]->charset()->number == 8 &&  /* latin1 */
+                dtype_get_charset_coll(table->cols[idx].prtype) == 63 /* binary */)
+            {
+                /*5.5的数字类型，包括数字、decimal、日期类型等使用latin1字符集，与5.0、5.1使用binary不一致
+                    这个不一致会导致这些类型的上层字符集与innodb字符集不相同，会触发以下断言，故跳过
+                */
+
+                idx ++;
+                continue;
+            }
+            
+
+            ut_a(tmp_table->field[idx]->charset() == &my_charset_utf8_general_mysql500_ci||
+                tmp_table->field[idx]->charset() == &my_charset_ucs2_general_mysql500_ci); 
+
+            //fill new collate
+            error_no = innodbase_fill_col_info(trx, &col_arr[n_modify], table, tmp_table, idx, heap,cfield,inplace_info);
+
+            if (error_no != DB_SUCCESS)
+                goto err_exit;
+
+            //change the column collate here
+
+            error_no = innobase_fast_alter_collate_to_dictionary(table,&col_arr[n_modify++],trx);
+
+            if (error_no != DB_SUCCESS)
+                goto err_exit;         
+        }
+        
+        idx ++;
+    }       
+
+    while (lock_retry++ < 10)
+    {
+        if (!rw_lock_x_lock_nowait(&btr_search_latch))
+        {
+            /* Sleep for 10ms before trying again. */
+            os_thread_sleep(10000);
+            continue;
+        }
+
+        locked = TRUE;
+        break;
+    }
+
+    if (!locked)
+    {
+        push_warning_printf(
+            (THD*) trx->mysql_thd,
+            MYSQL_ERROR::WARN_LEVEL_WARN,
+            ER_CANT_CREATE_TABLE,
+            "rw_lock_x_lock_nowait(&btr_search_latch) failed %s %d", __FILE__, __LINE__);
+
+        error_no = DB_ERROR;
+
+        goto err_exit;
+    }
+
+    //根据col id来修改内存的字符集信息
+    dict_mem_table_fast_alter_collate(table, col_arr, n_modify);
+
+    rw_lock_x_unlock(&btr_search_latch);
+
+err_exit:
+    DBUG_RETURN(error_no);
+}
+
 
 
 /*
@@ -2370,6 +2542,7 @@ innobase_alter_row_format_simple(
     
 	//for modify the memory
 	ibool			locked = FALSE;
+    ibool           real_gcs = FALSE;
 
     
 	DBUG_ENTER("innobase_alter_row_format_simple");
@@ -2393,6 +2566,8 @@ innobase_alter_row_format_simple(
     if(change_flag == INNODB_ROW_FORMAT_COMACT_TO_GCS){
 	    //compact -> gcs
         pars_info_add_int4_literal(info,"n_col",new_table->s->fields | (1<<31)|(1<<30));
+        real_gcs = srv_create_use_gcs_real_format;
+
     }else if(change_flag == INNODB_ROW_FORMAT_GCS_TO_COMPACT){
         //gcs -> compact
         ut_a(!dict_table_is_gcs_after_alter_table(dict_table));
@@ -2404,11 +2579,16 @@ innobase_alter_row_format_simple(
 
 	pars_info_add_str_literal(info, "table_name", dict_table->name);
 
+    if (real_gcs)
+        pars_info_add_int4_literal(info, "mix_len", (dict_table->flags >> DICT_TF2_SHIFT) | (new_table->s->fields << 16));     /* 存在高两字节！ */
+    else
+        pars_info_add_int4_literal(info, "mix_len", (dict_table->flags >> DICT_TF2_SHIFT));     
+
     error_no = que_eval_sql(
         info,
         "PROCEDURE UPDATE_SYS_TABLES_FAST_ALTER_ROWFOMAT () IS\n"
         "BEGIN\n"
-        "UPDATE SYS_TABLES SET N_COLS = :n_col \n"
+        "UPDATE SYS_TABLES SET N_COLS = :n_col, MIX_LEN = :mix_len \n"
         "WHERE NAME = :table_name;\n"
         "END;\n",
         FALSE, trx);	
@@ -2456,8 +2636,22 @@ innobase_alter_row_format_simple(
      if(change_flag == INNODB_ROW_FORMAT_COMACT_TO_GCS){
          ut_ad(!dict_table->is_gcs);
          dict_table->is_gcs = TRUE;
+         
+         if (real_gcs) {
+            dict_index_t* clut_index;
+
+            dict_table->n_cols_before_alter_table = dict_table->n_cols;
+            clut_index = dict_table_get_first_index(dict_table);
+
+            ut_a(dict_index_is_clust(clut_index));
+
+            clut_index->n_fields_before_alter = clut_index->n_fields;
+            clut_index->n_nullable_before_alter = clut_index->n_nullable;
+         }
+
      }else if(change_flag == INNODB_ROW_FORMAT_GCS_TO_COMPACT){
          ut_ad(dict_table->is_gcs);
+         ut_ad(!dict_table_is_gcs_after_alter_table(dict_table));
          dict_table->is_gcs = FALSE;
      }else{
          //never come to here!
@@ -2669,8 +2863,12 @@ ha_innobase::check_if_supported_inplace_alter(
 
 	HA_CREATE_INFO * create_info = inplace_info->create_info;
 	enum row_type tb_innodb_row_type = get_row_type();
+    /* judge the old table version */
+    ulong mysql_version= table->s->mysql_version;    
 
-	/*
+    switch(inplace_info->handler_flags)
+    {
+    /*
 	check for fast alter row_format:
 	if there are alter row_format in the alter statement,
 	and the NEW/OLD row_format are in GCS or COMPACT,we can fast alter it,
@@ -2678,36 +2876,92 @@ ha_innobase::check_if_supported_inplace_alter(
 	
 	we returned directly if row_format modified,so the judgement below wouldn't be affected.
 	*/
-
-	if(inplace_info->handler_flags == Alter_inplace_info::CHANGE_CREATE_OPTION_FLAG){
-
-	  if(create_info->used_fields ==HA_CREATE_USED_ROW_FORMAT 
-		&& this->is_support_fast_rowformat_change(create_info->row_type, tb_innodb_row_type) != INNODB_ROW_FORMAT_CHANGE_NO){
-		  DBUG_RETURN(true);
-	  }		
-
-	  DBUG_RETURN(false);
-	}
-
-    //check gcs fast add column   
-
-    /* 
-	如果行格式不是GCS,或者创建的行格式与底层的行格式不一样,则不能直接快速alter 
-	*/
-    if( ROW_TYPE_GCS != tb_innodb_row_type || 
-		( (create_info->used_fields & HA_CREATE_USED_ROW_FORMAT) &&
-		  create_info->row_type != tb_innodb_row_type )){
+    case Alter_inplace_info::CHANGE_CREATE_OPTION_FLAG:
+        if (mysql_version < 50048)
             DBUG_RETURN(false);
+        
+        /* TODO:存在字符集兼容性问题，拒绝inplace alter, 为兼容5.0升级到5.5,这里允许做行格式的alter操作,需要外围提前做好判断. */
+        //if (table->file->check_collation_compatibility()) {
+            //TODO: 
+            //thd->mysql_check_ret_msg.free();
+           // DBUG_RETURN(false);
+        //}
+
+        /* 只修改row_format */
+        if(create_info->used_fields == HA_CREATE_USED_ROW_FORMAT 
+            && this->is_support_fast_rowformat_change(create_info->row_type, tb_innodb_row_type) != INNODB_ROW_FORMAT_CHANGE_NO)
+            DBUG_RETURN(true);
+
+        break;
+
+    case Alter_inplace_info::ADD_COLUMN_FLAG:
+        if (mysql_version < 50048)
+            DBUG_RETURN(false);
+ 
+        /* 存在字符集兼容性问题，拒绝inplace alter */
+        if (table->file->check_collation_compatibility()) {
+            //TODO: 
+            //thd->mysql_check_ret_msg.free();
+            DBUG_RETURN(false);
+        }
+
+        /* 
+            如果行格式不是GCS,或者创建的行格式与底层的行格式不一样,则不能直接快速alter 
+        */
+        if( ROW_TYPE_GCS != tb_innodb_row_type || 
+            ( (create_info->used_fields & HA_CREATE_USED_ROW_FORMAT) &&
+            create_info->row_type != tb_innodb_row_type )){
+                DBUG_RETURN(false);
+        }
+        /* 由mysql_compare_table进一步判断 */
+        DBUG_RETURN(true);
+
+    /* 修改字符集，for upgrade */
+    case (Alter_inplace_info::ALTER_COLUMN_CHANGE | Alter_inplace_info::ALTER_COLUMN_CHANGE_COLLATION):
+        if (mysql_version < 50124)
+            DBUG_RETURN(true);
+
+        break;
+
+    default:
+        break;
     }
 
+    DBUG_RETURN(false);
+
+	//if(inplace_info->handler_flags == Alter_inplace_info::CHANGE_CREATE_OPTION_FLAG){
+
+	//  if(create_info->used_fields ==HA_CREATE_USED_ROW_FORMAT 
+	//	&& this->is_support_fast_rowformat_change(create_info->row_type, tb_innodb_row_type) != INNODB_ROW_FORMAT_CHANGE_NO){
+	//	  DBUG_RETURN(true);
+	//  }		
+
+	//  DBUG_RETURN(false);
+	//}
+
+ //   //check gcs fast add column   
+
+ //   /* 
+	//如果行格式不是GCS,或者创建的行格式与底层的行格式不一样,则不能直接快速alter 
+	//*/
+ //   if( ROW_TYPE_GCS != tb_innodb_row_type || 
+	//	( (create_info->used_fields & HA_CREATE_USED_ROW_FORMAT) &&
+	//	  create_info->row_type != tb_innodb_row_type )){
+ //           DBUG_RETURN(false);
+ //   }
+
+ //   /*
+ //       1.如果是快速5.0到5.5的UTF8 列collate修改为utf8_general_mysql500_ci,支持快速alter
+ //       2.除增加字段的标记,还有其他信息，则表示不支持,注意，这里没有增加索引的信息
+ //       3.如果mysql的frm版本高于5.1.24,则返回false
+ //   */
+ //   if(((inplace_info->handler_flags & ~Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG) && 
+ //       (inplace_info->handler_flags & ~(Alter_inplace_info::ADD_COLUMN_FLAG)))||
+ //       (inplace_info->handler_flags & Alter_inplace_info::ALTER_COLUMN_DEFAULT_FLAG && mysql_version >= 50124)){           
+ //           DBUG_RETURN(false);
+ //   }
     
-    /* 除增加字段的标记,还有其他信息，则表示不支持,注意，这里没有增加索引的信息 */
-    if(inplace_info->handler_flags & ~(Alter_inplace_info::ADD_COLUMN_FLAG)){
-        DBUG_RETURN(false);
-    }
-    
-    
-    DBUG_RETURN(true);
+ //   DBUG_RETURN(true);
 }
 
 /*
@@ -2846,7 +3100,10 @@ ha_innobase::inplace_alter_table(
         err = innobase_alter_row_format_simple(heap,trx,dict_table,tmp_table,ha_alter_info,
                 is_support_fast_rowformat_change(tmp_table->s->row_type,get_row_type()));
 		
-	}else{
+    }else if(ha_alter_info->handler_flags == (Alter_inplace_info::ALTER_COLUMN_CHANGE | Alter_inplace_info::ALTER_COLUMN_CHANGE_COLLATION)){
+        //fast alter collate
+        err = innobase_fast_alter_mysql500_collate(heap,trx,dict_table,tmp_table,ha_alter_info);
+    }else{
         ut_ad(FALSE);
         /* to do 暂时断言  */
     }

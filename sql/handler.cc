@@ -41,6 +41,8 @@
 #include "probes_mysql.h"
 #include "debug_sync.h"         // DEBUG_SYNC
 
+#include "sql_show.h"   //for call get_field_default_value only!
+
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
 #endif
@@ -487,7 +489,7 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
   if (hton->panic)
     hton->panic(hton, HA_PANIC_CLOSE);
 
-  if (plugin->plugin->deinit)
+  if (!parse_export && plugin->plugin->deinit)
   {
     /*
       Today we have no defined/special behavior for uninstalling
@@ -520,6 +522,62 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
   DBUG_RETURN(0);
 }
 
+legacy_db_type ha_get_dbtype_by_name(
+    const char*           plugin_name
+)
+{
+    if (!strcmp(plugin_name, "InnoDB"))
+    {
+        return DB_TYPE_INNODB;
+    }
+    else if (!strcmp(plugin_name, "MyISAM"))
+    {
+        return DB_TYPE_MYISAM;
+    }
+    else if (!strcmp(plugin_name, "MRG_MYISAM"))
+    {
+        return DB_TYPE_MRG_MYISAM;
+    }
+    else if (!strcmp(plugin_name, "CSV"))
+    {
+        return DB_TYPE_CSV_DB;
+    }
+    else if (!strcmp(plugin_name, "MEMORY"))
+    {
+        return DB_TYPE_HEAP;
+    }
+    else if (!strcmp(plugin_name, "FEDERATED"))
+    {
+        return DB_TYPE_FEDERATED_DB;
+    }
+    else if (!strcmp(plugin_name, "ARCHIVE"))
+    {
+        return DB_TYPE_ARCHIVE_DB;
+    }
+    else if (!strcmp(plugin_name, "EXAMPLE"))
+    {
+        return DB_TYPE_EXAMPLE_DB;
+    }
+    else if (!strcmp(plugin_name, "binlog"))
+    {
+        return DB_TYPE_BINLOG;
+    }
+    else if (!strcmp(plugin_name, "BLACKHOLE"))
+    {
+        return DB_TYPE_BLACKHOLE_DB;
+    }
+    else if (!strcmp(plugin_name, "partition"))
+    {
+        return DB_TYPE_PARTITION_DB;
+    }
+    else if (!strcmp(plugin_name, "PERFORMANCE_SCHEMA"))
+    {
+        return DB_TYPE_PERFORMANCE_SCHEMA;
+    }
+    
+    return DB_TYPE_UNKNOWN;
+}
+
 
 int ha_initialize_handlerton(st_plugin_int *plugin)
 {
@@ -540,13 +598,21 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
   hton->slot= HA_SLOT_UNDEF;
   /* Historical Requirement */
   plugin->data= hton; // shortcut for the future
-  if (plugin->plugin->init && plugin->plugin->init(hton))
-  {
-    sql_print_error("Plugin '%s' init function returned error.",
-                    plugin->name.str);
-    goto err;  
-  }
 
+  if (parse_export && plugin->plugin->init)
+  {
+      hton->state = SHOW_OPTION_YES;
+      hton->db_type = ha_get_dbtype_by_name(plugin->plugin->name);
+  }
+  else 
+  {
+      if (plugin->plugin->init && plugin->plugin->init(hton))
+      {
+          sql_print_error("Plugin '%s' init function returned error.",
+              plugin->name.str);
+          goto err;  
+      }
+  }
   /*
     the switch below and hton->state should be removed when
     command-line options for plugins will be implemented
@@ -2068,6 +2134,121 @@ const char *get_canonical_filename(handler *file, const char *path,
 
 
 /**
+  @brief fill the packat field create string
+
+  @param[in]  file     table handler
+  @param[in]  path     original path
+*/
+int  fill_field_create_str(Field * field, String * packet, THD* thd, TABLE* table){
+    DBUG_ENTER("fill_field_create_str");
+    DBUG_ASSERT(field);
+    DBUG_ASSERT(thd == current_thd);
+
+    uint flags = field->flags;
+    char tmp[MAX_FIELD_WIDTH];
+    char def_value_buf[MAX_FIELD_WIDTH];
+    String type(tmp, sizeof(tmp), system_charset_info);
+    String def_value(def_value_buf, sizeof(def_value_buf), system_charset_info);
+
+    bool limited_mysql_mode= (thd->variables.sql_mode & (MODE_NO_FIELD_OPTIONS |
+                                                     MODE_MYSQL323 |
+                                                     MODE_MYSQL40)) != 0;
+    my_bitmap_map *old_map;
+
+    restore_record(table, s->default_values);
+
+    /*
+    We need this to get default values from the table
+    We have to restore the read_set if we are called from insert in case
+    of row based replication.
+    */
+    old_map= tmp_use_all_columns(table, table->read_set);
+
+    packet->append(field->field_name, strlen(field->field_name));
+    packet->append(' ');
+
+    field->sql_type(type);
+    packet->append(type.ptr(), type.length(), system_charset_info);
+
+
+    if (field->has_charset() && 
+        !(thd->variables.sql_mode & (MODE_MYSQL323 | MODE_MYSQL40)))
+    {
+        uint cs_number= field->charset()->number;
+
+       
+        switch(cs_number){
+            case 33: /* utf8_general_ci */
+                /* charset */
+                packet->append(STRING_WITH_LEN(" CHARACTER SET "));
+                packet->append( my_charset_utf8_general_mysql500_ci.csname );
+
+                /* 
+                For string types dump collation name only if 
+                collation is not primary for the given charset
+                */
+                packet->append(STRING_WITH_LEN(" COLLATE "));
+                packet->append(my_charset_utf8_general_mysql500_ci.name);
+                break;
+
+            case 35:  /* ucs2_general_ci */
+                /* charset */
+                packet->append(STRING_WITH_LEN(" CHARACTER SET "));
+                packet->append( my_charset_ucs2_general_mysql500_ci.csname );
+
+                /* 
+                For string types dump collation name only if 
+                collation is not primary for the given charset
+                */
+                packet->append(STRING_WITH_LEN(" COLLATE "));
+                packet->append(my_charset_ucs2_general_mysql500_ci.name);
+                break;
+
+            default:
+                /* should never come to here ,we only support utf8/ucs2_general_ci */
+                DBUG_ASSERT(0);
+        }
+    }
+
+    if (flags & NOT_NULL_FLAG)
+        packet->append(STRING_WITH_LEN(" NOT NULL"));
+    else if (field->type() == MYSQL_TYPE_TIMESTAMP)
+    {
+        /*
+        TIMESTAMP field require explicit NULL flag, because unlike
+        all other fields they are treated as NOT NULL by default.
+        */
+        packet->append(STRING_WITH_LEN(" NULL"));
+    }
+
+    if (get_field_default_value(thd, table->timestamp_field,
+        field, &def_value, 1))
+    {
+        packet->append(STRING_WITH_LEN(" DEFAULT "));
+        packet->append(def_value.ptr(), def_value.length(), system_charset_info);
+    }
+
+    if (!limited_mysql_mode && table->timestamp_field == field && 
+        field->unireg_check != Field::TIMESTAMP_DN_FIELD)
+        packet->append(STRING_WITH_LEN(" ON UPDATE CURRENT_TIMESTAMP"));
+
+    if (field->unireg_check == Field::NEXT_NUMBER && 
+        !(thd->variables.sql_mode & MODE_NO_FIELD_OPTIONS))
+        packet->append(STRING_WITH_LEN(" AUTO_INCREMENT"));
+
+    if (field->comment.length)
+    {
+        packet->append(STRING_WITH_LEN(" COMMENT "));
+        append_unescaped(packet, field->comment.str, field->comment.length);
+    }
+
+    tmp_restore_column_map(table->read_set, old_map);
+
+    DBUG_RETURN(0);
+}
+
+
+/**
   An interceptor to hijack the text of the error message without
   setting an error in the thread. We need the text to present it
   in the form of a warning to the user.
@@ -3030,6 +3211,25 @@ int handler::check_collation_compatibility()
 {
   ulong mysql_version= table->s->mysql_version;
 
+  THD* thd;
+  int  ret_flag=0;
+  int  upgrade_cols = 0;
+
+  thd = current_thd;
+
+  String *packet = &thd->mysql_check_ret_msg;
+  /* 先释放当前空间 */
+  packet->free();
+  
+  /* so far we just support innodb */
+  bool  engine_support_fast_upgrade = check_if_support_fast_collate_upgrade();
+
+  /* array for record if the field have been checked */
+  bool field_checked_flag[MAX_FIELDS];
+  for(int i=0;i<MAX_FIELDS;i++){
+      field_checked_flag[i]=FALSE;
+  }
+  
   if (mysql_version < 50124)
   {
     KEY *key= table->key_info;
@@ -3044,6 +3244,42 @@ int handler::check_collation_compatibility()
           continue;
         Field *field= table->field[key_part->fieldnr - 1];
         uint cs_number= field->charset()->number;
+        
+        bool f_flag =  field_checked_flag[field->field_index];
+        field_checked_flag[field->field_index] = TRUE;
+
+        /* may support fast collate upgrade */
+        if((mysql_version < 50124) && 
+            (cs_number == 33 || /* utf8_general_ci - bug #27877 */
+            cs_number == 35 /* ucs2_general_ci - bug #27877 */
+            ) && engine_support_fast_upgrade)
+        {
+            if(!ret_flag) 
+            {
+                ret_flag = HA_ADMIN_NEEDS_COLLATE_UPGRADE;
+
+                packet->append(STRING_WITH_LEN(" ALTER TABLE `"));
+                packet->append(table->s->db.str, table->s->db.length );
+                packet->append(STRING_WITH_LEN("`.`"));
+                packet->append(table->s->table_name.str, table->s->table_name.length);
+                packet->append(STRING_WITH_LEN("` "));
+            }
+
+            if(upgrade_cols && !f_flag){
+                packet->append(STRING_WITH_LEN(", "));
+            }
+
+            if(!f_flag){
+                packet->append(STRING_WITH_LEN(" MODIFY COLUMN "));
+                // packet->append(field->field_name, strlen(field->field_name));
+                fill_field_create_str(field, packet, thd, table);
+
+                upgrade_cols++;
+            }
+
+            continue;
+        }
+        /* need to upgrade table */
         if ((mysql_version < 50048 &&
              (cs_number == 11 || /* ascii_general_ci - bug #29499, bug #27562 */
               cs_number == 41 || /* latin7_general_ci - bug #29461 */
@@ -3059,7 +3295,15 @@ int handler::check_collation_compatibility()
           return HA_ADMIN_NEEDS_UPGRADE;
       }  
     }  
-  }  
+  } 
+
+  //support fast collate upgrade
+  if(ret_flag == HA_ADMIN_NEEDS_COLLATE_UPGRADE)
+  {
+      packet->append(STRING_WITH_LEN(";"));
+      return ret_flag;
+  }
+
   return 0;
 }
 
@@ -5197,6 +5441,57 @@ void signal_log_not_needed(struct handlerton, char *log_file)
   DBUG_ENTER("signal_log_not_needed");
   DBUG_PRINT("enter", ("logfile '%s'", log_file));
   DBUG_VOID_RETURN;
+}
+
+
+const char* handler::get_row_type_str() const
+{
+    enum row_type row_type = get_row_type();
+    const char* tmp_buff;
+
+    switch (row_type) {
+      case ROW_TYPE_NOT_USED:
+      case ROW_TYPE_DEFAULT:
+          if (table_share)
+          {
+              tmp_buff = ((table_share->db_options_in_use &
+                  HA_OPTION_COMPRESS_RECORD) ? "Compressed" :
+                  (table_share->db_options_in_use & HA_OPTION_PACK_RECORD) ?
+                  "Dynamic" : "Fixed");
+          }
+          else
+          {
+              tmp_buff = "Fixed";
+          }
+          
+          break;
+      case ROW_TYPE_FIXED:
+          tmp_buff= "Fixed";
+          break;
+      case ROW_TYPE_DYNAMIC:
+          tmp_buff= "Dynamic";
+          break;
+      case ROW_TYPE_COMPRESSED:
+          tmp_buff= "Compressed";
+          break;
+      case ROW_TYPE_REDUNDANT:
+          tmp_buff= "Redundant";
+          break;
+      case ROW_TYPE_COMPACT:
+          tmp_buff= "Compact";
+          break;
+      case ROW_TYPE_GCS: /* added for gcs row_format */
+          tmp_buff= get_row_type_str_for_gcs();
+          break;
+      case ROW_TYPE_PAGE:
+          tmp_buff= "Paged";
+          break;
+	  default :
+	      tmp_buff= "";
+		  break;
+    }
+
+    return tmp_buff;
 }
 
 
