@@ -1,0 +1,126 @@
+SET @start_value = @@global.alter_query_log;
+SELECT @start_value;
+@start_value
+0
+'#---------------------FN_DYNVARS_004_01-------------------------#'
+SET @@global.alter_query_log = DEFAULT;
+SELECT @@global.alter_query_log = 0;
+@@global.alter_query_log = 0
+1
+'#--------------------FN_DYNVARS_004_02------------------------#'
+SET @@global.alter_query_log = ON;
+SELECT @@global.alter_query_log;
+@@global.alter_query_log
+1
+SET @@global.alter_query_log = OFF;
+SELECT @@global.alter_query_log;
+@@global.alter_query_log
+0
+'#--------------------FN_DYNVARS_004_03-------------------------#'
+SET @@global.alter_query_log = 2;
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of '2'
+SET @@global.alter_query_log = -1;
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of '-1'
+SET @@global.alter_query_log = TRUEF;
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of 'TRUEF'
+SET @@global.alter_query_log = TRUE_F;
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of 'TRUE_F'
+SET @@global.alter_query_log = FALSE0;
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of 'FALSE0'
+SET @@global.alter_query_log = OON;
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of 'OON'
+SET @@global.alter_query_log = ONN;
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of 'ONN'
+SET @@global.alter_query_log = OOFF;
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of 'OOFF'
+SET @@global.alter_query_log = 0FF;
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of '0FF'
+SET @@global.alter_query_log = ' ';
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of ' '
+SET @@global.alter_query_log = " ";
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of ' '
+SET @@global.alter_query_log = '';
+ERROR 42000: Variable 'alter_query_log' can't be set to the value of ''
+'#-------------------FN_DYNVARS_004_04----------------------------#'
+SET @@session.alter_query_log = OFF;
+ERROR HY000: Variable 'alter_query_log' is a GLOBAL variable and should be set with SET GLOBAL
+SELECT @@session.alter_query_log;
+ERROR HY000: Variable 'alter_query_log' is a GLOBAL variable
+'#----------------------FN_DYNVARS_004_05------------------------#'
+SELECT IF(@@global.alter_query_log, "ON", "OFF") = VARIABLE_VALUE 
+FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES 
+WHERE VARIABLE_NAME='alter_query_log';
+IF(@@global.alter_query_log, "ON", "OFF") = VARIABLE_VALUE
+1
+'#---------------------FN_DYNVARS_004_06----------------------#'
+SET @@global.alter_query_log = 0;
+SELECT @@global.alter_query_log;
+@@global.alter_query_log
+0
+SET @@global.alter_query_log = 1;
+SELECT @@global.alter_query_log;
+@@global.alter_query_log
+1
+'#---------------------FN_DYNVARS_004_07----------------------#'
+SET @@global.alter_query_log = TRUE;
+SELECT @@global.alter_query_log;
+@@global.alter_query_log
+1
+SET @@global.alter_query_log = FALSE;
+SELECT @@global.alter_query_log;
+@@global.alter_query_log
+0
+'#---------------------FN_DYNVARS_004_08----------------------#'
+SET @@global.alter_query_log = ON;
+SELECT @@alter_query_log = @@global.alter_query_log;
+@@alter_query_log = @@global.alter_query_log
+1
+'#---------------------FN_DYNVARS_004_09----------------------#'
+SET alter_query_log = ON;
+ERROR HY000: Variable 'alter_query_log' is a GLOBAL variable and should be set with SET GLOBAL
+SET local.alter_query_log = OFF;
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'alter_query_log = OFF' at line 1
+SELECT local.alter_query_log;
+ERROR 42S02: Unknown table 'local' in field list
+SET global.alter_query_log = ON;
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'alter_query_log = ON' at line 1
+SELECT global.alter_query_log;
+ERROR 42S02: Unknown table 'global' in field list
+SELECT alter_query_log = @@session.alter_query_log;
+ERROR 42S22: Unknown column 'alter_query_log' in 'field list'
+'#---------------------FN_DYNVARS_004_10----------------------#'
+/*!99103 SET @@global.alter_query_log = ON */;
+create database alter_log_test_db;
+use alter_log_test_db;
+create table t1(c1 int) ENGINE=InnoDB;
+insert into t1 values(1);
+insert into t1 values(2);
+insert into t1 values(3);
+alter table t1 add c2 int;
+select db, table_name, engine, row_format, sql_text, affected_rows from mysql.alter_log;
+db	table_name	engine	row_format	sql_text	affected_rows
+alter_log_test_db	t1	InnoDB	GCS	alter table t1 add c2 int	0
+truncate table mysql.alter_log;
+alter table t1 modify c2 char(10);
+select db, table_name, engine, row_format, sql_text, affected_rows from mysql.alter_log;
+db	table_name	engine	row_format	sql_text	affected_rows
+alter_log_test_db	t1	InnoDB	GCS	alter table t1 modify c2 char(10)	3
+truncate table mysql.alter_log;
+create index alter_log_test_index on t1(c1);
+select db, table_name, engine, row_format, sql_text, affected_rows from mysql.alter_log;
+db	table_name	engine	row_format	sql_text	affected_rows
+alter_log_test_db	t1	InnoDB	Gcs	create index alter_log_test_index on t1(c1)	0
+truncate table mysql.alter_log;
+/*!99103 SET @@global.alter_query_log = OFF */;
+alter table t1 drop c2;
+select db, table_name, engine, row_format, sql_text, affected_rows from mysql.alter_log;
+db	table_name	engine	row_format	sql_text	affected_rows
+truncate table mysql.alter_log;
+delete from mysql.alter_log;
+ERROR HY000: You can't use locks with log tables.
+drop table t1;
+drop database alter_log_test_db;
+SET @@global.alter_query_log = @start_value;
+SELECT @@global.alter_query_log;
+@@global.alter_query_log
+0
