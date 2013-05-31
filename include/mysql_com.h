@@ -286,7 +286,7 @@ typedef struct st_vio Vio;
 #define MAX_BIGINT_WIDTH        20      /* Max width for a LONGLONG */
 #define MAX_CHAR_WIDTH		255	/* Max length for a CHAR colum */
 #define MAX_BLOB_WIDTH		16777216	/* Default width for blob */
-#define MAX_CLIENT_PROGRAM_NAME    1024		/* max client program name */
+#define MAX_CLIENT_PROGRAM_NAME    512  /* max client program name */
 
 typedef struct st_net {
 #if !defined(CHECK_EMBEDDED_DIFFERENCES) || !defined(EMBEDDED_LIBRARY)
