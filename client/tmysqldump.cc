@@ -652,7 +652,7 @@ static int init_dumping(char *, int init_func(char*));
 static int dump_databases(char **);
 static int dump_all_databases();
 static char *quote_name(const char *name, char *buff, my_bool force);
-char check_if_ignore_table(const char *table_name, char *table_type);
+char check_if_ignore_table(const char *db, const char *table_name, char *table_type);
 static char *primary_key_fields(const char *table_name);
 static my_bool get_view_structure(char *table, char* db);
 static my_bool dump_all_views_in_db(char *database);
@@ -1656,6 +1656,7 @@ static int connect_to_db(char *host, char *user,char *passwd)
     /* Don't switch charsets for 4.1 and earlier.  (bug#34192). */
     server_supports_switching_charsets= FALSE;
   } 
+
   /*
     As we're going to set SQL_MODE, it would be lost on reconnect, so we
     cannot reconnect.
@@ -2610,7 +2611,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
   DBUG_ENTER("get_table_structure");
   DBUG_PRINT("enter", ("db: %s  table: %s", db, table));
 
-  *ignore_flag= check_if_ignore_table(table, table_type); // table_type is output parameter
+  *ignore_flag= check_if_ignore_table(db, table, table_type); // table_type is output parameter
 
   delayed= opt_delayed;
   if (delayed && (*ignore_flag & IGNORE_INSERT_DELAYED))
@@ -5576,18 +5577,26 @@ static void print_value(FILE *file, MYSQL_RES  *result, MYSQL_ROW row,
     char (bit value)            See IGNORE_ values at top
 */
 
-char check_if_ignore_table(const char *table_name, char *table_type)
+char check_if_ignore_table(const char *db, const char *table_name, char *table_type)
 {
   char result= IGNORE_NONE;
-  char buff[FN_REFLEN+80], show_name_buff[FN_REFLEN];
+  char buff[FN_REFLEN + 1024], show_name_buff[FN_REFLEN];
   MYSQL_RES *res= NULL;
   MYSQL_ROW row;
   DBUG_ENTER("check_if_ignore_table");
 
   /* Check memory for quote_for_like() */
   DBUG_ASSERT(2*sizeof(table_name) < sizeof(show_name_buff));
-  my_snprintf(buff, sizeof(buff), "show table status like %s",
-              quote_for_like(table_name, show_name_buff));
+
+  if ( mysql_get_server_version(mysql) >= FIRST_INFORMATION_SCHEMA_VERSION )
+  {
+     my_snprintf(buff, sizeof(buff), "select table_name, engine from information_schema.tables where table_schema='%s' and table_name = '%s'", db, table_name);	
+  }
+  else 
+  {
+     my_snprintf(buff, sizeof(buff), "show table status like %s",
+          quote_for_like(table_name, show_name_buff));
+  }
   if (mysql_query_with_error_report(mysql, &res, buff))
   {
     if (mysql_errno(mysql) != ER_PARSE_ERROR)
@@ -7064,7 +7073,7 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
   DBUG_ENTER("get_table_structure");
   DBUG_PRINT("enter", ("db: %s  table: %s", db, table));
 
-  *ignore_flag= check_if_ignore_table(table, table_type);
+  *ignore_flag= check_if_ignore_table(db, table, table_type);
 
   delayed= opt_delayed;
   if (delayed && (*ignore_flag & IGNORE_INSERT_DELAYED))
