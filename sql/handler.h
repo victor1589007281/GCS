@@ -1317,8 +1317,8 @@ public:
 //     index_add_buffer(NULL),
 //     handler_ctx(NULL),
     handler_flags(0),
-    print_flag(0),
-    ignore(ignore_arg)
+    ignore(ignore_arg),
+    print_flag(0)
   {}
 
   ~Alter_inplace_info()
