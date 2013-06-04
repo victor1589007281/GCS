@@ -6,6 +6,8 @@
 
 #include "sqlparse.h"
 
+#include "sp_head.h"
+
 extern int parse_export;
 #define PARSE_RESULT_N_TABLE_ARR_INITED 5
 #define PARSE_RESULT_DEFAULT_DB_NAME "<unknow_db>"
@@ -127,6 +129,7 @@ parse_result_add_table(
     char*           table_name
 )
 {
+    int i;
     DBUG_ASSERT(db_name && table_name);
     DBUG_ASSERT(pr->n_tables <= pr->n_tables_alloced);
 
@@ -135,6 +138,14 @@ parse_result_add_table(
         sprintf(pr->err_msg, "%s", "too long db_name or table_name");
         return -1;
     }
+
+    for (i = 0; i < pr->n_tables; i++)
+    {
+        if (!strcmp(pr->table_arr[i].dbname, db_name) && !strcmp(pr->table_arr[i].tablename, table_name))
+            return 0;
+    }
+    
+
     //buffer is not enough
     if (pr->n_tables >= pr->n_tables_alloced)
     {
@@ -251,6 +262,35 @@ query_parse(char* query, parse_result_t* pr)
         }
 
     }
+
+    SELECT_LEX *sl= lex->all_selects_list;
+    for (; sl; sl= sl->next_select_in_list())
+    {
+        for (table = sl->table_list.first; table; table= table->next_global)
+        {
+            if (parse_result_add_table(pr, table->db, table->table_name))
+            {
+                return -1;
+            }
+        }
+    }
+
+    sp_head* sp = thd->lex->sphead;
+    if (sp)
+    {
+        TABLE_LIST* sp_tl = NULL;
+        TABLE_LIST** sp_tl_ptr = &sp_tl;
+        sp->add_used_tables_to_table_list(thd, &sp_tl_ptr, NULL);
+
+        for (table= sp_tl; table; table= table->next_global)
+        {
+            if (parse_result_add_table(pr, table->db, table->table_name))
+            {
+                return -1;
+            }
+        }
+    }
+    
 
     thd->end_statement();
     thd->cleanup_after_query();

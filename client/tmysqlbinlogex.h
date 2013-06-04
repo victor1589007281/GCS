@@ -20,12 +20,28 @@ public:
     PRINT_EVENT_INFO        print_info;
     FILE*                   result_file;
     FILE*                   tmp_file;
+    DYNAMIC_STRING          dnstr;
     Load_log_processor      load_processor;
     uint16                  binlog_version;
+    uint                    delimiter_len;
+    MYSQL                   mysql;
 
-    Worker_vm(uint tid) : thread_id(tid){}
+    ulong                   normal_entry_cnt;
+    ulong                   complex_entry_cnt; /* 执行跨表语句个数 */
+    ulong                   sync_entry_cnt;
+    ulong                   sleep_cnt;
+
+    Worker_vm(uint tid) : thread_id(tid), result_file(0), tmp_file(0),
+                          normal_entry_cnt(0), complex_entry_cnt(0), sync_entry_cnt(0), sleep_cnt(0) {}
     ~Worker_vm() {}
 
 };
+
+int
+binlogex_execute_sql(
+    Worker_vm*  vm,
+    char*       sql,
+    uint        len
+);
 
 #endif

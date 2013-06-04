@@ -720,7 +720,7 @@ Exit_status process_event(Worker_vm* vm, Log_event *ev,
   FILE *result_file;
 
   print_event_info = &vm->print_info;
-  result_file = vm->result_file;
+  result_file = (FILE*)&vm->dnstr;
 
   print_event_info->short_form= short_form;
 
@@ -761,8 +761,12 @@ Exit_status process_event(Worker_vm* vm, Log_event *ev,
       goto end;
     }
     if (!short_form)
-      fprintf(result_file, "# at %s\n",llstr(pos,ll_buff));
-
+    {
+      //fprintf(result_file, "# at %s\n",llstr(pos,ll_buff));
+      char buf[100];
+      snprintf(buf, sizeof(buf), "# at %s\n",llstr(pos,ll_buff)); 
+      dynstr_append(&vm->dnstr, buf);
+    }
     if (!opt_hexdump)
       print_event_info->hexdump_from= 0; /* Disabled */
     else
@@ -1254,6 +1258,60 @@ static void error(const char *format,...)
   va_end(args);
 }
 
+void
+print_timestamp(
+    FILE*  file) /*!< in: file where to print */
+{
+#ifdef __WIN__
+    SYSTEMTIME cal_tm;
+
+    GetLocalTime(&cal_tm);
+
+    fprintf(file,"%02d%02d%02d %2d:%02d:%02d",
+        (int)cal_tm.wYear % 100,
+        (int)cal_tm.wMonth,
+        (int)cal_tm.wDay,
+        (int)cal_tm.wHour,
+        (int)cal_tm.wMinute,
+        (int)cal_tm.wSecond);
+#else
+    struct tm  cal_tm;
+    struct tm* cal_tm_ptr;
+    time_t	   tm;
+
+    time(&tm);
+
+#ifdef HAVE_LOCALTIME_R
+    localtime_r(&tm, &cal_tm);
+    cal_tm_ptr = &cal_tm;
+#else
+    cal_tm_ptr = localtime(&tm);
+#endif
+    fprintf(file,"%02d%02d%02d %2d:%02d:%02d",
+        cal_tm_ptr->tm_year % 100,
+        cal_tm_ptr->tm_mon + 1,
+        cal_tm_ptr->tm_mday,
+        cal_tm_ptr->tm_hour,
+        cal_tm_ptr->tm_min,
+        cal_tm_ptr->tm_sec);
+#endif
+}
+
+static void error_vm(
+    Worker_vm   *vm,
+    const char  *format,
+    ...
+)
+{
+    va_list args;
+
+    print_timestamp(stderr);
+    fprintf(stderr, " [ERROR] Thread id:%u ", vm->thread_id);
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    fprintf(stderr, "\n");
+    va_end(args);
+}
 
 /**
   This function is used in log_event.cc to report errors.
@@ -2108,6 +2166,26 @@ static ulong start_timer(void)
 int
 test_remote_server_and_get_definition()
 {
+    MYSQL   m;
+
+    if (!mysql_init(&m))
+    {
+        error("mysql_init error");
+        return -1;
+    }
+    if (!mysql_real_connect(&m, remote_host, remote_user, remote_pass, 0, remote_port, remote_sock, 0))
+    {
+        error("Fail to connect remote server : %s", mysql_error(mysql));
+        return -1;
+    }
+
+    mysql_close(&m);
+
+    //TODO: get definition of views/trigger/
+
+    //not suppport, event, function contain DML
+
+
     return 0;
 }
 
@@ -2150,7 +2228,6 @@ int main(int argc, char** argv)
       //TODO
       //test connect to remote server, and get views trigger functions relations 
       err = -1;
-      fprintf(stderr, "Can't connect to remote server\n");
   }
 
   if (table_split)
@@ -2775,61 +2852,100 @@ binlogex_worker_thread_init(
 )
 {
     char file_name[1024] = {0};
-    char tmp_file_name[1024] = {0};
+    //char tmp_file_name[1024] = {0};
+    char buf[1024] = {0};
     int ret;
     int len;
 
-    snprintf(tmp_file_name, sizeof(tmp_file_name), "%s/tmp_%u.log", sql_files_output_dir, vm->thread_id);  
-    vm->tmp_file = my_fopen(tmp_file_name, O_WRONLY | O_BINARY, MYF(MY_WME));
+    //snprintf(tmp_file_name, sizeof(tmp_file_name), "%s/tmp_%u.log", sql_files_output_dir, vm->thread_id);  
+    //vm->tmp_file = my_fopen(tmp_file_name, O_WRONLY | O_BINARY, MYF(MY_WME));
 
-    len = snprintf(file_name, sizeof(file_name), "%s/thread_%u.sql", sql_files_output_dir, vm->thread_id);  
-    if (len == sizeof(file_name) - 1 || len < 0)
-    {
-        fprintf(stderr, "sql_files_output_dir too long\n");
-        return -1;
-    }
+    init_dynamic_string(&vm->dnstr, "", 1024*1024, 10*1024);
+    vm->print_info.body_cache.output_file_as_dynstring = TRUE;
+    vm->print_info.head_cache.output_file_as_dynstring = TRUE;
 
     if (write_to_file_only_flag)
     {
-        //TODO
+        len = snprintf(file_name, sizeof(file_name), "%s/thread_%u.sql", sql_files_output_dir, vm->thread_id);  
+        if (len == sizeof(file_name) - 1 || len < 0)
+        {
+            error_vm(vm, "sql_files_output_dir too long");
+            return -1;
+        }
         vm->result_file = my_fopen(file_name, O_WRONLY | O_BINARY, MYF(MY_WME));
+
+        if (!vm->result_file)
+        {
+            error_vm(vm, "Can't open file %s\n", file_name);
+            return -1;
+        }
     }
     else
     {
-        char mysql_cmd[1024] = {0};
-        char cmd[2048] = {0};
+        //len = snprintf(file_name, sizeof(file_name), "%s/thread_%u.err", sql_files_output_dir, vm->thread_id);  
+        //if (len == sizeof(file_name) - 1 || len < 0)
+        //{
+        //    fprintf(stderr, "sql_files_output_dir too long\n");
+        //    return -1;
+        //}
+        //vm->result_file = my_fopen(file_name, O_WRONLY | O_BINARY, MYF(MY_WME));
 
-        //TODO 
-        snprintf(mysql_cmd, sizeof(mysql_cmd), "%s -u%s %s%s -h%s -P%d %s > %s/mysql_%u.log 2>&1 ", 
-                    mysql_path, remote_user, 
-                    (!remote_pass || strlen(remote_pass) == 0) ? "" : "-p" , 
-                    remote_pass ? remote_pass : "",  
-                    remote_host, remote_port, 
-                    exit_when_error ? "" : "-f", 
-                    sql_files_output_dir, vm->thread_id); 
-#ifdef __WIN__
-        strcpy(cmd, mysql_cmd);
-#else
-        snprintf(cmd, sizeof(cmd), "tee %s |%s", file_name,mysql_cmd);
-#endif // __WIN__
+        if (!mysql_init(&vm->mysql))
+        {
+            error_vm(vm, "thread_id: %u, mysql_init error");
+            return -1;
+        }
 
-        vm->result_file = my_popen(cmd, "w");
+        /*
+        if (opt_plugin_dir && *opt_plugin_dir)
+            mysql_options(mysql, MYSQL_PLUGIN_DIR, opt_plugin_dir);
+
+        if (opt_default_auth && *opt_default_auth)
+            mysql_options(mysql, MYSQL_DEFAULT_AUTH, opt_default_auth);
+
+        if (opt_protocol)
+            mysql_options(mysql, MYSQL_OPT_PROTOCOL, (char*) &opt_protocol);
+#ifdef HAVE_SMEM
+        if (shared_memory_base_name)
+            mysql_options(mysql, MYSQL_SHARED_MEMORY_BASE_NAME,
+            shared_memory_base_name);
+#endif
+        */
+        if (!mysql_real_connect(&vm->mysql, remote_host, remote_user, remote_pass, 0, remote_port, remote_sock, 0))
+        {
+            error_vm(vm, "Failed on connect: %s", mysql_error(mysql));
+            return -1;
+        }
+        vm->mysql.reconnect= 1;
+//        char mysql_cmd[1024] = {0};
+//        char cmd[2048] = {0};
+//
+//        //TODO 
+//        snprintf(mysql_cmd, sizeof(mysql_cmd), "%s -u%s %s%s -h%s -P%d %s > %s/mysql_%u.log 2>&1 ", 
+//                    mysql_path, remote_user, 
+//                    (!remote_pass || strlen(remote_pass) == 0) ? "" : "-p" , 
+//                    remote_pass ? remote_pass : "",  
+//                    remote_host, remote_port, 
+//                    exit_when_error ? "" : "-f", 
+//                    sql_files_output_dir, vm->thread_id); 
+//#ifdef __WIN__
+//        strcpy(cmd, mysql_cmd);
+//#else
+//        snprintf(cmd, sizeof(cmd), "tee %s |%s", file_name,mysql_cmd);
+//#endif // __WIN__
+//
+//        vm->result_file = my_popen(cmd, "w");
     }
     
-    if (!vm->result_file)
-    {
-        fprintf(stderr, "[ERROR] Can't open file %s\n", file_name);
-        return -1;
-    }
 
-    ret = fprintf(vm->result_file,
+
+    ret = dynstr_append(&vm->dnstr,
         "/*!40019 SET @@session.max_insert_delayed_threads=0*/;\n");
     RET_IF_ERR(ret);
 
-
     if (disable_log_bin) 
     {
-        ret = fprintf(vm->result_file,
+        ret = dynstr_append(&vm->dnstr,
             "/*!32316 SET @OLD_SQL_LOG_BIN=@@SQL_LOG_BIN, SQL_LOG_BIN=0*/;\n");
         RET_IF_ERR(ret);
     }
@@ -2838,42 +2954,75 @@ binlogex_worker_thread_init(
     In mysqlbinlog|mysql, don't want mysql to be disconnected after each
     transaction (which would be the case with GLOBAL.COMPLETION_TYPE==2).
     */
-    ret = fprintf(vm->result_file,
+    ret = dynstr_append(&vm->dnstr,
         "/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,"
         "COMPLETION_TYPE=0*/;\n");
     RET_IF_ERR(ret);
 
     if (charset) 
     {
-        ret = fprintf(vm->result_file,
+        snprintf(buf, sizeof(buf),
             "\n/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;"
             "\n/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;"
             "\n/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;"  
             "\n/*!40101 SET NAMES %s */;\n", charset);
+        ret = dynstr_append(&vm->dnstr,buf);
         RET_IF_ERR(ret);
     }
-    ret = fprintf(vm->result_file, "DELIMITER /*!*/;\n");
-    RET_IF_ERR(ret);
-    
-    if (!vm->print_info.init_ok())
-          my_assert(0);
+
     /*
      Set safe delimiter, to dump things
      like CREATE PROCEDURE safely
     */
-    strmov(vm->print_info.delimiter, "/*!*/;");
+    strmov(vm->print_info.delimiter, ";");
+    vm->delimiter_len = strlen(vm->print_info.delimiter);
 
     vm->print_info.verbose= short_form ? 0 : verbose;
+ 
+    if (!vm->print_info.init_ok())
+          my_assert(0);
 
     if (vm->load_processor.init())
     {
-        fprintf(stderr, "[ERROR] load_prodessor init failed\n");
+        error_vm(vm, "load_prodessor init failed");
         return -1;
     }
     if (dirname_for_local_load)
         vm->load_processor.init_by_dir_name(dirname_for_local_load);
     else
         vm->load_processor.init_by_cur_dir();
+
+    if (write_to_file_only_flag)
+    {
+        /* No need to send to server */
+        ret = dynstr_append(&vm->dnstr, "DELIMITER /*!*/;\n");
+        RET_IF_ERR(ret);
+
+        len = fprintf(vm->result_file, vm->dnstr.str);
+        if (len < 0 || len != vm->dnstr.length)
+        {
+            error_vm(vm, "Write error: %d", len);
+            return -1;
+        }
+    }
+    else
+    {
+        //TODO
+        int ret = binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
+        if (ret && exit_when_error)
+        {
+            return -1;
+        }
+    }
+
+    /*
+     Set safe delimiter, to dump things
+     like CREATE PROCEDURE safely
+    */
+    strmov(vm->print_info.delimiter, "/*!*/;");
+    vm->delimiter_len = strlen(vm->print_info.delimiter);
+
+    dynstr_clear(&vm->dnstr);
 
     return 0;
 }
@@ -2887,40 +3036,68 @@ binlogex_worker_thread_deinit(
     vm->load_processor.destroy();
 
     strmov(vm->print_info.delimiter, ";");
+    vm->delimiter_len = strlen(vm->print_info.delimiter);
 
-    ret = fprintf(vm->result_file, "DELIMITER ;\n");
-    RET_IF_ERR(ret);
+    if (write_to_file_only_flag)
+    {
+        ret = dynstr_append(&vm->dnstr, "DELIMITER ;\n");
+        RET_IF_ERR(ret);
+    }
 
     /*
     Issue a ROLLBACK in case the last printed binlog was crashed and had half
     of transaction.
     */
-    ret = fprintf(vm->result_file,
+    ret = dynstr_append(&vm->dnstr,
         "# End of log file\nROLLBACK /* added by mysqlbinlog */;\n"
         "/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;\n");
     RET_IF_ERR(ret);
 
     if (disable_log_bin)
     {
-        ret = fprintf(vm->result_file, "/*!32316 SET SQL_LOG_BIN=@OLD_SQL_LOG_BIN*/;\n");
+        ret = dynstr_append(&vm->dnstr, "/*!32316 SET SQL_LOG_BIN=@OLD_SQL_LOG_BIN*/;\n");
         RET_IF_ERR(ret);
     }
     if (charset)
     {
-        ret = fprintf(vm->result_file,
+        ret = dynstr_append(&vm->dnstr,
             "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;\n"
             "/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;\n"
             "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;\n");
         RET_IF_ERR(ret);
     }
-   
+
     if (write_to_file_only_flag)
-        my_fclose(vm->result_file, MYF(0));
+    {
+        int len = fprintf(vm->result_file, vm->dnstr.str);
+        if (len < 0 || len != vm->dnstr.length)
+        {
+            error_vm(vm, "Write error: %d", len);
+            return -1;
+        }
+    }
     else
-        my_pclose(vm->result_file);
+    {
+        binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
+        //TODO
+    }
+    dynstr_clear(&vm->dnstr);
+   
+    if (vm->result_file)
+        my_fclose(vm->result_file, MYF(0));
 
-    my_fclose(vm->tmp_file, MYF(0));
+    if (vm->tmp_file)
+        my_fclose(vm->tmp_file, MYF(0));
 
+    if (!write_to_file_only_flag)
+        mysql_close(&vm->mysql);
+
+    fprintf(stdout, "\nThread id %u normal stop\n\
+Normal event count "ULONGPF"\n\
+Complex event count "ULONGPF"\n\
+Sync event count "ULONGPF"\n\
+Max binlog event length "ULONGPF"\n\
+Sleep time "ULONGPF"\n\n", vm->thread_id, vm->normal_entry_cnt, vm->complex_entry_cnt, vm->sync_entry_cnt, vm->dnstr.max_length, vm->sleep_cnt);
 
     return 0;
 }
@@ -2936,24 +3113,38 @@ binlogex_worker_wait(
 {
     mysql_event_t event;
 
-    if (tsk_entry && tsk_entry->type == TASK_ENTRY_TYPE_SYNC)
+    if (write_to_file_only_flag)
     {
-        fprintf(vm->result_file, "# [tmysqlbinlogex] Thread %u is waiting for thread %u(W[%u][%u]), logfile %s offset "ULONGPF"\n", 
+        char       buf[1024];
+        int        len;
+        if (tsk_entry && tsk_entry->type == TASK_ENTRY_TYPE_SYNC)
+        {
+            snprintf(buf, sizeof(buf), "# [tmysqlbinlogex] Thread %u is waiting for thread %u(W[%u][%u]), logfile %s offset "ULONGPF"\n", 
                 waiting_thread_id, waitfor_thread_id, 
                 waiting_thread_id, waitfor_thread_id, 
                 tsk_entry->ui.sync.log_file, (ulong)tsk_entry->ui.sync.off);
-    }
-    else
-    {
-        fprintf(vm->result_file, "# [tmysqlbinlogex] Thread %u is waiting for thread %u(W[%u][%u])\n", 
-            waiting_thread_id, waitfor_thread_id, 
-            waiting_thread_id, waitfor_thread_id);
-    }
-    
+        }
+        else
+        {
+            snprintf(buf, sizeof(buf), "# [tmysqlbinlogex] Thread %u is waiting for thread %u(W[%u][%u])\n", 
+                waiting_thread_id, waitfor_thread_id, 
+                waiting_thread_id, waitfor_thread_id);
+        }
 
-    if (write_to_file_only_flag)
-    {
-        //return;
+        if (dynstr_append(&vm->dnstr, buf))
+            my_assert(0);
+
+        len = fprintf(vm->result_file, vm->dnstr.str);
+        if (len < 0 || len != vm->dnstr.length)
+        {
+            fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
+            my_assert(0);
+        }
+
+        dynstr_clear(&vm->dnstr);
+        //vm->dnstr.length = 0; 
+
+        return;
     }
 
     /* 获取合适的event */
@@ -2989,23 +3180,38 @@ binlogex_worker_signal(
 {
     mysql_event_t event;
 
-    if (tsk_entry && tsk_entry->type == TASK_ENTRY_TYPE_SYNC)
-    {
-        fprintf(vm->result_file, "# [tmysqlbinlogex] Thread %u waked up thread %u(S[%u][%u]), logfile %s offset "ULONGPF"\n", 
-            signal_thread_id, waiting_thread_id, 
-            waiting_thread_id, signal_thread_id,
-            tsk_entry->ui.sync.log_file, (ulong)tsk_entry->ui.sync.off);
-    }
-    else
-    {
-        fprintf(vm->result_file, "# [tmysqlbinlogex] Thread %u waked up thread %u(S[%u][%u])\n", 
-            signal_thread_id, waiting_thread_id,
-            waiting_thread_id, signal_thread_id);
-    }
-
     if (write_to_file_only_flag)
     {
-        //return;
+        char buf[1024];
+        int len;
+
+        if (tsk_entry && tsk_entry->type == TASK_ENTRY_TYPE_SYNC)
+        {
+            snprintf(buf, sizeof(buf), "# [tmysqlbinlogex] Thread %u waked up thread %u(S[%u][%u]), logfile %s offset "ULONGPF"\n", 
+                signal_thread_id, waiting_thread_id, 
+                waiting_thread_id, signal_thread_id,
+                tsk_entry->ui.sync.log_file, (ulong)tsk_entry->ui.sync.off);
+        }
+        else
+        {
+            snprintf(buf, sizeof(buf), "# [tmysqlbinlogex] Thread %u waked up thread %u(S[%u][%u])\n", 
+                signal_thread_id, waiting_thread_id,
+                waiting_thread_id, signal_thread_id);
+        }
+
+        if (dynstr_append(&vm->dnstr, buf))
+            my_assert(0);
+
+        len = fprintf(vm->result_file, vm->dnstr.str);
+        if (len < 0 || len != vm->dnstr.length)
+        {
+            fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
+            my_assert(0);
+        }
+        dynstr_clear(&vm->dnstr);
+
+        //TODO
+        return;
     }
 
     /* 获取合适的event */
@@ -3048,7 +3254,13 @@ binlogex_worker_execute_task_entry(
         Log_event*  ev;
         ev = tsk_entry->ui.event.ev;
 
+        vm->normal_entry_cnt++;
+
         my_assert(tsk_entry->thread_id == tsk_entry->ui.event.dst_thread_id);
+
+        /* 跨表语句是由该线程执行的 */
+        if (tsk_entry->ui.event.n_thread_id > 1 && tsk_entry->ui.event.dst_thread_id == tsk_entry->thread_id)
+            vm->complex_entry_cnt++;
 
         /* 等待其他线程该任务以前的任务结束 */
         for (i = 0; i < tsk_entry->ui.event.n_thread_id; i++)
@@ -3057,21 +3269,48 @@ binlogex_worker_execute_task_entry(
             waitfor_thread_id = tsk_entry->ui.event.thread_id_arr[i];
 
             if (waitfor_thread_id != tsk_entry->thread_id)
+            {
                 binlogex_worker_wait(vm, tsk_entry, tsk_entry->thread_id, waitfor_thread_id); 
+            }
         }
 
         /* 执行任务 */
         if (process_event(vm, ev, tsk_entry->ui.event.off, tsk_entry->ui.event.log_file) != OK_CONTINUE)
         {
             //my_assert(0);
-            fprintf(stderr, "[ERROR] Thread %u execute binlog error at %s pos "ULONGPF"\n", vm->thread_id, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off);
+            error_vm(vm, "execute binlog error at %s pos "ULONGPF"\n", tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off);
             code = WORKER_STATUS_ERROR;
         }
 
         //fprintf(vm->tmp_file, "%s %u before flush %u ", tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off, start_timer());
 
         /* SQL命令仍缓存在buffer中，fflush使其马上执行，以event为单位 */
-        fflush(vm->result_file);
+        //fflush(vm->result_file);
+        if (write_to_file_only_flag)
+        {
+            int len = fprintf(vm->result_file, vm->dnstr.str);
+            if (len < 0 || len != vm->dnstr.length)
+            {
+                error_vm(vm, "Write error: %d", len);
+                code = WORKER_STATUS_ERROR;
+            }
+        }
+        else
+        {
+            //TODO
+            int ret = binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
+
+            if (ret)
+            {
+                error_vm(vm, "when execute sql %s at binlog %s offset "ULONGPF"\n", vm->dnstr.str, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off);
+
+                if (exit_when_error)
+                    code = WORKER_STATUS_ERROR;
+            }
+            
+        }
+        
+        dynstr_clear(&vm->dnstr);
 
         //fprintf(vm->tmp_file, "after flush %u\n", start_timer());
 
@@ -3091,6 +3330,7 @@ binlogex_worker_execute_task_entry(
     {
         uint        wait_thread_id;
         wait_thread_id = tsk_entry->ui.sync.wait_thread_id;
+        vm->sync_entry_cnt++;
         
         /* 唤醒等待的执行任务线程 */
         binlogex_worker_signal(vm, tsk_entry, tsk_entry->thread_id, wait_thread_id);
@@ -3110,14 +3350,37 @@ binlogex_worker_execute_task_entry(
             //fprintf(vm->result_file, "'%s\n", vm->print_info.delimiter);
         }
 
-        if ((copy_event_cache_to_file_and_reinit(&vm->print_info.head_cache, vm->result_file) ||
-             copy_event_cache_to_file_and_reinit(&vm->print_info.body_cache, vm->result_file)))
+        if ((copy_event_cache_to_file_and_reinit(&vm->print_info.head_cache, (FILE*)&vm->dnstr) ||
+             copy_event_cache_to_file_and_reinit(&vm->print_info.body_cache, (FILE*)&vm->dnstr)))
             code = WORKER_STATUS_ERROR;
 
-        fprintf(vm->result_file, "# [tmysqlbinlogex] TASK_ENTRY_TYPE_ROW_STMT_END\n");
+        dynstr_append(&vm->dnstr, "# [tmysqlbinlogex] TASK_ENTRY_TYPE_ROW_STMT_END\n");
 
-        /* SQL命令仍缓存在buffer中，fflush使其马上执行，以event为单位 */
-        fflush(vm->result_file);
+        if (write_to_file_only_flag)
+        {
+            int len;
+
+            len = fprintf(vm->result_file, vm->dnstr.str);
+            if (len < 0 || len != vm->dnstr.length)
+            {
+                fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
+                code = WORKER_STATUS_ERROR;
+            }
+        }
+        else
+        {
+            //TODO
+            int ret = binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
+
+            if (ret)
+            {
+                error_vm(vm, "when execute sql %s\n", vm->dnstr.str);
+
+                if (exit_when_error)
+                    code = WORKER_STATUS_ERROR;
+            }
+        }
+        dynstr_clear(&vm->dnstr);
 
         break;
     }
@@ -3149,6 +3412,7 @@ binlogex_worker_thread(void *arg)
     Worker_vm*  vm = (Worker_vm*)arg;
     Worker_status   status;
     my_bool     is_over = FALSE;
+    my_bool     is_error = FALSE;
 
     my_thread_init();
     if(binlogex_worker_thread_init(vm))
@@ -3164,11 +3428,13 @@ binlogex_worker_thread(void *arg)
         /* 获得任务 */
         while (MQ_ARRAY[thread_id].get_message(msg))
         {
-            if (++n_retry % 10 == 0)
-                fprintf(stderr, "Worker thread %u wait count %u, each wait sleep 1 ms\n", thread_id, n_retry);
+            //if (++n_retry % 10 == 0)
+                //fprintf(stderr, "Worker thread %u wait count %u, each wait sleep 1 ms\n", thread_id, n_retry);
 
             //my_sleep(2000000);
+            //TODO
             my_sleep(1000);
+            vm->sleep_cnt++;
         } 
 
         my_assert(msg.Msg != INVALID_MESSAGE);
@@ -3179,7 +3445,7 @@ binlogex_worker_thread(void *arg)
         switch (status)
         {
         case WORKER_STATUS_ERROR:
-            my_assert(0);
+            is_error = TRUE; 
             break;
         case WORKER_STATUS_EXIT:
             is_over = TRUE;
@@ -3188,9 +3454,12 @@ binlogex_worker_thread(void *arg)
             break;
         }
 
-        if (is_over)
+        if (is_over || is_error)
             break;
     }
+
+    if (is_error)
+        error_vm(vm, "something error cause to exit, exist_when_error:%s", exit_when_error ? "TRUE" : "FALSE");
 
     binlogex_worker_thread_deinit(vm);
     my_thread_end();
@@ -3471,6 +3740,9 @@ Exit_status binlogex_process_event(Log_event *ev,
             {
                 // 可能库级操作！阻塞所有线程
                 // 如 drop database d1;
+
+                fprintf(stdout, "DB Level operation: %s in %s:"ULONGPF"\n", query_ev->query, logname, (ulong)pos);
+
                 for (i = 0; i < concurrency; ++i)
                 {
                     binlogex_task_entry_event_add_thread_id(tsk_entry, i);
@@ -3975,6 +4247,92 @@ end:
   DBUG_RETURN(retval);
 }
 
+int
+binlogex_execute_sql(
+    Worker_vm*  vm,
+    char*       sql,
+    uint        len
+)
+{
+    char* pos, *start;
+    int ret;
+    MYSQL_RES* res;
+    pos = sql;
 
+    start = pos;
+    while (*pos)
+    {
+        if (is_prefix(pos, vm->print_info.delimiter))
+        {
+            /* 总是接着\n，这种情况没有考虑SQL中包含delimiter的情况，暂不处理 TODO */
+            my_assert(pos[vm->delimiter_len] == '\n');
+
+
+            /* like com_charset, this is a mysql command */
+            if (is_prefix(start, "/*!\\C "))
+            {
+                /* 目前binlog输出总是 */
+                /*!\C gbk */
+                char charset_name[256] = {0};
+                char* end = start + 6; /* strlen("/*!\\C ") */
+                CHARSET_INFO* new_cs;
+                
+                for (; end < pos; end++)
+                {
+                    if (*end == ' ')
+                        break;
+                }
+                my_assert(end < pos);
+                strnmov(charset_name, start + 6, end - start - 6);
+
+                new_cs= get_charset_by_csname(charset_name, MY_CS_PRIMARY, MYF(MY_WME));
+                if (new_cs)
+                {
+                    charset_info= new_cs;
+                    mysql_set_character_set(&vm->mysql, charset_info->csname);
+                }
+            }
+            else
+            {
+                if (ret = mysql_real_query(&vm->mysql, start, pos - start))
+                {
+                    error_vm(vm, "Error %d:%s", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
+                }
+
+                if (ret && exit_when_error)
+                    goto exit;
+
+                res = mysql_store_result(&vm->mysql);
+                if (res)
+                {
+                    mysql_free_result(res);
+                }
+                else
+                {
+                    if (mysql_field_count(&vm->mysql) == 0)
+                    {
+                        //mysql_affected_rows(&vm->mysql);
+                    }
+                    else
+                    {
+                        error_vm(vm, "Error %d:%s, could not retrieve result set", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
+                    }
+                }
+            }
+            
+            // the last + 1 for \n
+            start = pos += vm->delimiter_len + 1;
+        }
+        else
+            pos++;
+    }
+
+    /* 语句正常结束 */
+    my_assert(start == pos);
+
+exit:
+    return ret;
+
+}
 
 
