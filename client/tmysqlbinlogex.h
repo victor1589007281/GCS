@@ -30,9 +30,11 @@ public:
     ulong                   complex_entry_cnt; /* 执行跨表语句个数 */
     ulong                   sync_entry_cnt;
     ulong                   sleep_cnt;
+    ulong                   sync_wait_time;
+    ulong                   sync_signal_time;
 
     Worker_vm(uint tid) : thread_id(tid), result_file(0), tmp_file(0),
-                          normal_entry_cnt(0), complex_entry_cnt(0), sync_entry_cnt(0), sleep_cnt(0) {}
+                          normal_entry_cnt(0), complex_entry_cnt(0), sync_entry_cnt(0), sleep_cnt(0), sync_wait_time(0), sync_signal_time(0) {}
     ~Worker_vm() {}
 
 };

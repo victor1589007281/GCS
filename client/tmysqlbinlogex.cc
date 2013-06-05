@@ -48,6 +48,16 @@
 #endif // _DEBUG
 #include "mysql_event.h"
 
+#if defined(__WIN__)
+#include <time.h>
+#else
+#include <sys/times.h>
+#ifdef _SC_CLK_TCK				// For mit-pthreads
+#undef CLOCKS_PER_SEC
+#define CLOCKS_PER_SEC (sysconf(_SC_CLK_TCK))
+#endif
+#endif
+
 #define CLIENT_CAPABILITIES	(CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_LOCAL_FILES)
 
 char server_version[SERVER_VERSION_LENGTH];
@@ -2311,7 +2321,7 @@ int main(int argc, char** argv)
 
   binlogex_wait_all_worker_thread_exit();
 
-  fprintf(stdout, "Total use %f sec\n", (float)(start_timer() - start) / 1000);
+  fprintf(stdout, "Total use %f sec\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
 
   /*
     Issue a ROLLBACK in case the last printed binlog was crashed and had half
@@ -3095,9 +3105,11 @@ binlogex_worker_thread_deinit(
     fprintf(stdout, "\nThread id %u normal stop\n\
 Normal event count "ULONGPF"\n\
 Complex event count "ULONGPF"\n\
-Sync event count "ULONGPF"\n\
+Sync event count "ULONGPF", wait_time %f, signal time %f\n\
 Max binlog event length "ULONGPF"\n\
-Sleep time "ULONGPF"\n\n", vm->thread_id, vm->normal_entry_cnt, vm->complex_entry_cnt, vm->sync_entry_cnt, vm->dnstr.max_length, vm->sleep_cnt);
+Sleep time "ULONGPF"\n\n", vm->thread_id, vm->normal_entry_cnt, vm->complex_entry_cnt, 
+                        vm->sync_entry_cnt, (float)vm->sync_wait_time / CLOCKS_PER_SEC, (float)vm->sync_signal_time / CLOCKS_PER_SEC, 
+                        vm->dnstr.max_length, vm->sleep_cnt);
 
     return 0;
 }
@@ -3112,6 +3124,7 @@ binlogex_worker_wait(
 )
 {
     mysql_event_t event;
+    ulong start_time;
 
     if (write_to_file_only_flag)
     {
@@ -3147,6 +3160,7 @@ binlogex_worker_wait(
         return;
     }
 
+    start_time = start_timer();
     /* 获取合适的event */
     event = GET_EVENT(waiting_thread_id, waitfor_thread_id);
     if (event == NULL)
@@ -3167,6 +3181,8 @@ binlogex_worker_wait(
     mysql_event_wait(event);
 
     mysql_event_reset(event);
+
+    vm->sync_wait_time += start_timer() - start_time;
 }
 
 /* singal_tread_id 唤醒 waiting_thread_id */
@@ -3179,6 +3195,7 @@ binlogex_worker_signal(
 )
 {
     mysql_event_t event;
+    ulong start_time;
 
     if (write_to_file_only_flag)
     {
@@ -3214,6 +3231,7 @@ binlogex_worker_signal(
         return;
     }
 
+    start_time = start_timer();
     /* 获取合适的event */
     event = GET_EVENT(waiting_thread_id, signal_thread_id);
     if (event == NULL)
@@ -3234,6 +3252,7 @@ binlogex_worker_signal(
 
     mysql_event_set(event);
 
+    vm->sync_signal_time += start_timer() - start_time;
 }
 
 Worker_status
@@ -4305,10 +4324,9 @@ new_line:
             }
             else
             {
-                if (ret = mysql_real_query(&vm->mysql, start, pos - start))
-                {
+                ret = mysql_real_query(&vm->mysql, start, pos - start);
+                if (ret)
                     error_vm(vm, "Error %d:%s", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
-                }
 
                 if (ret && exit_when_error)
                     goto exit;
