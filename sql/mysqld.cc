@@ -8066,6 +8066,8 @@ my_init_for_sqlparse()
         }
     }
 
+    sys_var_init();
+
     // init charset
     get_charset_number("utf8", MY_CS_PRIMARY);
     global_system_variables.time_zone= my_tz_SYSTEM;
@@ -8103,6 +8105,8 @@ my_end_for_sqlparse()
     cleanup_errmsgs();
 	// charset ect.
     my_once_free();
+
+    sys_var_end();
 
     // set cleanup()
     free_tmpdir(&mysql_tmpdir_list);

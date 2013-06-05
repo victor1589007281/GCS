@@ -1322,7 +1322,7 @@ int plugin_init(int *argc, char **argv, int flags)
         tmp.load_option= PLUGIN_FORCE;
 
       free_root(&tmp_root, MYF(MY_MARK_BLOCKS_FREE));
-      if (!parse_export && test_plugin_options(&tmp_root, &tmp, argc, argv))
+      if (test_plugin_options(&tmp_root, &tmp, argc, argv))
         tmp.state= PLUGIN_IS_DISABLED;
       else
         tmp.state= PLUGIN_IS_UNINITIALIZED;
@@ -3567,15 +3567,21 @@ static int test_plugin_options(MEM_ROOT *tmp_root, struct st_plugin_int *tmp,
         tmp->load_option != PLUGIN_FORCE_PLUS_PERMANENT)
       opts[0].def_value= opts[1].def_value= plugin_load_option;
 
-    error= handle_options(argc, &argv, opts, NULL);
-    (*argc)++; /* add back one for the program name */
-
-    if (error)
+    /* 语法分析模块，不处理参数 */
+    if (!parse_export)
     {
-       sql_print_error("Parsing options for plugin '%s' failed.",
-                       tmp->name.str);
-       goto err;
+        error= handle_options(argc, &argv, opts, NULL);
+        (*argc)++; /* add back one for the program name */
+
+        if (error)
+        {
+            sql_print_error("Parsing options for plugin '%s' failed.",
+                tmp->name.str);
+            goto err;
+        }
     }
+
+
     /*
      Set plugin loading policy from option value. First element in the option
      list is always the <plugin name> option value.

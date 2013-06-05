@@ -118,7 +118,7 @@ static char* remote_sock= 0;
 static char* table_split = 0;
 static my_bool exit_when_error = FALSE;
 static char* sql_files_output_dir = 0; 
-static char* mysql_path = "mysql";
+//static char* mysql_path = "mysql";
 static my_bool write_to_file_only_flag = FALSE;
 
 /**
@@ -1216,9 +1216,9 @@ that may lead to an endless loop.",
    "Used to reserve file descriptors for use by this program.",
    &open_files_limit, &open_files_limit, 0, GET_ULONG,
    REQUIRED_ARG, MY_NFILE, 8, OS_FILE_LIMIT, 0, 1, 0},
-  {"with-mysql", OPT_WITH_MYSQL, "mysql path",
+  /*{"with-mysql", OPT_WITH_MYSQL, "mysql path",
    &mysql_path, &mysql_path, 0,
-   GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+   GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},*/
   {"write-to-file-only", OPT_WRITE_TO_FILE_ONLY, "Only write to file in --sql-files-output-dir, but don't execute. ",
    &write_to_file_only_flag, &write_to_file_only_flag, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0,
    0, 0},
@@ -2999,7 +2999,7 @@ binlogex_worker_thread_init(
         RET_IF_ERR(ret);
 
         len = fprintf(vm->result_file, vm->dnstr.str);
-        if (len < 0 || len != vm->dnstr.length)
+        if (len < 0 || (size_t)len != vm->dnstr.length)
         {
             error_vm(vm, "Write error: %d", len);
             return -1;
@@ -3070,7 +3070,7 @@ binlogex_worker_thread_deinit(
     if (write_to_file_only_flag)
     {
         int len = fprintf(vm->result_file, vm->dnstr.str);
-        if (len < 0 || len != vm->dnstr.length)
+        if (len < 0 || (size_t)len != vm->dnstr.length)
         {
             error_vm(vm, "Write error: %d", len);
             return -1;
@@ -3135,7 +3135,7 @@ binlogex_worker_wait(
             my_assert(0);
 
         len = fprintf(vm->result_file, vm->dnstr.str);
-        if (len < 0 || len != vm->dnstr.length)
+        if (len < 0 || (size_t)len != vm->dnstr.length)
         {
             fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
@@ -3203,7 +3203,7 @@ binlogex_worker_signal(
             my_assert(0);
 
         len = fprintf(vm->result_file, vm->dnstr.str);
-        if (len < 0 || len != vm->dnstr.length)
+        if (len < 0 || (size_t)len != vm->dnstr.length)
         {
             fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
@@ -3289,7 +3289,7 @@ binlogex_worker_execute_task_entry(
         if (write_to_file_only_flag)
         {
             int len = fprintf(vm->result_file, vm->dnstr.str);
-            if (len < 0 || len != vm->dnstr.length)
+            if (len < 0 || (size_t)len != vm->dnstr.length)
             {
                 error_vm(vm, "Write error: %d", len);
                 code = WORKER_STATUS_ERROR;
@@ -3354,14 +3354,15 @@ binlogex_worker_execute_task_entry(
              copy_event_cache_to_file_and_reinit(&vm->print_info.body_cache, (FILE*)&vm->dnstr)))
             code = WORKER_STATUS_ERROR;
 
-        dynstr_append(&vm->dnstr, "# [tmysqlbinlogex] TASK_ENTRY_TYPE_ROW_STMT_END\n");
+        if (write_to_file_only_flag)
+            dynstr_append(&vm->dnstr, "# [tmysqlbinlogex] TASK_ENTRY_TYPE_ROW_STMT_END\n");
 
         if (write_to_file_only_flag)
         {
             int len;
 
             len = fprintf(vm->result_file, vm->dnstr.str);
-            if (len < 0 || len != vm->dnstr.length)
+            if (len < 0 || (size_t)len != vm->dnstr.length)
             {
                 fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
                 code = WORKER_STATUS_ERROR;
@@ -3407,7 +3408,7 @@ binlogex_worker_thread(void *arg)
 {
     uint thread_id =0;
     Message msg;
-    uint    n_retry = 0;
+//    uint    n_retry = 0;
     task_entry_t*   tsk_entry;
     Worker_vm*  vm = (Worker_vm*)arg;
     Worker_status   status;
@@ -3503,8 +3504,6 @@ binlogex_init()
     my_init_dynamic_array(&global_session_event_array, sizeof(Log_event*), 16, 16);
     my_init_dynamic_array(&global_load_event_array, sizeof(Log_event*), 16, 16);
     my_init_dynamic_array(&global_table_map_array, sizeof(table_map_ex_t), 16, 16);
-
-    concurrency = 4;
 
     global_thread_tmap_flag_array = (uint*)calloc(concurrency, sizeof(uint));
 
@@ -4255,18 +4254,30 @@ binlogex_execute_sql(
 )
 {
     char* pos, *start;
-    int ret;
+    int ret = 0;
     MYSQL_RES* res;
     pos = sql;
 
+new_line:
+    /* skip comment （such as table_map event only has coment string) */
+    if (pos && *pos == '#')
+    {
+        while(*pos)
+        {
+            if (*pos++ == '\n')
+                break;
+        }
+
+        goto new_line;
+    }
+
     start = pos;
-    while (*pos)
+    while (pos && *pos)
     {
         if (is_prefix(pos, vm->print_info.delimiter))
         {
             /* 总是接着\n，这种情况没有考虑SQL中包含delimiter的情况，暂不处理 TODO */
             my_assert(pos[vm->delimiter_len] == '\n');
-
 
             /* like com_charset, this is a mysql command */
             if (is_prefix(start, "/*!\\C "))
