@@ -102,6 +102,12 @@ my_bool my_hash_check(HASH *hash); /* Only in debug library */
 #define my_hash_init_opt(A,B,C,D,E,F,G,H) \
           (!my_hash_inited(A) && _my_hash_init(A,0,B,C,D,E,F,G,H))
 
+
+/* means all hash_data do something */
+typedef void (*my_hash_delegate_func)(uchar * hash_data, void* maybe_unused_arg);
+void
+my_hash_delegate(HASH * hash, my_hash_delegate_func func, void* func_args);
+
 #ifdef	__cplusplus
 }
 #endif

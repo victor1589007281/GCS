@@ -2173,21 +2173,420 @@ static ulong start_timer(void)
 #endif
 }
 
+int 
+get_views_tables(
+    MYSQL* mysql 
+)
+{
+    char query[1024];
+    MYSQL_ROW row;
+    MYSQL_RES* rs;
+    uint i;
+
+    /* 获得所有视图名字 */
+    if (mysql_query(mysql, "select table_schema,table_name from information_schema.views"))
+    {
+        error("select error on information_schema.views, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        return -1;
+    }
+
+    rs= mysql_store_result(mysql);
+    if (!rs)
+    {
+        error("store result error on information_schema.views");
+        return -1;
+    }
+
+    while ((row = mysql_fetch_row(rs)))
+    {
+        /* 获得单个视图定义 */
+        snprintf(query, sizeof(query), "show create table `%s`.`%s`", row[0], row[1]);
+
+        if (mysql_query(mysql, query))
+        {
+            error("show create table `%s`.`%s` error, %u:%s", row[0], row[1], mysql_errno(mysql), mysql_error(mysql));
+            return -1;
+        }
+
+        MYSQL_RES *view_rs = mysql_store_result(mysql);
+        MYSQL_ROW r = mysql_fetch_row(view_rs);
+        my_assert(r);
+
+        // 视图定义：view_rs[1];
+        parse_result_init_db(&parse_result, (char*)row[0]);
+        if (query_parse(r[1], &parse_result))
+        {
+            error("%s syntax error %s", view_rs[1], parse_result.err_msg);
+
+            return -1;
+        }
+
+        for (i = 0; i < parse_result.n_tables; i++)
+        {
+            binlogex_add_to_hash_tab(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, global_tables_pairs_num);
+        }
+        
+        mysql_free_result(view_rs);
+        ++global_tables_pairs_num;
+    }
+
+    mysql_free_result(rs);
+
+    return 0;
+}
+
+int 
+get_procedures_tables(
+    MYSQL* mysql 
+)
+{
+    char query[1024];
+    MYSQL_ROW row;
+    MYSQL_RES* rs;
+    uint i;
+
+    /* 获得所有存储过程名字 */
+    if (mysql_query(mysql, "show procedure status"))
+    {
+        error("error on show procedure status, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        return -1;
+    }
+
+    rs= mysql_store_result(mysql);
+    if (!rs)
+    {
+        error("store result error on show procedure status");
+        return -1;
+    }
+
+    while ((row = mysql_fetch_row(rs)))
+    {
+        /* 获得单个存储过程定义 */
+        snprintf(query, sizeof(query), "show create procedure `%s`.`%s`", row[0], row[1]);
+
+        if (mysql_query(mysql, query))
+        {
+            error("show create procedure `%s`.`%s` error, %u:%s", row[0], row[1], mysql_errno(mysql), mysql_error(mysql));
+            goto err;
+        }
+
+        MYSQL_RES *proc_rs = mysql_store_result(mysql);
+        MYSQL_ROW r = mysql_fetch_row(proc_rs);
+        my_assert(r);
+
+        parse_result_init_db(&parse_result, (char*)row[0]);
+        if (query_parse(r[2], &parse_result))
+        {
+            error("%s syntax error %s", proc_rs[1], parse_result.err_msg);
+
+            mysql_free_result(proc_rs);
+            goto err;
+        }
+
+        //TODO 
+        if (strstr(strlwr(r[2]), "call "))
+        {
+            mysql_free_result(proc_rs);
+            error("Procedure %s.%s contain call procedures %s", row[0], row[1], r[2]);
+            goto err;
+        }
+
+        for (i = 0; i < parse_result.n_tables; i++)
+        {
+            binlogex_add_to_hash_tab(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, global_tables_pairs_num);
+        }
+
+        mysql_free_result(proc_rs);
+        global_tables_pairs_num++;
+    }
+
+    mysql_free_result(rs);
+
+    return 0;
+
+err:
+    if (rs)
+        mysql_free_result(rs);
+    
+    return -1;
+}
+
+int 
+get_functions_tables(
+    MYSQL* mysql 
+)
+{
+    char query[1024];
+    MYSQL_ROW row;
+    MYSQL_RES* rs = NULL;
+
+    /* 获得所有存储过程名字 */
+    if (mysql_query(mysql, "show function status"))
+    {
+        error("error on show function status, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        return -1;
+    }
+
+    rs= mysql_store_result(mysql);
+    if (!rs)
+    {
+        error("store result error on show function status");
+        return -1;
+    }
+
+    while ((row = mysql_fetch_row(rs)))
+    {
+        /* 获得单个存储过程定义 */
+        snprintf(query, sizeof(query), "show create function `%s`.`%s`", row[0], row[1]);
+
+        if (mysql_query(mysql, query))
+        {
+            error("show create function `%s`.`%s` error, %u:%s", row[0], row[1], mysql_errno(mysql), mysql_error(mysql));
+            goto err;
+        }
+
+        MYSQL_RES *proc_rs = mysql_store_result(mysql);
+        MYSQL_ROW r = mysql_fetch_row(proc_rs);
+        my_assert(r);
+
+        parse_result_init_db(&parse_result, (char*)row[0]);
+        if (query_parse(r[2], &parse_result))
+        {
+            error("%s syntax error %s", proc_rs[1], parse_result.err_msg);
+            mysql_free_result(proc_rs);
+            goto err;
+        }
+
+        if (parse_result.n_tables)
+        {
+            mysql_free_result(proc_rs);
+            error("Function %s.%s contain table operations", row[0], row[1]);
+            goto err;
+        }
+
+        if (strstr(strlwr(r[2]), "call "))
+        {
+            mysql_free_result(proc_rs);
+            error("Function %s.%s contain call procedures %s", row[0], row[1], r[2]);
+            goto err;
+        }
+
+        mysql_free_result(proc_rs);
+    }
+
+    mysql_free_result(rs);
+    return 0;
+
+err:
+    if (rs)
+        mysql_free_result(rs);
+
+    return -1;
+    
+}
+
+int get_trigger_tables(
+    MYSQL* mysql
+)
+{
+    char query[1024];
+    MYSQL_ROW row;
+    MYSQL_RES* rs = NULL;
+    uint i;
+    bool support_show_flag = true;
+    DYNAMIC_STRING dynstr;
+    char quoted_table_name_buf[NAME_LEN * 4 + 200];
+
+    /* 获得所有视图名字 */
+    if (mysql_query(mysql, "select TRIGGER_SCHEMA,TRIGGER_NAME,EVENT_MANIPULATION,EVENT_OBJECT_SCHEMA,EVENT_OBJECT_TABLE,ACTION_STATEMENT,ACTION_TIMING,CREATED,SQL_MODE,DEFINER from information_schema.triggers"))
+    {
+        error("select error on information_schema.triggers, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        return -1;
+    }
+
+    init_dynamic_string(&dynstr, "", 2*1024, 1024);
+
+    rs= mysql_store_result(mysql);
+    if (!rs)
+    {
+        error("store result error on information_schema.views");
+        goto err;
+    }
+
+
+    while ((row = mysql_fetch_row(rs)))
+    {
+        dynstr_clear(&dynstr);
+        if (support_show_flag)
+        {
+            /* 尝试一次show create triggers */
+            snprintf(query, sizeof(query), "show create trigger `%s`.`%s`", row[0], row[1]);
+
+            if (mysql_query(mysql, query))
+            {
+                support_show_flag = false;
+            }
+            else
+            {
+                MYSQL_ROW r;
+                MYSQL_RES* trig_rs = mysql_store_result(mysql);
+                if (!trig_rs)
+                {
+                    support_show_flag = false;
+                }
+                else
+                {
+                    r = mysql_fetch_row(trig_rs);
+                    if (!r)
+                    {
+                        support_show_flag = false;
+                        mysql_free_result(trig_rs);
+                    }
+                    else
+                    {
+                        dynstr_append(&dynstr, r[2]);
+                        mysql_free_result(trig_rs);
+                        goto parse;
+                    }
+
+                }
+            }
+        }
+
+        /* 拼语句 */
+        dynstr_append(&dynstr, "CREATE TRIGGER ");
+        snprintf(quoted_table_name_buf, sizeof(quoted_table_name_buf), 
+                    "`%s`.`%s` %s %s ON `%s`.`%s` FOR EACH ROW ", 
+                            row[0], /*TRIGGER_SCHEMA*/
+                            row[1], /*TRIGGER_NAME*/
+                            row[6], /*ACTION_TIMING*/
+                            row[2], /*EVENT_MANIPULATION*/
+                            row[3], /*EVENT_OBJECT_SCHEMA*/
+                            row[4] /*EVENT_OBJECT_TABLE*/ );
+        dynstr_append(&dynstr, quoted_table_name_buf);
+        dynstr_append(&dynstr, row[5]); /*  */
+
+parse:
+        parse_result_init_db(&parse_result, (char*)row[0]);
+        if (query_parse(dynstr.str, &parse_result))
+        {
+            error("%s syntax error %s", dynstr.str, parse_result.err_msg);
+            goto err;
+        }
+
+        //TODO 不精确的判断call
+        if (strstr(strlwr(dynstr.str), "call "))
+        {
+            error("Trigger %s.%s contain call procedures %s", row[0], row[1], dynstr.str);
+            goto err;
+        }
+
+        for (i = 0; i < parse_result.n_tables; i++)
+        {
+            binlogex_add_to_hash_tab(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, global_tables_pairs_num);
+        }
+
+        global_tables_pairs_num++;
+    }
+
+    dynstr_free(&dynstr);
+    mysql_free_result(rs);
+    return 0;
+
+err:
+    if (rs)
+        mysql_free_result(rs);
+
+    dynstr_free(&dynstr);
+
+    return -1;
+}
+
+int 
+get_events_tables(
+    MYSQL* mysql
+)
+{
+    MYSQL_ROW row;
+    MYSQL_RES* rs = NULL;
+
+    /* 获得所有视图名字 */
+    if (mysql_query(mysql, "select count(*) from information_schema.events"))
+    {
+        /* information_schema.events not exists */
+        if (mysql_errno(mysql) == ER_UNKNOWN_TABLE)
+            return 0;
+        
+        error("select error on information_schema.events, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        return -1;
+    }
+
+    rs= mysql_store_result(mysql);
+    if (!rs)
+    {
+        error("store result error on information_schema.events");
+        goto err;
+    }
+
+    while ((row = mysql_fetch_row(rs)))
+    {
+        if (row[0])
+        {
+            if (atoi(row[0]) > 0)
+            {
+                error("It don't support server contained events");
+
+                goto err;
+            }
+        }
+    }
+
+    mysql_free_result(rs);
+    return 0;
+
+err:
+    if (rs)
+        mysql_free_result(rs);
+
+    return -1;
+}
+
+
+
 int
 test_remote_server_and_get_definition()
 {
     MYSQL   m;
+    int ret = 0;
+
+    parse_global_init();
+
+    parse_result_init(&parse_result);
+    parse_result_inited = 1;
 
     if (!mysql_init(&m))
     {
         error("mysql_init error");
         return -1;
     }
+
+    /* 总以binary导出定义，即使乱码也无所谓，只用于获得表名 */
+    mysql_options(&m, MYSQL_SET_CHARSET_NAME, "binary");
+
     if (!mysql_real_connect(&m, remote_host, remote_user, remote_pass, 0, remote_port, remote_sock, 0))
     {
-        error("Fail to connect remote server : %s", mysql_error(mysql));
+        error("Fail to connect remote server %u:%s", mysql_errno(&m), mysql_error(&m));
         return -1;
     }
+
+    if (get_events_tables(&m) ||
+        get_trigger_tables(&m) ||
+        get_functions_tables(&m) ||
+        //get_procedures_tables(&m) ||  /* 由于存储过程内容会保存在binlog中，因此不用分析存储过程 */
+        get_views_tables(&m))
+        ret = -1;
+
+    mysql_version = mysql_get_server_version(&m);
 
     mysql_close(&m);
 
@@ -2196,7 +2595,10 @@ test_remote_server_and_get_definition()
     //not suppport, event, function contain DML
 
 
-    return 0;
+    parse_result_destroy(&parse_result);
+    parse_result_inited = 0;
+
+    return ret;
 }
 
 int main(int argc, char** argv)
@@ -2232,21 +2634,30 @@ int main(int argc, char** argv)
       fprintf(stderr, "Invalid argment --sql-files-output-dir\n");
   }
 
-  if (!write_to_file_only_flag && 
-      test_remote_server_and_get_definition())
+  binlogex_init();
+
+  long start = start_timer();
+  if (test_remote_server_and_get_definition())
   {
-      //TODO
       //test connect to remote server, and get views trigger functions relations 
       err = -1;
   }
+  fprintf(stdout, "Total use %f sec for getting object definition\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
 
   if (table_split)
   {
     //TODO
   }
 
+  /* 调整为合适的thread_id */
+  binlogex_adjust_hash_table_thread_id();
+
+  /* 打印分表情况 */
+  binlogex_print_all_tables_in_hash();
+
   if (err)
   {
+      binlogex_destroy();
       free_defaults(defaults_argv);
       my_end(my_end_arg);
       exit(1);
@@ -2304,8 +2715,7 @@ int main(int argc, char** argv)
   //          "\n/*!40101 SET NAMES %s */;\n", charset);
 
   //time_t t = time();
-  long start = start_timer();
-  binlogex_init();
+  start = start_timer();
 
   for (save_stop_position= stop_position, stop_position= ~(my_off_t)0 ;
        (--argc >= 0) ; )
@@ -2322,6 +2732,8 @@ int main(int argc, char** argv)
   binlogex_wait_all_worker_thread_exit();
 
   fprintf(stdout, "Total use %f sec\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
+
+  binlogex_print_all_tables_in_hash();
 
   /*
     Issue a ROLLBACK in case the last printed binlog was crashed and had half
@@ -2402,6 +2814,9 @@ pthread_mutex_t global_lock;                  /* 全局锁 */
 
 pthread_attr_t  worker_attrib;
 pthread_t*      global_pthread_array; 
+ulong           mysql_version = 0;
+
+uint global_tables_pairs_num = 0; /* 表示从对象定义和table_split参数中得到的表关系个数 */
 
 
 /*
@@ -2472,6 +2887,121 @@ binlogex_new_table_entry(
 }
 
 /*****  table_entry   ******/
+
+struct thread_id_pairs 
+{
+    uint thread_id_old;
+    uint thread_id_new;
+};
+
+
+void
+binlogex_update_hash_entry_thread_id(
+    uchar*  entry_org,
+    void*   id_pairs_org
+)
+{
+    table_entry_t*  entry = (table_entry_t*)entry_org;
+    thread_id_pairs* ids = (thread_id_pairs*)id_pairs_org;
+
+    if (entry->thread_id == ids->thread_id_old)
+        entry->thread_id = ids->thread_id_new;
+
+}
+
+void
+binlogex_adjust_hash_entry_thread_id(
+    uchar*  entry_org,
+    void*   id_pairs_org
+)
+{
+    table_entry_t*  entry = (table_entry_t*)entry_org;
+    my_assert(entry->thread_id < global_tables_pairs_num);
+    entry->thread_id %= concurrency; 
+}
+
+/* 在此之前，entry->thread_id已增长到global_tables_pairs_num，现在调整为concurrency以内 */
+void
+binlogex_adjust_hash_table_thread_id()
+{
+    my_hash_delegate(&table_hash, binlogex_adjust_hash_entry_thread_id, NULL);
+}
+
+void
+binlogex_print_all_tables_in_hash_delegate(
+    uchar*      entry_org,
+    void*       dnstr_arr_org
+)
+{
+    table_entry_t* entry = (table_entry_t*)entry_org;
+    DYNAMIC_STRING* dnstr_arr = (DYNAMIC_STRING*)dnstr_arr_org;
+
+    my_assert(entry->thread_id < concurrency);
+
+    dynstr_append(&dnstr_arr[entry->thread_id], entry->full_table_name);
+    dynstr_append(&dnstr_arr[entry->thread_id], ", ");
+}
+
+void
+binlogex_print_all_tables_in_hash()
+{
+    DYNAMIC_STRING* dnstr_arr = (DYNAMIC_STRING*)calloc(concurrency, sizeof(DYNAMIC_STRING));
+    uint i ;
+
+    for (i = 0; i < concurrency; ++i)
+    {
+        init_dynamic_string(&dnstr_arr[i], "", 2*1024, 1024);
+    }
+
+    my_hash_delegate(&table_hash, binlogex_print_all_tables_in_hash_delegate, dnstr_arr);
+
+    fprintf(stdout, "Talbe in hash table\n");
+    for (i = 0; i < concurrency; ++i)
+    {
+        fprintf(stdout, "\tTable of thread %u: %s\n", i, dnstr_arr[i].str);
+        dynstr_free(&dnstr_arr[i]);
+    }
+
+    free(dnstr_arr);
+}
+
+void
+binlogex_add_to_hash_tab(
+    const char*       dbname,
+    const char*       tblname,
+    uint              id_merge    /* 如果不在hash表，使用这个id_merge; 否则，将在hash表中该id的所有值转换成id_merge */
+)
+{
+    char buf[2*NAME_LEN + 3];
+    table_entry_t* entry;
+
+    my_assert(strlen(dbname) < NAME_LEN);
+    my_assert(strlen(tblname) < NAME_LEN);
+
+    sprintf(buf, "%s.%s", dbname, tblname);
+
+    entry = (table_entry_t*)my_hash_search(&table_hash, (const uchar*)&buf[0], strlen(buf));
+    if (!entry)
+    {
+        /* 不在hash表中，使用id_merge作为其thread_id */
+        entry = binlogex_new_table_entry(dbname, tblname, id_merge);
+        my_assert((char*)entry == &entry->full_table_name[0]);
+        my_bool ret = my_hash_insert(&table_hash, (const uchar*)&entry->full_table_name[0]);
+        my_assert(!ret);
+    }
+    else if (entry->thread_id != id_merge)
+    {
+        /* 将在hash表中thread_id为entry->thread_id的entry全部转换为id_merge */
+        /* 例如 a,b 1; c,d 2; 插入(a,c), a,b,c,d 合并为1 */
+
+        thread_id_pairs ids;
+        ids.thread_id_old = entry->thread_id;
+        ids.thread_id_new = id_merge;
+
+        my_hash_delegate(&table_hash, binlogex_update_hash_entry_thread_id, &ids);
+    }
+
+}
 
 uint
 binlogex_get_thread_id_by_name(
@@ -2923,7 +3453,7 @@ binlogex_worker_thread_init(
         */
         if (!mysql_real_connect(&vm->mysql, remote_host, remote_user, remote_pass, 0, remote_port, remote_sock, 0))
         {
-            error_vm(vm, "Failed on connect: %s", mysql_error(mysql));
+            error_vm(vm, "Failed on connect %u:%s", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
             return -1;
         }
         vm->mysql.reconnect= 1;
@@ -2979,6 +3509,10 @@ binlogex_worker_thread_init(
         ret = dynstr_append(&vm->dnstr,buf);
         RET_IF_ERR(ret);
     }
+
+    /* add it */
+    ret = dynstr_append(&vm->dnstr,"SET AUTOCOMMIT=1;\n");
+    RET_IF_ERR(ret);
 
     /*
      Set safe delimiter, to dump things
@@ -3039,7 +3573,8 @@ binlogex_worker_thread_init(
 
 int
 binlogex_worker_thread_deinit(
-    Worker_vm*              vm
+    Worker_vm*              vm,
+    my_bool                 is_error
 )
 {
     int ret;
@@ -3089,7 +3624,6 @@ binlogex_worker_thread_deinit(
     else
     {
         binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
-        //TODO
     }
     dynstr_clear(&vm->dnstr);
    
@@ -3102,12 +3636,12 @@ binlogex_worker_thread_deinit(
     if (!write_to_file_only_flag)
         mysql_close(&vm->mysql);
 
-    fprintf(stdout, "\nThread id %u normal stop\n\
+    fprintf(stdout, "\nThread id %u %s stop\n\
 Normal event count "ULONGPF"\n\
 Complex event count "ULONGPF"\n\
 Sync event count "ULONGPF", wait_time %f, signal time %f\n\
 Max binlog event length "ULONGPF"\n\
-Sleep time "ULONGPF"\n\n", vm->thread_id, vm->normal_entry_cnt, vm->complex_entry_cnt, 
+Sleep time "ULONGPF"\n\n", vm->thread_id, is_error ? "unnormal" : "normal", vm->normal_entry_cnt, vm->complex_entry_cnt, 
                         vm->sync_entry_cnt, (float)vm->sync_wait_time / CLOCKS_PER_SEC, (float)vm->sync_signal_time / CLOCKS_PER_SEC, 
                         vm->dnstr.max_length, vm->sleep_cnt);
 
@@ -3316,7 +3850,6 @@ binlogex_worker_execute_task_entry(
         }
         else
         {
-            //TODO
             int ret = binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
 
             if (ret)
@@ -3389,9 +3922,7 @@ binlogex_worker_execute_task_entry(
         }
         else
         {
-            //TODO
             int ret = binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
-
             if (ret)
             {
                 error_vm(vm, "when execute sql %s\n", vm->dnstr.str);
@@ -3481,7 +4012,7 @@ binlogex_worker_thread(void *arg)
     if (is_error)
         error_vm(vm, "something error cause to exit, exist_when_error:%s", exit_when_error ? "TRUE" : "FALSE");
 
-    binlogex_worker_thread_deinit(vm);
+    binlogex_worker_thread_deinit(vm, is_error);
     my_thread_end();
 
     pthread_exit(0);
@@ -3496,7 +4027,10 @@ binlogex_wait_all_worker_thread_exit()
     for (i = 0; i < concurrency; i++)
     {
         binlogex_task_entry_add_to_queue(binlogex_task_entry_complete_new(), i);
+    }
 
+    for (i = 0; i < concurrency; i++)
+    {
         pthread_join(global_pthread_array[i], NULL);
     }
     
@@ -4304,7 +4838,7 @@ new_line:
                 /* 目前binlog输出总是 */
                 /*!\C gbk */
                 char charset_name[256] = {0};
-                char* end = start + 6; /* strlen("/*!\\C ") */
+                char* end = start + 6; // strlen("/*!\\C ") 
                 CHARSET_INFO* new_cs;
                 
                 for (; end < pos; end++)

@@ -1,6 +1,8 @@
 #ifndef _TMYSQLBINLOGEX_H
 #define _TMYSQLBINLOGEX_H
 
+#include "mysqld_error.h"
+
 Exit_status binlogex_process_event(Log_event *ev,
                                    my_off_t pos, const char *logname);
 
@@ -45,5 +47,25 @@ binlogex_execute_sql(
     char*       sql,
     uint        len
 );
+#include "sqlparse.h"
+
+extern parse_result_t  parse_result;
+extern my_bool parse_result_inited;
+extern uint global_tables_pairs_num;
+
+void
+binlogex_add_to_hash_tab(
+    const char*       dbname,
+    const char*       tblname,
+    uint              id_merge    /* 如果不在hash表，使用这个id_merge; 否则，将在hash表中该id的所有值转换成id_merge */
+);
+
+void
+binlogex_adjust_hash_table_thread_id();
+
+void
+binlogex_print_all_tables_in_hash();
+
+extern ulong           mysql_version;
 
 #endif
