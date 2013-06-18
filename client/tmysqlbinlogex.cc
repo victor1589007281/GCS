@@ -56,6 +56,21 @@
 #undef CLOCKS_PER_SEC
 #define CLOCKS_PER_SEC (sysconf(_SC_CLK_TCK))
 #endif
+
+#include <ctype.h>
+char* strlwr(char* str)
+{
+    char *org;
+
+    org = str;
+
+    while(*str)
+	{
+        *str = tolower(*str);
+		str++;
+	}
+    return org;
+}
 #endif
 
 #define CLIENT_CAPABILITIES	(CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_LOCAL_FILES)
@@ -2277,7 +2292,7 @@ get_procedures_tables(
         parse_result_init_db(&parse_result, (char*)row[0]);
         if (query_parse(r[2], &parse_result))
         {
-            error("%s syntax error %s", proc_rs[1], parse_result.err_msg);
+            error("%s syntax error %s", r[2], parse_result.err_msg);
 
             mysql_free_result(proc_rs);
             goto err;
@@ -2352,7 +2367,7 @@ get_functions_tables(
         parse_result_init_db(&parse_result, (char*)row[0]);
         if (query_parse(r[2], &parse_result))
         {
-            error("%s syntax error %s", proc_rs[1], parse_result.err_msg);
+            error("%s syntax error %s", r[2], parse_result.err_msg);
             mysql_free_result(proc_rs);
             goto err;
         }
@@ -3545,8 +3560,8 @@ binlogex_worker_thread_init(
         len = fprintf(vm->result_file, vm->dnstr.str);
         if (len < 0 || (size_t)len != vm->dnstr.length)
         {
-            error_vm(vm, "Write error: %d", len);
-            return -1;
+            error_vm(vm, "Write error: write_len(%d) sql_len(%u) sql:%s ", len, vm->dnstr.length, vm->dnstr.str);
+            ret = -1;
         }
     }
     else
@@ -3555,7 +3570,7 @@ binlogex_worker_thread_init(
         int ret = binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
         if (ret && exit_when_error)
         {
-            return -1;
+            ret = -1;
         }
     }
 
@@ -3568,7 +3583,7 @@ binlogex_worker_thread_init(
 
     dynstr_clear(&vm->dnstr);
 
-    return 0;
+    return ret;
 }
 
 int
@@ -3617,7 +3632,7 @@ binlogex_worker_thread_deinit(
         int len = fprintf(vm->result_file, vm->dnstr.str);
         if (len < 0 || (size_t)len != vm->dnstr.length)
         {
-            error_vm(vm, "Write error: %d", len);
+            error_vm(vm, "Write error: write_len(%d) sql_len(%u) sql:%s ", len, vm->dnstr.length, vm->dnstr.str);
             return -1;
         }
     }
@@ -3844,7 +3859,8 @@ binlogex_worker_execute_task_entry(
             int len = fprintf(vm->result_file, vm->dnstr.str);
             if (len < 0 || (size_t)len != vm->dnstr.length)
             {
-                error_vm(vm, "Write error: %d", len);
+                error_vm(vm, "Write error: write_len(%d) sql_len(%u)", len, vm->dnstr.length);
+                error_vm(vm, "when execute sql %s at binlog %s offset "ULONGPF"\n", vm->dnstr.str, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off);
                 code = WORKER_STATUS_ERROR;
             }
         }
