@@ -513,12 +513,14 @@ query_parse_audit(char* query, parse_result_audit* pra)
 	TABLE_LIST* all_tables;
 	TABLE_LIST* table;
 	int exit_code = 0;
+	SELECT_LEX *sl;
+	bool err;
+	sp_head* sp;
 
     thd = (THD*)pra->thd_org;
 	DBUG_ASSERT(pra->n_tables_alloced > 0 && thd);
 
 	pra->n_tables = 0;
-
 
     if (strlen(query) == 0)
     {
@@ -550,7 +552,7 @@ query_parse_audit(char* query, parse_result_audit* pra)
     lex_start(thd);
     mysql_reset_thd_for_next_command(thd);
 
-    bool err= parse_sql(thd, &parser_state, NULL);
+    err = parse_sql(thd, &parser_state, NULL);
     if (err)
     {
         strmake(pra->err_msg, thd->get_error(), sizeof(pra->err_msg) - 1);
@@ -654,7 +656,7 @@ query_parse_audit(char* query, parse_result_audit* pra)
 
 	}
 
-	SELECT_LEX *sl= lex->all_selects_list;
+	sl = lex->all_selects_list;
 	for (; sl; sl= sl->next_select_in_list())
 	{
 		for (table = sl->table_list.first; table; table= table->next_global)
@@ -667,7 +669,7 @@ query_parse_audit(char* query, parse_result_audit* pra)
 		}
 	}
 
-	sp_head* sp = thd->lex->sphead;
+	sp = thd->lex->sphead;
 	if (sp)
 	{
 		TABLE_LIST* sp_tl = NULL;
@@ -694,10 +696,10 @@ exit_pos:
 
 int
 parse_result_add_table_audit(
-					   parse_result_audit* pra, 
-					   char*           db_name,
-					   char*           table_name
-					   )
+	parse_result_audit* pra, 
+	char*           db_name,
+	char*           table_name
+)
 {
 	int i;
 	DBUG_ASSERT(db_name && table_name);
