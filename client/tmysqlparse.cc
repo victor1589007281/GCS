@@ -2754,9 +2754,6 @@ com_go(String *buffer,char *line __attribute__((unused)))
 		old_buffer= *buffer;			// Save for edit command
 		old_buffer.copy();
 	}
-
-	/* Remove garbage for nicer messages */
-	LINT_INIT(buff[0]);
 	remove_cntrl(*buffer);
 
 	if (buffer->is_empty())
