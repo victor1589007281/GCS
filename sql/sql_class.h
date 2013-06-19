@@ -2419,6 +2419,15 @@ public:
       DBUG_ENTER("get_error");
       DBUG_RETURN(stmt_da->message());
   }
+
+  /**add by willhan. 2013-06-13
+     add for sqlparse. get the error code.
+  **/
+  const uint get_errcode()
+  {
+	  DBUG_ENTER("get_error_code");
+	  DBUG_RETURN(stmt_da->sql_errno());
+  }
 #ifndef EMBEDDED_LIBRARY
   inline bool vio_ok() const { return net.vio != 0; }
   /** Return FALSE if connection to client is broken. */

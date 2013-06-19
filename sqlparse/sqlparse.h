@@ -37,8 +37,31 @@ struct parse_result_struct {
 
     char err_msg[PARSE_RESULT_MAX_STR_LEN + 1];
 };
-
 typedef struct parse_result_struct parse_result_t;
+
+
+/************************************************************************/
+/* add by willhan. 2013-06-13                                                                     */
+/************************************************************************/
+struct parse_result_audit {
+	void* thd_org;
+	int query_type;
+	int result_type;
+	/**0 success; 1 risking warning; 2 parse fail; 3 other fail***/
+
+	int tbdb;
+	/*tbdb==0 rising warnings from table; tbdb==1 risking warnings from dababase */
+	char name[NAME_LEN];
+	/**table name or database name**/
+	
+	unsigned short n_tables_alloced;
+	unsigned short n_tables;
+	parse_table_t*  table_arr;
+	//char** table_arr;       /* table name array, each is <dbname>.<tablename> */
+
+	int errcode;
+	char err_msg[PARSE_RESULT_MAX_STR_LEN + 1];
+};
 
 int
 parse_result_init(parse_result_t* pr);
@@ -65,6 +88,18 @@ parse_global_init();
 
 void
 parse_global_destroy();
+
+
+
+
+/************************************************************************/
+/* add by willhan. 2013-06-13                                                                     */
+/************************************************************************/
+int parse_result_audit_init(parse_result_audit* pr);
+int query_parse_audit(char *query, parse_result_audit* pra);
+int parse_result_audit_destroy(parse_result_audit* pra);
+int parse_result_add_table_audit(parse_result_audit* pra, char* db_name, char* table_name);
+const char* get_stmt_type_str(int type);
 
 #ifdef __cplusplus
 }

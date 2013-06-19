@@ -579,7 +579,11 @@ char server_version[SERVER_VERSION_LENGTH];
 char *mysqld_unix_port, *opt_mysql_tmpdir;
 ulong thread_handling;
 
+/************************************************************************/
+/* parse_export == 1 means only do parsing by sqlparse                                                                      */
+/************************************************************************/
 int parse_export;
+
 
 /** name of reference on left expression in rewritten IN subquery */
 const char *in_left_expr_name= "<left expr>";

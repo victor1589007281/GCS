@@ -1596,6 +1596,9 @@ int prepare_schema_table(THD *thd, LEX *lex, Table_ident *table_ident,
   default:
     break;
   }
+
+  if (parse_export)
+    DBUG_RETURN(0);
   
   SELECT_LEX *select_lex= lex->current_select;
   if (make_schema_select(thd, select_lex, schema_table_idx))
