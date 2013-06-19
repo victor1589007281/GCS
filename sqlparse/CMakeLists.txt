@@ -23,6 +23,13 @@ parse_result_destroy
 parse_result_init_db
 parse_result_get_stmt_type_str
 query_parse
+
+parse_result_audit_init
+query_parse_audit
+parse_result_audit_destroy
+parse_result_add_table_audit
+get_stmt_type_str
+
 CACHE INTERNAL "Functions exported by sqlparse API"
 )
 
