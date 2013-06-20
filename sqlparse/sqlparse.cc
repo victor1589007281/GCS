@@ -305,7 +305,6 @@ parse_result_init_db(
 )
 {
     THD* thd = (THD*)pr->thd_org;
-
     thd->set_db(db, strlen(db));
 }
 
@@ -919,4 +918,10 @@ const char* get_stmt_type_str(int type)
 	}
 
 	return "";
+}
+
+void parse_result_audit_init_db(parse_result_audit* pra, char* db)
+{
+	THD* thd = (THD*)pra->thd_org;
+	thd->set_db(db, strlen(db));
 }

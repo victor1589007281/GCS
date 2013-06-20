@@ -8071,6 +8071,9 @@ my_init_for_sqlparse()
     }
 
     sys_var_init();
+	/* 添加内部函数初始化 */
+	if (item_create_init())
+		DBUG_ASSERT(0);
 
     // init charset
     get_charset_number("utf8", MY_CS_PRIMARY);

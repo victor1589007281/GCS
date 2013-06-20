@@ -120,7 +120,6 @@ static char **defaults_argv;
 enum enum_info_type { INFO_INFO,INFO_ERROR,INFO_RESULT};
 typedef enum enum_info_type INFO_TYPE;
 
-static MYSQL mysql;			/* The connection */
 static my_bool ignore_errors=0,wait_flag=0,quick=0,
 connected=0,opt_raw_data=0,unbuffered=0,output_tables=0,
 opt_rehash=1,skip_updates=0,safe_updates=0,one_database=0,
@@ -142,7 +141,7 @@ static uint my_end_arg;
 static char * opt_mysql_unix_port=0;
 static int connect_flag=CLIENT_INTERACTIVE;
 static char *current_host,*current_db,*current_user=0,*opt_password=0,
-*current_prompt=0, *delimiter_str= 0,
+*current_prompt=0, *delimiter_str= 0,*audit_output_file=0,
 *default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME,
 *opt_init_command= 0;
 static char *histfile;
@@ -1117,7 +1116,6 @@ int main(int argc,char *argv[])
 	else
 		status.add_to_history=1;
 	status.exit_status=1;
-
 	{
 		/* 
 		The file descriptor-layer may be out-of-sync with the file-number layer,
@@ -1131,7 +1129,6 @@ int main(int argc,char *argv[])
 		else
 			close(stdout_fileno_copy);             /* Clean up dup(). */
 	}
-
 	if (load_defaults("my",load_default_groups,&argc,&argv))
 	{
 		my_end(0);
@@ -1164,7 +1161,6 @@ int main(int argc,char *argv[])
 	glob_buffer.realloc(512);
 	completion_hash_init(&ht, 128);
 	init_alloc_root(&hash_mem_root, 16384, 0);
-	bzero((char*) &mysql, sizeof(mysql));
 	if (!status.batch)
 		ignore_errors=1;				// Don't abort monitor
 
@@ -1181,7 +1177,7 @@ int main(int argc,char *argv[])
 	window_resize(0);
 #endif
 
-	put_info("Welcome to the MySQL monitor.  Commands end with ; or \\g.",
+	put_info("Welcome to the TMySQLParse monitor.  Commands end with ; or \\g.",
 		INFO_INFO);
 	put_info((char*) glob_buffer.ptr(),INFO_INFO);
 
@@ -1243,6 +1239,8 @@ int main(int argc,char *argv[])
 
 	parse_result_audit_init(&pra);
 	tmysqlparse_result_init(&roa);
+	if(current_db)//set the currentdb
+		parse_result_audit_init_db(&pra, current_db);
 
 
 	status.exit_status= read_and_execute(!status.batch);
@@ -1251,8 +1249,13 @@ int main(int argc,char *argv[])
 	/************************************************************************/
 	/* add by willhan. 2013-06-17                                                                     */
 	/************************************************************************/
-
-	tmysqlparse_print_xml(&roa,stdout);
+	FILE *fp = fopen(audit_output_file,"w+");
+	if(!fp)
+	{
+		fprintf(stderr, "failed to open file %s\n", audit_output_file);
+		exit(-1);
+	}
+	tmysqlparse_print_xml(&roa,fp);
 	parse_result_audit_destroy(&pra);
 	tmysqlparse_result_destory(&roa);
 
@@ -1266,7 +1269,6 @@ int main(int argc,char *argv[])
 
 sig_handler mysql_end(int sig)
 {
-	mysql_close(&mysql);
 #ifdef HAVE_READLINE
 	if (!status.batch && !quick && !opt_html && !opt_xml &&
 		histfile && histfile[0])
@@ -1295,6 +1297,7 @@ sig_handler mysql_end(int sig)
 	my_free(current_db);
 	my_free(current_host);
 	my_free(current_user);
+	my_free(audit_output_file);
 	my_free(full_username);
 	my_free(part_username);
 	my_free(default_prompt);
@@ -1318,7 +1321,6 @@ no query in process, terminate like previous behavior
 */
 sig_handler handle_sigint(int sig)
 {
-	char kill_buffer[40];
 	MYSQL *kill_mysql= NULL;
 
 	/* terminate if no query being executed, or we already tried interrupting */
@@ -1329,27 +1331,9 @@ sig_handler handle_sigint(int sig)
 		goto err;
 	}
 
-	kill_mysql= mysql_init(kill_mysql);
-	if (!mysql_real_connect(kill_mysql,current_host, current_user, opt_password,
-		"", opt_mysql_port, opt_mysql_unix_port,0))
-	{
-		tee_fprintf(stdout, "Ctrl-C -- sorry, cannot connect to server to kill query, giving up ...\n");
-		goto err;
-	}
-
 	interrupted_query++;
 
-	/* mysqld < 5 does not understand KILL QUERY, skip to KILL CONNECTION */
-	if ((interrupted_query == 1) && (mysql_get_server_version(&mysql) < 50000))
-		interrupted_query= 2;
-
 	/* kill_buffer is always big enough because max length of %lu is 15 */
-	sprintf(kill_buffer, "KILL %s%lu",
-		(interrupted_query == 1) ? "QUERY " : "",
-		mysql_thread_id(&mysql));
-	tee_fprintf(stdout, "Ctrl-C -- sending \"%s\" to server ...\n", kill_buffer);
-	mysql_real_query(kill_mysql, kill_buffer, (uint) strlen(kill_buffer));
-	mysql_close(kill_mysql);
 	tee_fprintf(stdout, "Ctrl-C -- query aborted.\n");
 
 	return;
@@ -1442,9 +1426,8 @@ static struct my_option my_long_options[] =
 	{"vertical", 'E', "Print the output of a query (rows) vertically.",
 	&vertical, &vertical, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0,
 	0},
-	{"force", 'f', "Continue even if we get an SQL error.",
-	&ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG, 0, 0,
-	0, 0, 0, 0},
+//	{"force", 'f', "Continue even if we get an SQL error.",
+//	&ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
 	{"named-commands", 'G',
 	"Enable named commands. Named commands mean this program's internal "
 	"commands; see mysql> help . When enabled, the named commands can be "
@@ -1552,6 +1535,8 @@ static struct my_option my_long_options[] =
 	{"user", 'u', "User for login if not current user.", &current_user,
 	&current_user, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 #endif
+	{"file", 'f', "assign the file name of audit result.", &audit_output_file, 
+	&audit_output_file, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"safe-updates", 'U', "Only allow UPDATE and DELETE that uses keys.",
 	&safe_updates, &safe_updates, 0, GET_BOOL, NO_ARG, 0, 0,
 	0, 0, 0, 0},
@@ -2096,9 +2081,7 @@ static bool add_line(String &buffer,char *line,char *in_string,
 			continue;
 		}
 #endif
-		if (!*ml_comment && inchar == '\\' &&
-			!(*in_string && 
-			(mysql.server_status & SERVER_STATUS_NO_BACKSLASH_ESCAPES)))
+		if (!*ml_comment && inchar == '\\' && !(*in_string))
 		{
 			// Found possbile one character command like \c
 
@@ -2603,23 +2586,12 @@ static int reconnect(void)
 
 static void get_current_db()
 {
-	MYSQL_RES *res;
-
 	/* If one_database is set, current_db is not supposed to change. */
 	if (one_database)
 		return;
 
 	my_free(current_db);
 	current_db= NULL;
-	/* In case of error below current_db will be NULL */
-	if (!mysql_query(&mysql, "SELECT DATABASE()") &&
-		(res= mysql_use_result(&mysql)))
-	{
-		MYSQL_ROW row= mysql_fetch_row(res);
-		if (row && row[0])
-			current_db= my_strdup(row[0], MYF(MY_WME));
-		mysql_free_result(res);
-	}
 }
 
 
@@ -2729,7 +2701,6 @@ com_charset(String *buffer __attribute__((unused)), char *line)
 	if (new_cs)
 	{
 		charset_info= new_cs;
-		mysql_set_character_set(&mysql, charset_info->csname);
 		default_charset= (char *)charset_info->csname;
 		put_info("Charset changed", INFO_INFO);
 	}
@@ -3923,51 +3894,13 @@ static const char* construct_prompt()
 		add_int_to_prompt(++prompt_counter);
 		break;
 	case 'v':
-		if (connected)
-			processed_prompt.append(mysql_get_server_info(&mysql));
-		else
-			processed_prompt.append("not_connected");
 		break;
 	case 'd':
 		processed_prompt.append(current_db ? current_db : "(none)");
 		break;
 	case 'h':
-		{
-			const char *prompt;
-			prompt= connected ? mysql_get_host_info(&mysql) : "not_connected";
-			if (strstr(prompt, "Localhost"))
-				processed_prompt.append("localhost");
-			else
-			{
-				const char *end=strcend(prompt,' ');
-				processed_prompt.append(prompt, (uint) (end-prompt));
-			}
 			break;
-		}
 	case 'p':
-		{
-#ifndef EMBEDDED_LIBRARY
-			if (!connected)
-			{
-				processed_prompt.append("not_connected");
-				break;
-			}
-
-			const char *host_info = mysql_get_host_info(&mysql);
-			if (strstr(host_info, "memory")) 
-			{
-				processed_prompt.append( mysql.host );
-			}
-			else if (strstr(host_info,"TCP/IP") ||
-				!mysql.unix_socket)
-				add_int_to_prompt(mysql.port);
-			else
-			{
-				char *pos=strrchr(mysql.unix_socket,'/');
-				processed_prompt.append(pos ? pos+1 : mysql.unix_socket);
-			}
-#endif
-		}
 		break;
 	case 'U':
 		if (!full_username)

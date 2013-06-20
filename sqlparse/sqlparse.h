@@ -100,6 +100,7 @@ int query_parse_audit(char *query, parse_result_audit* pra);
 int parse_result_audit_destroy(parse_result_audit* pra);
 int parse_result_add_table_audit(parse_result_audit* pra, char* db_name, char* table_name);
 const char* get_stmt_type_str(int type);
+void parse_result_audit_init_db(parse_result_audit* pra, char* db);
 
 #ifdef __cplusplus
 }
