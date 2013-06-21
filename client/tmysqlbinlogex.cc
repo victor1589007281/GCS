@@ -2231,7 +2231,7 @@ get_views_tables(
         parse_result_init_db(&parse_result, (char*)row[0]);
         if (query_parse(r[1], &parse_result))
         {
-            error("%s syntax error %s", view_rs[1], parse_result.err_msg);
+            error("%s syntax error %s", r[1], parse_result.err_msg);
 
             return -1;
         }
@@ -3358,8 +3358,15 @@ binlogex_task_entry_add_to_queue(
         if (++n_retry % 10 == 0)
             fprintf(stderr, "Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
 
-        if (++global_n_add_to_queue_fail % 100 == 0)
+        if (++global_n_add_to_queue_fail % 100 == 0) {
             fprintf(stderr, "Now Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
+
+            if (!global_vm_array[thread_id])
+            {
+                fprintf(stderr, "Thread %u has exited\n", thread_id);
+                return 1;
+            }
+        }
 
     }
         
@@ -3553,12 +3560,14 @@ binlogex_worker_thread_init(
 
     if (write_to_file_only_flag)
     {
+        size_t len;
+
         /* No need to send to server */
         ret = dynstr_append(&vm->dnstr, "DELIMITER /*!*/;\n");
         RET_IF_ERR(ret);
 
-        len = fprintf(vm->result_file, vm->dnstr.str);
-        if (len < 0 || (size_t)len != vm->dnstr.length)
+        len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
+        if (len == (size_t)-1 || len != vm->dnstr.length)
         {
             error_vm(vm, "Write error: write_len(%d) sql_len(%u) sql:%s ", len, vm->dnstr.length, vm->dnstr.str);
             ret = -1;
@@ -3629,8 +3638,8 @@ binlogex_worker_thread_deinit(
 
     if (write_to_file_only_flag)
     {
-        int len = fprintf(vm->result_file, vm->dnstr.str);
-        if (len < 0 || (size_t)len != vm->dnstr.length)
+        size_t len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
+        if (len == (size_t)-1 || len != vm->dnstr.length)
         {
             error_vm(vm, "Write error: write_len(%d) sql_len(%u) sql:%s ", len, vm->dnstr.length, vm->dnstr.str);
             return -1;
@@ -3678,7 +3687,7 @@ binlogex_worker_wait(
     if (write_to_file_only_flag)
     {
         char       buf[1024];
-        int        len;
+        size_t     len;
         if (tsk_entry && tsk_entry->type == TASK_ENTRY_TYPE_SYNC)
         {
             snprintf(buf, sizeof(buf), "# [tmysqlbinlogex] Thread %u is waiting for thread %u(W[%u][%u]), logfile %s offset "ULONGPF"\n", 
@@ -3696,8 +3705,8 @@ binlogex_worker_wait(
         if (dynstr_append(&vm->dnstr, buf))
             my_assert(0);
 
-        len = fprintf(vm->result_file, vm->dnstr.str);
-        if (len < 0 || (size_t)len != vm->dnstr.length)
+        len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
+        if (len == (size_t)-1 || len != vm->dnstr.length)
         {
             fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
@@ -3749,7 +3758,7 @@ binlogex_worker_signal(
     if (write_to_file_only_flag)
     {
         char buf[1024];
-        int len;
+        size_t len;
 
         if (tsk_entry && tsk_entry->type == TASK_ENTRY_TYPE_SYNC)
         {
@@ -3768,8 +3777,8 @@ binlogex_worker_signal(
         if (dynstr_append(&vm->dnstr, buf))
             my_assert(0);
 
-        len = fprintf(vm->result_file, vm->dnstr.str);
-        if (len < 0 || (size_t)len != vm->dnstr.length)
+        len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
+        if (len == (size_t)-1 || len != vm->dnstr.length)
         {
             fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
@@ -3856,8 +3865,8 @@ binlogex_worker_execute_task_entry(
         //fflush(vm->result_file);
         if (write_to_file_only_flag)
         {
-            int len = fprintf(vm->result_file, vm->dnstr.str);
-            if (len < 0 || (size_t)len != vm->dnstr.length)
+            size_t len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
+            if (len == (size_t) -1 || len != vm->dnstr.length)
             {
                 error_vm(vm, "Write error: write_len(%d) sql_len(%u)", len, vm->dnstr.length);
                 error_vm(vm, "when execute sql %s at binlog %s offset "ULONGPF"\n", vm->dnstr.str, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off);
@@ -3915,7 +3924,6 @@ binlogex_worker_execute_task_entry(
         if (vm->print_info.base64_output_mode != BASE64_OUTPUT_DECODE_ROWS)
         {
             my_b_printf(&vm->print_info.body_cache, "'%s\n", vm->print_info.delimiter);
-            //fprintf(vm->result_file, "'%s\n", vm->print_info.delimiter);
         }
 
         if ((copy_event_cache_to_file_and_reinit(&vm->print_info.head_cache, (FILE*)&vm->dnstr) ||
@@ -3927,10 +3935,8 @@ binlogex_worker_execute_task_entry(
 
         if (write_to_file_only_flag)
         {
-            int len;
-
-            len = fprintf(vm->result_file, vm->dnstr.str);
-            if (len < 0 || (size_t)len != vm->dnstr.length)
+            size_t len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
+            if (len == (size_t) -1 || len != vm->dnstr.length)
             {
                 fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
                 code = WORKER_STATUS_ERROR;
@@ -4031,6 +4037,9 @@ binlogex_worker_thread(void *arg)
     binlogex_worker_thread_deinit(vm, is_error);
     my_thread_end();
 
+    global_vm_array[thread_id] = NULL;
+    delete vm;
+
     pthread_exit(0);
     return 0;
 }
@@ -4126,7 +4135,10 @@ binlogex_destroy()
     free(global_event_matrix);
     
     for (i = 0; i < concurrency; ++i)
-        delete global_vm_array[i];
+    {
+        if (global_vm_array[i])
+            delete global_vm_array[i];
+    }
 
     free(global_vm_array);
     free(global_pthread_array);
@@ -4277,7 +4289,7 @@ Exit_status binlogex_process_event(Log_event *ev,
             //TODO: FORMAT_DESCRIPTION_EVENT的复制构造函数，每个线程一个，单独释放
             tsk_entry = binlogex_task_entry_event_simple_new(rec_count, tmp_ev, logname, pos, i);
             if (binlogex_task_entry_add_to_queue(tsk_entry, i))
-                my_assert(0);
+                retval= ERROR_STOP;
         }
 
         break;
@@ -4341,7 +4353,8 @@ Exit_status binlogex_process_event(Log_event *ev,
                 binlogex_task_entry_event_set_dst_thread_id(tmp_tsk_entry, thread_id);
 
                 if (binlogex_task_entry_add_to_queue(tmp_tsk_entry, tsk_entry->ui.event.dst_thread_id))
-                    my_assert(0);
+                    retval= ERROR_STOP;
+                    
             }
             /* 清空global_tmp_event_array */
             global_session_event_array.elements = 0;
@@ -4354,13 +4367,13 @@ Exit_status binlogex_process_event(Log_event *ev,
                     if (binlogex_task_entry_add_to_queue(
                             binlogex_task_entry_sync_new(tsk_entry),
                             tsk_entry->ui.event.thread_id_arr[i]))
-                        my_assert(0);
+                        retval= ERROR_STOP;
                 }
             }
 
             /* 事件任务加入到线程队列中 */
             if (binlogex_task_entry_add_to_queue(tsk_entry, tsk_entry->ui.event.dst_thread_id))
-                my_assert(0);
+                retval= ERROR_STOP;
         }
         else
         {
@@ -4404,7 +4417,8 @@ Exit_status binlogex_process_event(Log_event *ev,
         thread_id = binlogex_get_thread_id_by_name((char*)lle->db, (char*)lle->table_name);
 
         tsk_entry = binlogex_task_entry_event_simple_new(rec_count, ev, logname, pos, thread_id);
-        binlogex_task_entry_add_to_queue(tsk_entry, thread_id);
+        if (binlogex_task_entry_add_to_queue(tsk_entry, thread_id))
+            retval= ERROR_STOP;
 
         break;
     }
@@ -4482,7 +4496,8 @@ Exit_status binlogex_process_event(Log_event *ev,
                 if (!should_skip)
                 {
                     binlogex_task_entry_event_set_dst_thread_id(tmp_tentry, thread_id);
-                    binlogex_task_entry_add_to_queue(tmp_tentry, thread_id);
+                    if (binlogex_task_entry_add_to_queue(tmp_tentry, thread_id))
+                        retval= ERROR_STOP;
                 }
                 else 
                 {
@@ -4603,7 +4618,8 @@ Exit_status binlogex_process_event(Log_event *ev,
                 {
                     /* id use rec_count for simple */
                     binlogex_task_entry_event_set_dst_thread_id(tmp_tentry, thread_id);
-                    binlogex_task_entry_add_to_queue(tmp_tentry, thread_id);
+                    if (binlogex_task_entry_add_to_queue(tmp_tentry, thread_id))
+                        retval= ERROR_STOP;
                 }
                 else
                 {
@@ -4621,7 +4637,8 @@ Exit_status binlogex_process_event(Log_event *ev,
         if (!should_skip && find_begin_event)
         {
             tsk_entry = binlogex_task_entry_event_simple_new(rec_count, ev, logname, pos, thread_id);
-            binlogex_task_entry_add_to_queue(tsk_entry, thread_id);
+            if (binlogex_task_entry_add_to_queue(tsk_entry, thread_id))
+                retval= ERROR_STOP;
         }
         else
         {
@@ -4713,7 +4730,8 @@ Exit_status binlogex_process_event(Log_event *ev,
 
             /* binlog事件入相应线程 */
             tsk_entry = binlogex_task_entry_event_simple_new(rec_count, ev, logname, pos, thread_id);
-            binlogex_task_entry_add_to_queue(tsk_entry, thread_id);
+            if (binlogex_task_entry_add_to_queue(tsk_entry, thread_id))
+                retval= ERROR_STOP;
         }
         break;
     }
@@ -4743,7 +4761,8 @@ Exit_status binlogex_process_event(Log_event *ev,
             my_assert(thread_id != INVALID_THREAD_ID);
 
             tsk_entry = binlogex_task_entry_event_simple_new(rec_count, ev, logname, pos, thread_id);
-            binlogex_task_entry_add_to_queue(tsk_entry, thread_id);
+            if (binlogex_task_entry_add_to_queue(tsk_entry, thread_id))
+                retval= ERROR_STOP;
         }
 
         if (e->get_flags(Rows_log_event::STMT_END_F))
@@ -4771,7 +4790,8 @@ Exit_status binlogex_process_event(Log_event *ev,
               if (global_thread_tmap_flag_array[tmap_ex.thread_id] == 0)
               {
                   task_entry_t* se_entry = binlogex_task_entry_stmt_end_new(rec_count);
-                  binlogex_task_entry_add_to_queue(se_entry, tmap_ex.thread_id);
+                  if(binlogex_task_entry_add_to_queue(se_entry, tmap_ex.thread_id))
+                      retval= ERROR_STOP;
 
                   global_thread_tmap_flag_array[tmap_ex.thread_id] = 1;
               }
@@ -4796,9 +4816,6 @@ Exit_status binlogex_process_event(Log_event *ev,
     }
   }
 
-  goto end;
-
-  retval= ERROR_STOP;
 end:
   rec_count++;
   ///*
