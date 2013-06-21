@@ -1249,7 +1249,9 @@ int main(int argc,char *argv[])
 	/************************************************************************/
 	/* add by willhan. 2013-06-17                                                                     */
 	/************************************************************************/
-	FILE *fp = fopen(audit_output_file,"w+");
+	FILE *fp = stderr;
+	if(audit_output_file)//use -f or --file
+		fp = fopen(audit_output_file,"w+");
 	if(!fp)
 	{
 		fprintf(stderr, "failed to open file %s\n", audit_output_file);
