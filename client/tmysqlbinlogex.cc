@@ -3708,7 +3708,7 @@ binlogex_worker_wait(
         len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
         if (len == (size_t)-1 || len != vm->dnstr.length)
         {
-            fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
+            fprintf(stderr, "Write error: %u, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
         }
 
@@ -3780,7 +3780,7 @@ binlogex_worker_signal(
         len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
         if (len == (size_t)-1 || len != vm->dnstr.length)
         {
-            fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
+            fprintf(stderr, "Write error: %u, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
         }
         dynstr_clear(&vm->dnstr);
@@ -3938,7 +3938,7 @@ binlogex_worker_execute_task_entry(
             size_t len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
             if (len == (size_t) -1 || len != vm->dnstr.length)
             {
-                fprintf(stderr, "Write error: %d, %s:%u\n", len, __FILE__, __LINE__);
+                fprintf(stderr, "Write error: %u, %s:%u\n", len, __FILE__, __LINE__);
                 code = WORKER_STATUS_ERROR;
             }
         }
@@ -4395,7 +4395,7 @@ Exit_status binlogex_process_event(Log_event *ev,
     {
         /* 该记录事件加入到global_tmp_event_array中 */
         tsk_entry = binlogex_task_entry_event_simple_new(rec_count, ev, logname, pos, INVALID_THREAD_ID);
-        insert_dynamic(&global_session_event_array, (uchar*)tsk_entry);
+        insert_dynamic(&global_session_event_array, (uchar*)&tsk_entry);
         break;
     }
 
@@ -4517,7 +4517,7 @@ Exit_status binlogex_process_event(Log_event *ev,
     case BEGIN_LOAD_QUERY_EVENT:
         /* 该记录事件加入到global_load_event_array中 */
         tsk_entry = binlogex_task_entry_event_simple_new(rec_count, ev, logname, pos, INVALID_THREAD_ID);
-        insert_dynamic(&global_load_event_array, (uchar*)tsk_entry);
+        insert_dynamic(&global_load_event_array, (uchar*)&tsk_entry);
         break;
 
     case APPEND_BLOCK_EVENT:
@@ -4553,7 +4553,7 @@ Exit_status binlogex_process_event(Log_event *ev,
             if (tmp_file_id == ((Append_block_log_event*)ev)->file_id)
             {
                 tsk_entry = binlogex_task_entry_event_simple_new(rec_count, ev, logname, pos, INVALID_THREAD_ID);
-                insert_dynamic(&global_load_event_array, (uchar*)tsk_entry);
+                insert_dynamic(&global_load_event_array, (uchar*)&tsk_entry);
                 break;
             }
         }
@@ -4723,7 +4723,7 @@ Exit_status binlogex_process_event(Log_event *ev,
             tmap_ex.thread_id = thread_id;
 
 #ifndef DBUG_OFF
-            my_assert(binlogex_get_thread_id_by_tablemap_id(tmap_ex.thread_id) == -1);
+            my_assert(binlogex_get_thread_id_by_tablemap_id(tmap_ex.thread_id) == INVALID_THREAD_ID);
 #endif
             /* table map加入到global_table_map_array,  */
             insert_dynamic(&global_table_map_array, (uchar*)&tmap_ex);
