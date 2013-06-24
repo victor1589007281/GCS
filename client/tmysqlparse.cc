@@ -1261,6 +1261,9 @@ int main(int argc,char *argv[])
 	parse_result_audit_destroy(&pra);
 	tmysqlparse_result_destory(&roa);
 
+	if(audit_output_file)//use -f or --file
+		fclose(fp);
+
 	if (opt_outfile)
 		end_tee();
 	mysql_end(0);
@@ -2765,6 +2768,7 @@ com_go(String *buffer,char *line __attribute__((unused)))
 			tmysqlparse_add_pra(&roa,buffer->c_ptr(),&pra);
 		}
 	}
+	buffer->length(0);
 	return 0;
 }
 
