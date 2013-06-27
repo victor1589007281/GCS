@@ -1259,7 +1259,11 @@ int main(int argc,char *argv[])
 	}
 	tmysqlparse_print_xml(&roa,fp);
 	parse_result_audit_destroy(&pra);
+	parse_global_destroy();
 	tmysqlparse_result_destory(&roa);
+
+	if(audit_output_file)//use -f or --file
+		fclose(fp);
 
 	if (opt_outfile)
 		end_tee();
@@ -2736,16 +2740,6 @@ com_go(String *buffer,char *line __attribute__((unused)))
 		return put_info("No query specified\n",INFO_ERROR);
 
 	}
-
-
-#ifdef HAVE_READLINE
-	if (status.add_to_history) 
-	{  
-		buffer->append(vertical ? "\\G" : delimiter);
-		/* Append final command onto history */
-		fix_history(buffer);
-	}
-#endif
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
 		if(pra.result_type == 2)
@@ -2765,6 +2759,15 @@ com_go(String *buffer,char *line __attribute__((unused)))
 			tmysqlparse_add_pra(&roa,buffer->c_ptr(),&pra);
 		}
 	}
+#ifdef HAVE_READLINE
+	if (status.add_to_history) 
+	{  
+		buffer->append(vertical ? "\\G" : delimiter);
+		/* Append final command onto history */
+		fix_history(buffer);
+	}
+#endif
+	buffer->length(0);
 	return 0;
 }
 
