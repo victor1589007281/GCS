@@ -180,6 +180,7 @@ query_parse(char* query, parse_result_t* pr)
     DBUG_ASSERT(pr->n_tables_alloced > 0 && thd);
 
     pr->n_tables = 0;
+    pr->err_msg[0] = 0;
 
     if (strlen(query) == 0)
     {
