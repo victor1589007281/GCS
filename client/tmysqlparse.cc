@@ -141,7 +141,7 @@ static uint my_end_arg;
 static char * opt_mysql_unix_port=0;
 static int connect_flag=CLIENT_INTERACTIVE;
 static char *current_host,*current_db,*current_user=0,*opt_password=0,
-*current_prompt=0, *delimiter_str= 0,*audit_output_file=0,
+*current_prompt=0, *delimiter_str= 0,*audit_output_file=0,*set_version=0,
 *default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME,
 *opt_init_command= 0;
 static char *histfile;
@@ -1091,10 +1091,12 @@ int main(int argc,char *argv[])
 	DBUG_ENTER("main");
 	DBUG_PROCESS(argv[0]);
 
+	//_CrtSetBreakAlloc(85);
+
 	delimiter_str= delimiter;
 	default_prompt = my_strdup(getenv("MYSQL_PS1") ? 
 		getenv("MYSQL_PS1") : 
-	"mysql> ",MYF(MY_WME));
+	"tmysqlparse> ",MYF(MY_WME));
 	current_prompt = my_strdup(default_prompt,MYF(MY_WME));
 	prompt_counter=0;
 
@@ -1227,7 +1229,6 @@ int main(int argc,char *argv[])
 	}
 
 #endif
-
 	sprintf(buff, "%s",
 		"Type 'help;' or '\\h' for help. Type '\\c' to clear the current input statement.\n");
 	put_info(buff,INFO_INFO);
@@ -1236,16 +1237,12 @@ int main(int argc,char *argv[])
 	/************************************************************************/
 	/* add by willhan. 2013-06-17                                                                     */
 	/************************************************************************/
-
-	parse_result_audit_init(&pra);
+	if(-1 == parse_result_audit_init(&pra,set_version))
+		return -1;
 	tmysqlparse_result_init(&roa);
 	if(current_db)//set the currentdb
 		parse_result_audit_init_db(&pra, current_db);
-
-
 	status.exit_status= read_and_execute(!status.batch);
-
-
 	/************************************************************************/
 	/* add by willhan. 2013-06-17                                                                     */
 	/************************************************************************/
@@ -1304,6 +1301,7 @@ sig_handler mysql_end(int sig)
 	my_free(current_host);
 	my_free(current_user);
 	my_free(audit_output_file);
+	my_free(set_version);
 	my_free(full_username);
 	my_free(part_username);
 	my_free(default_prompt);
@@ -1376,7 +1374,7 @@ static struct my_option my_long_options[] =
 	0, 0, 0, 0, 0},
 	{"help", 'I', "Synonym for -?", 0, 0, 0, GET_NO_ARG, NO_ARG, 0,
 	0, 0, 0, 0, 0},
-	{"auto-rehash", OPT_AUTO_REHASH,
+/*	{"auto-rehash", OPT_AUTO_REHASH,
 	"Enable automatic rehashing. One doesn't need to use 'rehash' to get table "
 	"and field completion, but startup and reconnecting may take a longer time. "
 	"Disable with --disable-auto-rehash.",
@@ -1431,10 +1429,10 @@ static struct my_option my_long_options[] =
 	0, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"vertical", 'E', "Print the output of a query (rows) vertically.",
 	&vertical, &vertical, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0,
-	0},
+	0},   */
 //	{"force", 'f', "Continue even if we get an SQL error.",
 //	&ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-	{"named-commands", 'G',
+/*	{"named-commands", 'G',
 	"Enable named commands. Named commands mean this program's internal "
 	"commands; see mysql> help . When enabled, the named commands can be "
 	"used from any line of the query, otherwise only from the first line, "
@@ -1541,9 +1539,9 @@ static struct my_option my_long_options[] =
 	{"user", 'u', "User for login if not current user.", &current_user,
 	&current_user, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 #endif
-	{"file", 'f', "assign the file name of audit result.", &audit_output_file, 
+*/	{"file", 'f', "assign the file name of audit result.", &audit_output_file, 
 	&audit_output_file, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
-	{"safe-updates", 'U', "Only allow UPDATE and DELETE that uses keys.",
+/*	{"safe-updates", 'U', "Only allow UPDATE and DELETE that uses keys.",
 	&safe_updates, &safe_updates, 0, GET_BOOL, NO_ARG, 0, 0,
 	0, 0, 0, 0},
 	{"i-am-a-dummy", 'U', "Synonym for option --safe-updates, -U.",
@@ -1551,9 +1549,11 @@ static struct my_option my_long_options[] =
 	0, 0, 0, 0},
 	{"verbose", 'v', "Write more. (-v -v -v gives the table output format).", 0,
 	0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
-	{"version", 'V', "Output version information and exit.", 0, 0, 0,
+*/	{"version", 'V', "Output version information and exit.", 0, 0, 0,
 	GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
-	{"wait", 'w', "Wait and retry if connection is down.", 0, 0, 0, GET_NO_ARG,
+	{"set_version", 'v', "set the version of mysql console, for example, \"5.0\" \"5.1\" \"5.5\"",
+	&set_version, &set_version, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+/*	{"wait", 'w', "Wait and retry if connection is down.", 0, 0, 0, GET_NO_ARG,
 	NO_ARG, 0, 0, 0, 0, 0, 0},
 	{"connect_timeout", OPT_CONNECT_TIMEOUT,
 	"Number of seconds before connection timeout.",
@@ -1590,7 +1590,7 @@ static struct my_option my_long_options[] =
 	{"default_auth", OPT_DEFAULT_AUTH,
 	"Default authentication client-side plugin to use.",
 	&opt_default_auth, &opt_default_auth, 0,
-	GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+	GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0}, */
 	{ 0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
 
@@ -2087,7 +2087,7 @@ static bool add_line(String &buffer,char *line,char *in_string,
 			continue;
 		}
 #endif
-		if (!*ml_comment && inchar == '\\' && !(*in_string))
+		if (!*ml_comment && inchar == '\\' /* && !(*in_string) */)
 		{
 			// Found possbile one character command like \c
 
@@ -2617,7 +2617,6 @@ static int com_server_help(String *buffer __attribute__((unused)),
 						   char *line __attribute__((unused)), char *help_arg)
 {
 	const char *server_cmd= buffer->ptr();
-
 	/* Óï·¨·ÖÎö */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
@@ -2641,8 +2640,7 @@ static int com_server_help(String *buffer __attribute__((unused)),
 	return 0;
 }
 
-static int
-com_help(String *buffer __attribute__((unused)),
+static int com_help(String *buffer __attribute__((unused)),
 		 char *line __attribute__((unused)))
 {
 	reg1 int i, j;
@@ -4172,10 +4170,12 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 		{
 			if((roa->ra)[i].pra.result_type == 1)
 			{
+				int tmp_type = roa->ra[i].pra.query_type;
+
 				fputs("\t\t<warning_info>\n",xml_file);
 
 				fputs("\t\t\t<type>",xml_file);
-				fprintf(xml_file,"%s",get_stmt_type_str((roa->ra)[i].pra.query_type));
+				fprintf(xml_file,"%s",get_stmt_type_str(tmp_type));
 				fputs("</type>\n",xml_file);
 
 				fputs("\t\t\t<name>",xml_file);
@@ -4195,7 +4195,7 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 				}
 				else
 				{//output database name
-					print_quoted_xml(xml_file, (roa->ra)[i].pra.name, strlen((roa->ra)[i].pra.name));	
+					print_quoted_xml(xml_file, (roa->ra)[i].pra.dbname, strlen((roa->ra)[i].pra.dbname));	
 				}
 				fputs("</name>\n",xml_file);
 
@@ -4203,6 +4203,12 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 				print_quoted_xml(xml_file, (roa->ra)[i].sql, strlen((roa->ra)[i].sql));
 				fputs("</text>\n",xml_file);
 
+				if(tmp_type == 1 || tmp_type == 3)
+				{//alter table or create table, have more than 10 blob/text field
+					fputs("\t\t\t<extra>",xml_file);
+					fprintf(xml_file, "%d", (roa->ra)[i].pra.blob_text_count);
+					fputs("</extra>\n",xml_file);
+				}
 				fputs("\t\t</warning_info>\n",xml_file);
 			}
 		}

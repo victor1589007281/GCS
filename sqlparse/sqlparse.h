@@ -18,6 +18,8 @@ extern "C" {
 #define NAME_LEN                (NAME_CHAR_LEN*SYSTEM_CHARSET_MBMAXLEN)
 #define USERNAME_LENGTH         (USERNAME_CHAR_LENGTH*SYSTEM_CHARSET_MBMAXLEN)
 
+enum enum_versio {VERSION_5_0, VERSION_5_1, VERSION_5_5};
+
 struct parse_table_struct {
     char dbname[NAME_LEN];
     char tablename[NAME_LEN];
@@ -43,6 +45,7 @@ typedef struct parse_result_struct parse_result_t;
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
+enum enum_result_types {SQLPARSE_SUCESS, SQLPARSE_WARNING, SQLPARSE_FAIL, SQLPARSE_FAIL_OTHER};
 struct parse_result_audit {
 	void* thd_org;
 	int query_type;
@@ -51,13 +54,16 @@ struct parse_result_audit {
 
 	int tbdb;
 	/*tbdb==0 rising warnings from table; tbdb==1 risking warnings from dababase */
-	char name[NAME_LEN];
-	/**table name or database name**/
+	char dbname[NAME_LEN];
+	/** database name **/
+	int blob_text_count;
+	/*records the number of blob/text fields when create/alter table*/
 	
 	unsigned short n_tables_alloced;
 	unsigned short n_tables;
 	parse_table_t*  table_arr;
 	//char** table_arr;       /* table name array, each is <dbname>.<tablename> */
+	enum_versio mysql_version;
 
 	int errcode;
 	char err_msg[PARSE_RESULT_MAX_STR_LEN + 1];
@@ -95,7 +101,7 @@ parse_global_destroy();
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
-int parse_result_audit_init(parse_result_audit* pr);
+int parse_result_audit_init(parse_result_audit* pr, char *version);
 int query_parse_audit(char *query, parse_result_audit* pra);
 int parse_result_audit_destroy(parse_result_audit* pra);
 int parse_result_add_table_audit(parse_result_audit* pra, char* db_name, char* table_name);
