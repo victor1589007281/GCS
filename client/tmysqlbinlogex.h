@@ -7,6 +7,9 @@ Exit_status binlogex_process_event(Log_event *ev,
                                    my_off_t pos, const char *logname);
 
 int
+safe_execute_sql(MYSQL *mysql, const char *query, ulong length);
+
+int
 binlogex_init();
 
 void

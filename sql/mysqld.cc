@@ -8113,6 +8113,8 @@ my_end_for_sqlparse()
 	// charset ect.
     my_once_free();
 
+    item_create_cleanup();
+
     sys_var_end();
 
     // set cleanup()

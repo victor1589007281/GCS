@@ -6,7 +6,7 @@
 /* copy and modify from innodb */
 #define my_assert(expr) \
     if (!(expr)) {\
-        fprintf(stderr, "my_assert(%s), FILE :%s, Line : %u", #expr, __FILE__, (uint)__LINE__);\
+        fprintf(stderr, "my_assert(%s), FILE :%s, Line : %u\n", #expr, __FILE__, (uint)__LINE__);\
         assert(0);\
     }
 /** Operating system event */

@@ -2400,6 +2400,46 @@ err:
     
 }
 
+int get_fkey_tables(
+    MYSQL* mysql
+)
+{
+    MYSQL_ROW row;
+    MYSQL_RES* rs = NULL;
+
+    /* 获得所有外键信息*/
+    if (mysql_query(mysql, "select CONSTRAINT_SCHEMA,TABLE_NAME,UNIQUE_CONSTRAINT_SCHEMA,REFERENCED_TABLE_NAME from information_schema.REFERENTIAL_CONSTRAINTS"))
+    {
+        error("select error on information_schema.REFERENTIAL_CONSTRAINTS, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        return -1;
+    }
+
+    rs= mysql_store_result(mysql);
+    if (!rs)
+    {
+        error("store result error on information_schema.REFERENTIAL_CONSTRAINTS");
+        goto err;
+    }
+
+    while ((row = mysql_fetch_row(rs)))
+    {
+        binlogex_add_to_hash_tab(row[0], row[1], global_tables_pairs_num);
+        binlogex_add_to_hash_tab(row[2], row[3], global_tables_pairs_num);
+
+        global_tables_pairs_num++;
+    }
+
+    mysql_free_result(rs);
+    return 0;
+
+err:
+    if (rs)
+        mysql_free_result(rs);
+
+    return -1;
+}
+
+
 int get_trigger_tables(
     MYSQL* mysql
 )
@@ -2550,7 +2590,6 @@ get_events_tables(
             if (atoi(row[0]) > 0)
             {
                 error("It don't support server contained events");
-
                 goto err;
             }
         }
@@ -2573,6 +2612,8 @@ test_remote_server_and_get_definition()
 {
     MYSQL   m;
     int ret = 0;
+    bool support_meta = true;
+    char query[1024];
 
     parse_global_init();
 
@@ -2594,21 +2635,48 @@ test_remote_server_and_get_definition()
         return -1;
     }
 
+    strcpy(query, "set @old_metadata:=@@innodb_stats_on_metadata;");
+    ret = safe_execute_sql(&m, query, strlen(query));
+    if (!ret)
+    {
+        strcpy(query, "set global innodb_stats_on_metadata = off;");
+        safe_execute_sql(&m, query, strlen(query));
+    }
+    else
+    {
+        /* information_schema.events not exists */
+        if (mysql_errno(&m) != ER_UNKNOWN_SYSTEM_VARIABLE)
+        {
+            error("error on set @old_metadata:=@@innodb_stats_on_metadata;, %u:%s", mysql_errno(&m), mysql_error(&m));
+
+            ret = -1;
+            goto err;
+        }
+        support_meta = false;
+    }
+
     if (get_events_tables(&m) ||
         get_trigger_tables(&m) ||
         get_functions_tables(&m) ||
+        get_fkey_tables(&m) ||
         //get_procedures_tables(&m) ||  /* 由于存储过程内容会保存在binlog中，因此不用分析存储过程 */
         get_views_tables(&m))
         ret = -1;
 
-    mysql_version = mysql_get_server_version(&m);
+    //mysql_version = mysql_get_server_version(&m);
 
+    if (support_meta)
+    {
+        strcpy(query, "set global innodb_stats_on_metadata = @old_metadata;");
+        safe_execute_sql(&m, query, strlen(query));
+    }
+
+err:
     mysql_close(&m);
 
     //TODO: get definition of views/trigger/
 
     //not suppport, event, function contain DML
-
 
     parse_result_destroy(&parse_result);
     parse_result_inited = 0;
@@ -2626,7 +2694,7 @@ int main(int argc, char** argv)
   DBUG_ENTER("main");
   DBUG_PROCESS(argv[0]);
 
-  //_CrtSetBreakAlloc(82);
+  //_CrtSetBreakAlloc(98);
   my_init_time(); // for time functions
 
   if (load_defaults("my", load_default_groups, &argc, &argv))
@@ -2877,7 +2945,8 @@ binlogex_new_table_entry(
 
     my_assert(strlen(dbname) < NAME_LEN);
     my_assert(strlen(tablename) < NAME_LEN);
-    my_assert(thread_id_hint == INVALID_THREAD_ID || thread_id_hint < concurrency); // must less than concurrency
+    my_assert(thread_id_hint == INVALID_THREAD_ID || thread_id_hint < concurrency || 
+                thread_id_hint <= global_tables_pairs_num); // must less than concurrency
 
     entry = (table_entry_t*)calloc(1, sizeof(*entry));
     my_assert(entry);
@@ -2973,7 +3042,15 @@ binlogex_print_all_tables_in_hash()
     fprintf(stdout, "Talbe in hash table\n");
     for (i = 0; i < concurrency; ++i)
     {
-        fprintf(stdout, "\tTable of thread %u: %s\n", i, dnstr_arr[i].str);
+        int tab_cnt = 0, j = 0;
+
+        for (j = 0; dnstr_arr[i].str[j]; j++)
+        {
+            if (dnstr_arr[i].str[j] == ',')
+                tab_cnt++;
+        }
+
+        fprintf(stdout, "\tTable of thread %u(table count %d): %s\n", i, tab_cnt, dnstr_arr[i].str);
         dynstr_free(&dnstr_arr[i]);
     }
 
@@ -3007,7 +3084,7 @@ binlogex_add_to_hash_tab(
     else if (entry->thread_id != id_merge)
     {
         /* 将在hash表中thread_id为entry->thread_id的entry全部转换为id_merge */
-        /* 例如 a,b 1; c,d 2; 插入(a,c), a,b,c,d 合并为1 */
+        /* 例如 a,b 1; c,d 2; 插入(a,c) 3, a,b,c,d 合并为3 */
 
         thread_id_pairs ids;
         ids.thread_id_old = entry->thread_id;
@@ -3665,7 +3742,7 @@ Normal event count "ULONGPF"\n\
 Complex event count "ULONGPF"\n\
 Sync event count "ULONGPF", wait_time %f, signal time %f\n\
 Max binlog event length "ULONGPF"\n\
-Sleep time "ULONGPF"\n\n", vm->thread_id, is_error ? "unnormal" : "normal", vm->normal_entry_cnt, vm->complex_entry_cnt, 
+Sleep count "ULONGPF"\n\n", vm->thread_id, is_error ? "unnormal" : "normal", vm->normal_entry_cnt, vm->complex_entry_cnt, 
                         vm->sync_entry_cnt, (float)vm->sync_wait_time / CLOCKS_PER_SEC, (float)vm->sync_signal_time / CLOCKS_PER_SEC, 
                         vm->dnstr.max_length, vm->sleep_cnt);
 
@@ -3708,7 +3785,7 @@ binlogex_worker_wait(
         len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
         if (len == (size_t)-1 || len != vm->dnstr.length)
         {
-            fprintf(stderr, "Write error: %u, %s:%u\n", len, __FILE__, __LINE__);
+            fprintf(stderr, "Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
         }
 
@@ -3780,7 +3857,7 @@ binlogex_worker_signal(
         len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
         if (len == (size_t)-1 || len != vm->dnstr.length)
         {
-            fprintf(stderr, "Write error: %u, %s:%u\n", len, __FILE__, __LINE__);
+            fprintf(stderr, "Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
         }
         dynstr_clear(&vm->dnstr);
@@ -3938,7 +4015,7 @@ binlogex_worker_execute_task_entry(
             size_t len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
             if (len == (size_t) -1 || len != vm->dnstr.length)
             {
-                fprintf(stderr, "Write error: %u, %s:%u\n", len, __FILE__, __LINE__);
+                fprintf(stderr, "Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
                 code = WORKER_STATUS_ERROR;
             }
         }
@@ -4311,7 +4388,13 @@ Exit_status binlogex_process_event(Log_event *ev,
             parse_result_init_db(&parse_result, (char*)query_ev->db);
 
             parse_ret = query_parse((char*)query_ev->query, &parse_result);
-            my_assert(!parse_ret);
+            if (parse_ret)
+            {
+                /* 例如由于保留字之类导致的语法出错，不能断言处理，当库级操作处理吧 */
+                parse_result.n_tables = 0;
+            }
+            
+            //my_assert(!parse_ret);
 
             tsk_entry = binlogex_task_entry_event_new(rec_count, ev, logname, pos, parse_result.n_tables);
             my_assert(tsk_entry);
@@ -4322,6 +4405,8 @@ Exit_status binlogex_process_event(Log_event *ev,
                 // 如 drop database d1;
 
                 fprintf(stdout, "DB Level operation: %s in %s:"ULONGPF"\n", query_ev->query, logname, (ulong)pos);
+                if (strlen(parse_result.err_msg))
+                    fprintf(stdout, "parse error: %s\n", parse_result.err_msg); 
 
                 for (i = 0; i < concurrency; ++i)
                 {
@@ -4348,9 +4433,9 @@ Exit_status binlogex_process_event(Log_event *ev,
                 task_entry_t*   tmp_tsk_entry = NULL;
 
                 get_dynamic(&global_session_event_array, (uchar*)&tmp_tsk_entry, i);
-                my_assert(!tmp_tsk_entry && tmp_tsk_entry->type == TASK_ENTRY_TYPE_EVENT);
+                my_assert(tmp_tsk_entry && tmp_tsk_entry->type == TASK_ENTRY_TYPE_EVENT);
 
-                binlogex_task_entry_event_set_dst_thread_id(tmp_tsk_entry, thread_id);
+                binlogex_task_entry_event_set_dst_thread_id(tmp_tsk_entry, tsk_entry->ui.event.dst_thread_id);
 
                 if (binlogex_task_entry_add_to_queue(tmp_tsk_entry, tsk_entry->ui.event.dst_thread_id))
                     retval= ERROR_STOP;
@@ -4833,6 +4918,26 @@ end:
 }
 
 int
+safe_execute_sql(MYSQL *mysql, const char *query, ulong length)
+{
+    int ret; 
+    MYSQL_RES* res;
+
+    ret = mysql_real_query(mysql, query, length);
+    if (ret)
+        return -1;
+
+    res = mysql_store_result(mysql);
+    if (res)
+        mysql_free_result(res);
+    else if (!mysql_field_count(mysql) == 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+int
 binlogex_execute_sql(
     Worker_vm*  vm,
     char*       sql,
@@ -4841,7 +4946,7 @@ binlogex_execute_sql(
 {
     char* pos, *start;
     int ret = 0;
-    MYSQL_RES* res;
+//   MYSQL_RES* res;
     pos = sql;
 
 new_line:
@@ -4891,29 +4996,37 @@ new_line:
             }
             else
             {
-                ret = mysql_real_query(&vm->mysql, start, pos - start);
+                //ret = mysql_real_query(&vm->mysql, start, pos - start);
+                //if (ret)
+                //    error_vm(vm, "Error %d:%s", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
+
+                //if (ret && exit_when_error)
+                //    goto exit;
+
+                //res = mysql_store_result(&vm->mysql);
+                //if (res)
+                //{
+                //    mysql_free_result(res);
+                //}
+                //else
+                //{
+                //    if (mysql_field_count(&vm->mysql) == 0)
+                //    {
+                //        //mysql_affected_rows(&vm->mysql);
+                //    }
+                //    else
+                //    {
+                //        error_vm(vm, "Error %d:%s, could not retrieve result set", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
+                //    }
+                //}
+
+                ret = safe_execute_sql(&vm->mysql, start, pos - start);
                 if (ret)
                     error_vm(vm, "Error %d:%s", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
 
                 if (ret && exit_when_error)
                     goto exit;
 
-                res = mysql_store_result(&vm->mysql);
-                if (res)
-                {
-                    mysql_free_result(res);
-                }
-                else
-                {
-                    if (mysql_field_count(&vm->mysql) == 0)
-                    {
-                        //mysql_affected_rows(&vm->mysql);
-                    }
-                    else
-                    {
-                        error_vm(vm, "Error %d:%s, could not retrieve result set", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
-                    }
-                }
             }
             
             // the last + 1 for \n
