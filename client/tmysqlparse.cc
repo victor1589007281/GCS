@@ -188,7 +188,7 @@ const char *default_dbug_option="d:t:o,/tmp/mysql.trace";
 
 /************************************************************************/
 /* add by willhan. 2013-06-17
-use global variable pra to store the reuslt of parse
+use global variable pra to store the reuslt of parse */
 /************************************************************************/
 static parse_result_audit pra;
 const static int RESULT_OUTPUT_AUDIT_LEN = 10;
@@ -1313,7 +1313,9 @@ sig_handler mysql_end(int sig)
 		my_free(embedded_server_args[--embedded_server_arg_count]);
 	mysql_server_end();
 	free_defaults(defaults_argv);
+#ifdef __WIN__
 	my_end(my_end_arg);
+#endif // __WIN__
 	exit(status.exit_status);
 }
 
