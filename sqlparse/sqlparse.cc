@@ -39,11 +39,11 @@ void my_end_for_sqlparse();
 static my_pthread_once_t sqlparse_global_inited = MY_PTHREAD_ONCE_INIT;
 static int process_msg_error(int err_code, char *err_msg);
 static int set_current_version(char *version, enum_versio *current_version);
-static char* has_reserve_in_errmsg(enum_versio mysql_version, char *err_msg);
+static const char* has_reserve_in_errmsg(enum_versio mysql_version, char *err_msg);
 static int isprefix_word(const char *s, const char *t, int first_pos);
 static int is_word_segmentation(char ch);
-static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len, char *reserve);
-static int find_reserve_pos(char *reserve);
+static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len,const char *reserve);
+//static int find_reserve_pos(char *reserve);
 
 
 void parse_global_init()
@@ -650,7 +650,7 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 			if(list_field.elements >= 10)
 			{
 				blob_text_count = 0;
-				while(cur_field = it_field++)
+				while(!!(cur_field = it_field++))
 				{
 					switch(cur_field->sql_type)
 					{
@@ -737,7 +737,7 @@ int query_parse_audit(char* query, parse_result_audit* pra )
 {
 	int exit_code = 0;
 	int len = sizeof(reserve_words) / sizeof(reserve_words[0]);
-	char *reserve;
+	const char *reserve;
 	char tmp_err_msg[PARSE_RESULT_MAX_STR_LEN + 1] = {0};
 	int tmp_err_code;
 	exit_code = query_parse_audit_low(query, pra);
@@ -756,7 +756,7 @@ int query_parse_audit(char* query, parse_result_audit* pra )
 			strcpy(sql1,query);
 			for(int i=version_pos[pra->mysql_version]; i<len; i++)
 			{
-				char* ret;
+				const char* ret;
 				reserve = reserve_words[i];
 				ret = process_sql_for_reserve(sql1, sql2, alloc_size, reserve);
 				assert(ret);
@@ -902,7 +902,7 @@ static int set_current_version(char *version, enum_versio *current_version)
 }
 
 
-static char* has_reserve_in_errmsg(enum_versio mysql_version, char *err_msg)
+static const char* has_reserve_in_errmsg(enum_versio mysql_version, char *err_msg)
 {//return the reserve word
 	char *start;
 	char tmp[100]={0};
@@ -965,7 +965,7 @@ static int is_word_segmentation(char ch)
 	return is_seg;
 }
 
-static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len, char *reserve)
+static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len,const char *reserve)
 {//process the query, if the word is reserve, add `reserve`
 	size_t i,j;
 	char in_string = 0;
@@ -1030,7 +1030,7 @@ static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len, 
 
 	return tosql;
 }
-
+/***************************************
 static int find_reserve_pos(char *reserve)
 {//return the pos of reserve in reserve_words
 	int pos = -1;
@@ -1042,3 +1042,4 @@ static int find_reserve_pos(char *reserve)
 	}
 	return pos;
 }
+*************************************/

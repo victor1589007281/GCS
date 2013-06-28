@@ -120,40 +120,33 @@ static char **defaults_argv;
 enum enum_info_type { INFO_INFO,INFO_ERROR,INFO_RESULT};
 typedef enum enum_info_type INFO_TYPE;
 
-static my_bool ignore_errors=0,wait_flag=0,quick=0,
-connected=0,opt_raw_data=0,unbuffered=0,output_tables=0,
-opt_rehash=1,skip_updates=0,safe_updates=0,one_database=0,
-opt_compress=0, using_opt_local_infile=0,
+static my_bool ignore_errors=0,quick=0,
+connected=0,opt_raw_data=0,unbuffered=0,
+opt_rehash=1,skip_updates=0,one_database=0,
+using_opt_local_infile=0,
 vertical=0, line_numbers=1, column_names=1,opt_html=0,
 opt_xml=0,opt_nopager=1, opt_outfile=0, named_cmds= 0,
 tty_password= 0, opt_nobeep=0, opt_reconnect=1,
-opt_secure_auth= 0,
 default_pager_set= 0, opt_sigint_ignore= 0,
-auto_vertical_output= 0,
 show_warnings= 0, executing_query= 0, interrupted_query= 0,
 ignore_spaces= 0;
 static my_bool debug_info_flag, debug_check_flag;
-static my_bool column_types_flag;
 static my_bool preserve_comments= 0;
 static ulong opt_max_allowed_packet, opt_net_buffer_length;
-static uint verbose=0,opt_silent=0,opt_mysql_port=0, opt_local_infile=0;
+static uint verbose=0,opt_silent=0;
 static uint my_end_arg;
 static char * opt_mysql_unix_port=0;
 static int connect_flag=CLIENT_INTERACTIVE;
 static char *current_host,*current_db,*current_user=0,*opt_password=0,
 *current_prompt=0, *delimiter_str= 0,*audit_output_file=0,*set_version=0,
-*default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME,
-*opt_init_command= 0;
+*default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME;
 static char *histfile;
 static char *histfile_tmp;
 static String glob_buffer,old_buffer;
 static String processed_prompt;
 static char *full_username=0,*part_username=0,*default_prompt=0;
-static int wait_time = 5;
 static STATUS status;
-static ulong select_limit,max_join_size,opt_connect_timeout=0;
 static char mysql_charsets_dir[FN_REFLEN+1];
-static char *opt_plugin_dir= 0, *opt_default_auth= 0;
 static const char *xmlmeta[] = {
 	"&", "&amp;",
 	"<", "&lt;",
@@ -1327,8 +1320,6 @@ no query in process, terminate like previous behavior
 */
 sig_handler handle_sigint(int sig)
 {
-	MYSQL *kill_mysql= NULL;
-
 	/* terminate if no query being executed, or we already tried interrupting */
 	/* terminate if no query being executed, or we already tried interrupting */
 	if (!executing_query || (interrupted_query == 2))
@@ -1336,12 +1327,9 @@ sig_handler handle_sigint(int sig)
 		tee_fprintf(stdout, "Ctrl-C -- exit!\n");
 		goto err;
 	}
-
 	interrupted_query++;
-
 	/* kill_buffer is always big enough because max length of %lu is 15 */
 	tee_fprintf(stdout, "Ctrl-C -- query aborted.\n");
-
 	return;
 
 err:
@@ -2618,7 +2606,6 @@ static void print_help_item(MYSQL_ROW *cur, int num_name, int num_cat, char *las
 static int com_server_help(String *buffer __attribute__((unused)),
 						   char *line __attribute__((unused)), char *help_arg)
 {
-	const char *server_cmd= buffer->ptr();
 	/* Óï·¨·ÖÎö */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
