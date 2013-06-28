@@ -17,7 +17,7 @@ static int version_pos[] = {0, 6, 13};
 static  char word_segmentation[] = {' ' , '\t', '\n', '\r', ',', '.', '(', ')', '<', '>', '=', '!', '\0'};
 
 
-static char *reserve_words[] =
+static const char *reserve_words[] =
 {
 	"ACCESSIBLE",
 	"LINEAR",

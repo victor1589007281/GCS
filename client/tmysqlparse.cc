@@ -240,15 +240,12 @@ static int put_info(const char *str,INFO_TYPE info,uint error=0,
 static int put_error(MYSQL *mysql);
 static void safe_put_field(const char *pos,ulong length);
 static void xmlencode_print(const char *src, uint length);
-static void init_pager();
-static void end_pager();
 static void init_tee(const char *);
 static void end_tee();
 static const char* construct_prompt();
 static char *get_arg(char *line, my_bool get_next_arg);
 static void init_username();
 static void add_int_to_prompt(int toadd);
-static int get_result_width(MYSQL_RES *res);
 static int get_field_disp_length(MYSQL_FIELD * field);
 
 /* A structure which contains information on the commands this program
@@ -1059,15 +1056,9 @@ static COMMANDS *find_command(char *name,char cmd_name);
 static bool add_line(String &buffer,char *line,char *in_string,
 					 bool *ml_comment, bool truncated);
 static void remove_cntrl(String &buffer);
-static void print_table_data(MYSQL_RES *result);
-static void print_table_data_html(MYSQL_RES *result);
-static void print_table_data_xml(MYSQL_RES *result);
 static void print_tab_data(MYSQL_RES *result);
-static void print_table_data_vertically(MYSQL_RES *result);
-static void print_warnings(void);
 static ulong start_timer(void);
 static void end_timer(ulong start_time,char *buff);
-static void mysql_end_timer(ulong start_time,char *buff);
 static void nice_time(double sec,char *buff,bool part_second);
 extern "C" sig_handler mysql_end(int sig);
 extern "C" sig_handler handle_sigint(int sig);
@@ -2563,46 +2554,6 @@ extern "C" {
 #endif
 #endif /* HAVE_READLINE */
 
-
-static int reconnect(void)
-{
-	/* purecov: begin tested */
-	if (opt_reconnect)
-	{
-		put_info("No connection. Trying to reconnect...",INFO_INFO);
-		(void) com_connect((String *) 0, 0);
-		if (opt_rehash)
-			com_rehash(NULL, NULL);
-	}
-	if (!connected)
-		return put_info("Can't connect to the server\n",INFO_ERROR);
-	/* purecov: end */
-	return 0;
-}
-
-static void get_current_db()
-{
-	/* If one_database is set, current_db is not supposed to change. */
-	if (one_database)
-		return;
-
-	my_free(current_db);
-	current_db= NULL;
-}
-
-
-static void print_help_item(MYSQL_ROW *cur, int num_name, int num_cat, char *last_char)
-{
-	char ccat= (*cur)[num_cat][0];
-	if (*last_char != ccat)
-	{
-		put_info(ccat == 'Y' ? "categories:" : "topics:", INFO_INFO);
-		*last_char= ccat;
-	}
-	tee_fprintf(PAGER, "   %s\n", (*cur)[num_name]);
-}
-
-
 static int com_server_help(String *buffer __attribute__((unused)),
 						   char *line __attribute__((unused)), char *help_arg)
 {
@@ -2758,15 +2709,6 @@ com_go(String *buffer,char *line __attribute__((unused)))
 	return 0;
 }
 
-static void end_pager()
-{
-#ifdef USE_POPEN
-	if (!opt_nopager)
-		pclose(PAGER);
-#endif
-}
-
-
 static void init_tee(const char *file_name)
 {
 	FILE* new_outfile;
@@ -2806,71 +2748,6 @@ com_ego(String *buffer,char *line)
 }
 
 
-static const char *fieldtype2str(enum enum_field_types type)
-{
-	switch (type) {
-	case MYSQL_TYPE_BIT:         return "BIT";
-	case MYSQL_TYPE_BLOB:        return "BLOB";
-	case MYSQL_TYPE_DATE:        return "DATE";
-	case MYSQL_TYPE_DATETIME:    return "DATETIME";
-	case MYSQL_TYPE_NEWDECIMAL:  return "NEWDECIMAL";
-	case MYSQL_TYPE_DECIMAL:     return "DECIMAL";
-	case MYSQL_TYPE_DOUBLE:      return "DOUBLE";
-	case MYSQL_TYPE_ENUM:        return "ENUM";
-	case MYSQL_TYPE_FLOAT:       return "FLOAT";
-	case MYSQL_TYPE_GEOMETRY:    return "GEOMETRY";
-	case MYSQL_TYPE_INT24:       return "INT24";
-	case MYSQL_TYPE_LONG:        return "LONG";
-	case MYSQL_TYPE_LONGLONG:    return "LONGLONG";
-	case MYSQL_TYPE_LONG_BLOB:   return "LONG_BLOB";
-	case MYSQL_TYPE_MEDIUM_BLOB: return "MEDIUM_BLOB";
-	case MYSQL_TYPE_NEWDATE:     return "NEWDATE";
-	case MYSQL_TYPE_NULL:        return "NULL";
-	case MYSQL_TYPE_SET:         return "SET";
-	case MYSQL_TYPE_SHORT:       return "SHORT";
-	case MYSQL_TYPE_STRING:      return "STRING";
-	case MYSQL_TYPE_TIME:        return "TIME";
-	case MYSQL_TYPE_TIMESTAMP:   return "TIMESTAMP";
-	case MYSQL_TYPE_TINY:        return "TINY";
-	case MYSQL_TYPE_TINY_BLOB:   return "TINY_BLOB";
-	case MYSQL_TYPE_VAR_STRING:  return "VAR_STRING";
-	case MYSQL_TYPE_YEAR:        return "YEAR";
-	default:                     return "?-unknown-?";
-	}
-}
-
-
-/**
-Return the length of a field after it would be rendered into text.
-
-This doesn't know or care about multibyte characters.  Assume we're
-using such a charset.  We can't know that all of the upcoming rows 
-for this column will have bytes that each render into some fraction
-of a character.  It's at least possible that a row has bytes that 
-all render into one character each, and so the maximum length is 
-still the number of bytes.  (Assumption 1:  This can't be better 
-because we can never know the number of characters that the DB is 
-going to send -- only the number of bytes.  2: Chars <= Bytes.)
-
-@param  field  Pointer to a field to be inspected
-
-@returns  number of character positions to be used, at most
-*/
-static int get_field_disp_length(MYSQL_FIELD *field)
-{
-	uint length= column_names ? field->name_length : 0;
-
-	if (quick)
-		length= max(length, field->length);
-	else
-		length= max(length, field->max_length);
-
-	if (length < 4 && !IS_NOT_NULL(field->flags))
-		length= 4;				/* Room for "NULL" */
-
-	return length;
-}
-
 /**
 For a new result, return the max number of characters that any
 upcoming row may return.
@@ -2907,167 +2784,6 @@ tee_print_sized_data(const char *data, unsigned int data_length, unsigned int to
 		for (i= data_length; i < total_bytes_to_send; i++)
 			tee_putc((int)' ', PAGER);
 }
-
-
-
-static void
-print_table_data_html(MYSQL_RES *result)
-{
-	MYSQL_ROW	cur;
-	MYSQL_FIELD	*field;
-
-	mysql_field_seek(result,0);
-	(void) tee_fputs("<TABLE BORDER=1><TR>", PAGER);
-	if (column_names)
-	{
-		while((field = mysql_fetch_field(result)))
-		{
-			tee_fputs("<TH>", PAGER);
-			if (field->name && field->name[0])
-				xmlencode_print(field->name, field->name_length);
-			else
-				tee_fputs(field->name ? " &nbsp; " : "NULL", PAGER);
-			tee_fputs("</TH>", PAGER);
-		}
-		(void) tee_fputs("</TR>", PAGER);
-	}
-	while ((cur = mysql_fetch_row(result)))
-	{
-		if (interrupted_query)
-			break;
-		ulong *lengths=mysql_fetch_lengths(result);
-		(void) tee_fputs("<TR>", PAGER);
-		for (uint i=0; i < mysql_num_fields(result); i++)
-		{
-			(void) tee_fputs("<TD>", PAGER);
-			xmlencode_print(cur[i], lengths[i]);
-			(void) tee_fputs("</TD>", PAGER);
-		}
-		(void) tee_fputs("</TR>", PAGER);
-	}
-	(void) tee_fputs("</TABLE>", PAGER);
-}
-
-
-static void
-print_table_data_xml(MYSQL_RES *result)
-{
-	MYSQL_ROW   cur;
-	MYSQL_FIELD *fields;
-
-	mysql_field_seek(result,0);
-
-	tee_fputs("<?xml version=\"1.0\"?>\n\n<resultset statement=\"", PAGER);
-	xmlencode_print(glob_buffer.ptr(), (int)strlen(glob_buffer.ptr()));
-	tee_fputs("\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">",
-		PAGER);
-
-	fields = mysql_fetch_fields(result);
-	while ((cur = mysql_fetch_row(result)))
-	{
-		if (interrupted_query)
-			break;
-		ulong *lengths=mysql_fetch_lengths(result);
-		(void) tee_fputs("\n  <row>\n", PAGER);
-		for (uint i=0; i < mysql_num_fields(result); i++)
-		{
-			tee_fprintf(PAGER, "\t<field name=\"");
-			xmlencode_print(fields[i].name, (uint) strlen(fields[i].name));
-			if (cur[i])
-			{
-				tee_fprintf(PAGER, "\">");
-				xmlencode_print(cur[i], lengths[i]);
-				tee_fprintf(PAGER, "</field>\n");
-			}
-			else
-				tee_fprintf(PAGER, "\" xsi:nil=\"true\" />\n");
-		}
-		(void) tee_fputs("  </row>\n", PAGER);
-	}
-	(void) tee_fputs("</resultset>\n", PAGER);
-}
-
-
-static void
-print_table_data_vertically(MYSQL_RES *result)
-{
-	MYSQL_ROW	cur;
-	uint		max_length=0;
-	MYSQL_FIELD	*field;
-
-	while ((field = mysql_fetch_field(result)))
-	{
-		uint length= field->name_length;
-		if (length > max_length)
-			max_length= length;
-		field->max_length=length;
-	}
-
-	mysql_field_seek(result,0);
-	for (uint row_count=1; (cur= mysql_fetch_row(result)); row_count++)
-	{
-		if (interrupted_query)
-			break;
-		mysql_field_seek(result,0);
-		tee_fprintf(PAGER, 
-			"*************************** %d. row ***************************\n", row_count);
-
-		ulong *lengths= mysql_fetch_lengths(result);
-
-		for (uint off=0; off < mysql_num_fields(result); off++)
-		{
-			field= mysql_fetch_field(result);
-			if (column_names)
-				tee_fprintf(PAGER, "%*s: ",(int) max_length,field->name);
-			if (cur[off])
-			{
-				unsigned int i;
-				const char *p;
-
-				for (i= 0, p= cur[off]; i < lengths[off]; i+= 1, p+= 1)
-				{
-					if (*p == '\0')
-						tee_putc((int)' ', PAGER);
-					else
-						tee_putc((int)*p, PAGER);
-				}
-				tee_putc('\n', PAGER);
-			}
-			else
-				tee_fprintf(PAGER, "NULL\n");
-		}
-	}
-}
-
-
-/* print_warnings should be called right after executing a statement */
-
-static void print_warnings()
-{
-	char   query[50] = "show warnings";
-
-	if (query_parse_audit(query, &pra))
-	{
-		if(pra.result_type == 2)
-		{//parse fail
-			tmysqlparse_add_pra(&roa,query,&pra);
-		}
-		else if(pra.result_type == 3)
-		{//error
-			fprintf(stderr, "SQL: %s\n",query);
-			fprintf(stderr, "error: %s\n", pra.err_msg);
-		}
-	}
-	else 
-	{
-		if(pra.result_type == 1)
-		{//risking warnings
-			tmysqlparse_add_pra(&roa, query, &pra);
-		}
-	}
-}
-
-
 static const char *array_value(const char **array, char key)
 {
 	for (; *array; array+= 2)
@@ -3856,14 +3572,6 @@ static void end_timer(ulong start_time,char *buff)
 		CLOCKS_PER_SEC,buff,1);
 }
 
-
-static void mysql_end_timer(ulong start_time,char *buff)
-{
-	buff[0]=' ';
-	buff[1]='(';
-	end_timer(start_time,buff+2);
-	strmov(strend(buff),")");
-}
 
 static const char* construct_prompt()
 {
