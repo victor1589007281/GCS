@@ -10,7 +10,7 @@ extern int parse_export;
 #define PARSE_RESULT_N_TABLE_ARR_INITED 5
 #define PARSE_RESULT_DEFAULT_DB_NAME "<unknow_db>"
 
-static int ignore_error_code[] = {1193,0};//0 means the end
+static int ignore_error_code[] = {ER_UNKNOWN_SYSTEM_VARIABLE,0};//0 means the end
 
 
 static int version_pos[] = {0, 6, 13};
@@ -739,10 +739,10 @@ int query_parse_audit(char* query, parse_result_audit* pra )
 	int len = sizeof(reserve_words) / sizeof(reserve_words[0]);
 	char *reserve;
 	char tmp_err_msg[PARSE_RESULT_MAX_STR_LEN + 1] = {0};
+	int tmp_err_code;
 	exit_code = query_parse_audit_low(query, pra);
 	//process the error message,
-	//TODO
-	if(pra->errcode == 1064)
+	if(pra->errcode == ER_PARSE_ERROR)
 	{
 		reserve = has_reserve_in_errmsg(pra->mysql_version, pra->err_msg);
 		if(reserve)
@@ -766,6 +766,7 @@ int query_parse_audit(char* query, parse_result_audit* pra )
 			}
 			//保留先前的值
 			strcpy(tmp_err_msg, pra->err_msg);
+			tmp_err_code = pra->errcode;
 			if(!query_parse_audit_low(sql1, pra))
 			//保留字加上``，重新分析，语法正确
 			{
@@ -776,7 +777,7 @@ int query_parse_audit(char* query, parse_result_audit* pra )
 			{
 				pra->result_type = 2;
 				strcpy(pra->err_msg, tmp_err_msg);
-				pra->errcode = 1064;
+				pra->errcode = tmp_err_code;
 			}
 			free(sql1);
 			free(sql2);

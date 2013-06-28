@@ -1033,7 +1033,7 @@ static COMMANDS commands[] = {
 	{ (char *)NULL,       0, 0, 0, ""}
 };
 
-static const char *load_default_groups[]= { "mysql","client",0 };
+static const char *load_default_groups[]= { "tmysqlparse",0 };
 
 static int         embedded_server_arg_count= 0;
 static char       *embedded_server_args[MAX_SERVER_ARGS];
