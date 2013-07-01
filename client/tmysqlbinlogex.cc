@@ -2875,6 +2875,7 @@ int main(int argc, char** argv)
 #include "mysql/psi/mysql_thread.h"
 
 HASH table_hash;
+HASH table_hash_org;
 CMessageQueue*  MQ_ARRAY;
 
 static CHARSET_INFO *charset_info= &my_charset_latin1;
@@ -2900,6 +2901,7 @@ pthread_t*      global_pthread_array;
 ulong           mysql_version = 0;
 
 uint global_tables_pairs_num = 0; /* 表示从对象定义和table_split参数中得到的表关系个数 */
+ulong*       global_event_cnt_array;
 
 
 /*
@@ -2933,6 +2935,53 @@ struct table_entry_struct
 
 typedef struct table_entry_struct table_entry_t;
 
+uint
+binlogex_get_thread_id_by_name_low(
+    const char*       full_table_name
+)
+{
+    uint i;
+    uint folder = 0;
+    uint len = strlen(full_table_name);
+    uint start_threadid, thread_id;
+    ulong total_event_cnt = 0;
+
+    for (i = 0; i < len ;++i)
+        folder += full_table_name[i] ^ 0xabcd;
+
+    start_threadid = folder % concurrency;
+
+    for (i = 0; i < concurrency; ++i)
+    {
+        total_event_cnt += global_event_cnt_array[i];
+    }
+
+    if (total_event_cnt < 5000)
+        return start_threadid;
+    
+    // 线程事件数是否小于平均值
+    if (global_event_cnt_array[start_threadid] < 1.0 / concurrency * total_event_cnt)
+    {
+        return start_threadid;
+    }
+
+    /* 寻找事件最少的线程 */
+    ulong min_event_cnt = global_event_cnt_array[start_threadid];
+    uint min_thread_id = start_threadid;
+    
+    for (thread_id = (start_threadid + 1) % concurrency; thread_id != start_threadid; thread_id = (thread_id + 1) % concurrency )
+    {
+        ulong event_cnt = global_event_cnt_array[thread_id];
+
+        if (event_cnt < min_event_cnt)
+        {
+            min_event_cnt = event_cnt;
+            min_thread_id = thread_id;
+        }
+    }
+
+    return min_thread_id;
+}
 
 table_entry_t*
 binlogex_new_table_entry(
@@ -2957,14 +3006,7 @@ binlogex_new_table_entry(
         entry->thread_id = thread_id_hint;
     else
     {
-        uint i;
-        uint folder = 0;
-        uint len = strlen(entry->full_table_name);
-
-        for (i = 0; i < len ;++i)
-            folder += entry->full_table_name[i] ^ 0xabcd;
-
-        entry->thread_id = folder % concurrency;  // TODO: --table-split
+        entry->thread_id = binlogex_get_thread_id_by_name_low(entry->full_table_name);
     }
 
     return entry;
@@ -2999,16 +3041,25 @@ binlogex_adjust_hash_entry_thread_id(
     void*   id_pairs_org
 )
 {
-    table_entry_t*  entry = (table_entry_t*)entry_org;
+    table_entry_t* entry = (table_entry_t*)calloc(1, sizeof(table_entry_t));
+    table_entry_t* org = (table_entry_t*)entry_org;
+
+    strcpy(entry->full_table_name, org->full_table_name);
+    entry->thread_id = org->thread_id;
+
     my_assert(entry->thread_id < global_tables_pairs_num);
     entry->thread_id %= concurrency; 
+
+    my_bool ret = my_hash_insert(&table_hash, (const uchar*)&entry->full_table_name[0]);
+    my_assert(!ret);
+
 }
 
 /* 在此之前，entry->thread_id已增长到global_tables_pairs_num，现在调整为concurrency以内 */
 void
 binlogex_adjust_hash_table_thread_id()
 {
-    my_hash_delegate(&table_hash, binlogex_adjust_hash_entry_thread_id, NULL);
+    my_hash_delegate(&table_hash_org, binlogex_adjust_hash_entry_thread_id, NULL);
 }
 
 void
@@ -3069,16 +3120,17 @@ binlogex_add_to_hash_tab(
 
     my_assert(strlen(dbname) < NAME_LEN);
     my_assert(strlen(tblname) < NAME_LEN);
+    my_assert(id_merge != INVALID_THREAD_ID);
 
     sprintf(buf, "%s.%s", dbname, tblname);
 
-    entry = (table_entry_t*)my_hash_search(&table_hash, (const uchar*)&buf[0], strlen(buf));
+    entry = (table_entry_t*)my_hash_search(&table_hash_org, (const uchar*)&buf[0], strlen(buf));
     if (!entry)
     {
         /* 不在hash表中，使用id_merge作为其thread_id */
         entry = binlogex_new_table_entry(dbname, tblname, id_merge);
         my_assert((char*)entry == &entry->full_table_name[0]);
-        my_bool ret = my_hash_insert(&table_hash, (const uchar*)&entry->full_table_name[0]);
+        my_bool ret = my_hash_insert(&table_hash_org, (const uchar*)&entry->full_table_name[0]);
         my_assert(!ret);
     }
     else if (entry->thread_id != id_merge)
@@ -3090,7 +3142,7 @@ binlogex_add_to_hash_tab(
         ids.thread_id_old = entry->thread_id;
         ids.thread_id_new = id_merge;
 
-        my_hash_delegate(&table_hash, binlogex_update_hash_entry_thread_id, &ids);
+        my_hash_delegate(&table_hash_org, binlogex_update_hash_entry_thread_id, &ids);
     }
 
 }
@@ -3098,7 +3150,8 @@ binlogex_add_to_hash_tab(
 uint
 binlogex_get_thread_id_by_name(
     const char*       dbname,
-    const char*       tblname
+    const char*       tblname,
+    uint              id_hint  
 )
 {
     char buf[2*NAME_LEN + 3];
@@ -3112,7 +3165,7 @@ binlogex_get_thread_id_by_name(
     entry = (table_entry_t*)my_hash_search(&table_hash, (const uchar*)&buf[0], strlen(buf));
     if (entry == NULL)
     {
-        entry = binlogex_new_table_entry(dbname, tblname, INVALID_THREAD_ID);
+        entry = binlogex_new_table_entry(dbname, tblname, id_hint);
         my_assert((char*)entry == &entry->full_table_name[0]);
         my_bool ret = my_hash_insert(&table_hash, (const uchar*)&entry->full_table_name[0]);
         my_assert(!ret); 
@@ -3423,6 +3476,7 @@ binlogex_task_entry_add_to_queue(
 
     my_assert(task_entry->thread_id == INVALID_THREAD_ID);
     my_assert(thread_id != INVALID_THREAD_ID);
+    my_assert(thread_id < concurrency);
 
     task_entry->thread_id = thread_id;
 
@@ -3433,19 +3487,21 @@ binlogex_task_entry_add_to_queue(
         my_sleep(100000);
 
         if (++n_retry % 10 == 0)
-            fprintf(stderr, "Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
+            fprintf(stderr, "[Warning] Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
 
         if (++global_n_add_to_queue_fail % 100 == 0) {
-            fprintf(stderr, "Now Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
+            fprintf(stderr, "[Warning] Now Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
 
-            if (!global_vm_array[thread_id])
-            {
-                fprintf(stderr, "Thread %u has exited\n", thread_id);
-                return 1;
-            }
         }
 
+        if (!global_vm_array[thread_id])
+        {
+            fprintf(stderr, "[ERROR] Thread %u has exited\n", thread_id);
+            return 1;
+        }
     }
+
+    global_event_cnt_array[thread_id]++;
         
     return 0;
 }
@@ -4148,6 +4204,8 @@ binlogex_init()
     uint i;
 
     if (my_hash_init(&table_hash, charset_info, 64, 0, 0,
+            (my_hash_get_key) get_table_key, my_free, 0) ||
+        my_hash_init(&table_hash_org, charset_info, 64, 0, 0,
             (my_hash_get_key) get_table_key, my_free, 0))
     {
         my_assert(0);
@@ -4161,6 +4219,7 @@ binlogex_init()
     my_init_dynamic_array(&global_table_map_array, sizeof(table_map_ex_t), 16, 16);
 
     global_thread_tmap_flag_array = (uint*)calloc(concurrency, sizeof(uint));
+    global_event_cnt_array = (ulong*)calloc(concurrency, sizeof(ulong));
 
     MQ_ARRAY = new CMessageQueue[concurrency]();
 
@@ -4191,11 +4250,13 @@ binlogex_destroy()
     parse_result_destroy(&parse_result);
 
     my_hash_free(&table_hash);
+    my_hash_free(&table_hash_org);
     delete_dynamic(&global_session_event_array);
     delete_dynamic(&global_load_event_array);
     delete_dynamic(&global_table_map_array);
 
     free(global_thread_tmap_flag_array);
+    free(global_event_cnt_array);
 
     delete [] MQ_ARRAY;
 
@@ -4401,7 +4462,7 @@ Exit_status binlogex_process_event(Log_event *ev,
 
             if (parse_result.n_tables == 0)
             {
-                // 可能库级操作！阻塞所有线程
+                // 可能库级操作！阻塞所有线程, 也可能由于保留字的语法分析出错
                 // 如 drop database d1;
 
                 fprintf(stdout, "DB Level operation: %s in %s:"ULONGPF"\n", query_ev->query, logname, (ulong)pos);
@@ -4415,10 +4476,11 @@ Exit_status binlogex_process_event(Log_event *ev,
             }
             else 
             {
+                thread_id = INVALID_THREAD_ID;
                 /* 计算涉及的线程id */
                 for (i = 0; i < parse_result.n_tables; ++i)
                 {
-                    thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename); 
+                    thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, thread_id); 
 
                     binlogex_task_entry_event_add_thread_id(tsk_entry, thread_id);
                 }
@@ -4499,7 +4561,7 @@ Exit_status binlogex_process_event(Log_event *ev,
     {
         Load_log_event* lle = (Load_log_event*)ev;
 
-        thread_id = binlogex_get_thread_id_by_name((char*)lle->db, (char*)lle->table_name);
+        thread_id = binlogex_get_thread_id_by_name((char*)lle->db, (char*)lle->table_name, INVALID_THREAD_ID);
 
         tsk_entry = binlogex_task_entry_event_simple_new(rec_count, ev, logname, pos, thread_id);
         if (binlogex_task_entry_add_to_queue(tsk_entry, thread_id))
@@ -4548,7 +4610,7 @@ Exit_status binlogex_process_event(Log_event *ev,
                 "Create_file event for file_id: %u", ele->file_id);
         }
         else
-            thread_id = binlogex_get_thread_id_by_name((char*)cev->db, (char*)cev->table_name);
+            thread_id = binlogex_get_thread_id_by_name((char*)cev->db, (char*)cev->table_name, INVALID_THREAD_ID);
 
         for (i = 0; i < global_load_event_array.elements; ++i)
         {
@@ -4667,7 +4729,7 @@ Exit_status binlogex_process_event(Log_event *ev,
         parse_ret = query_parse((char*)exlq->query, &parse_result);
         my_assert(!parse_ret && parse_result.n_tables == 1);
 
-        thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[0].dbname, parse_result.table_arr[0].tablename);
+        thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[0].dbname, parse_result.table_arr[0].tablename, INVALID_THREAD_ID);
 
         /* 考虑是否可能多个load事件并发的情况 */
         for (i = 0; i < global_load_event_array.elements; ++i)
@@ -4802,7 +4864,7 @@ Exit_status binlogex_process_event(Log_event *ev,
         {
             table_map_ex_t tmap_ex;
 
-            thread_id = binlogex_get_thread_id_by_name(map->get_db_name(), map->get_table_name());
+            thread_id = binlogex_get_thread_id_by_name(map->get_db_name(), map->get_table_name(), INVALID_THREAD_ID);
 
             tmap_ex.table_id = map->get_table_id();
             tmap_ex.thread_id = thread_id;
