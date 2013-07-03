@@ -16,7 +16,7 @@ typedef struct tagMessage
 class CMessageQueue
 {
 public:
-    CMessageQueue(unsigned size = 8192);
+    CMessageQueue(unsigned size = 25600);
     ~CMessageQueue();
 
     //无锁添加和取消息

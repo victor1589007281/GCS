@@ -2714,7 +2714,7 @@ int main(int argc, char** argv)
       my_access(sql_files_output_dir, F_OK))
   {
       err = -1;
-      fprintf(stderr, "Invalid argment --sql-files-output-dir\n");
+      fprintf(stderr, "[Error] Invalid argment --sql-files-output-dir\n");
   }
 
   binlogex_init();
@@ -2725,7 +2725,7 @@ int main(int argc, char** argv)
       //test connect to remote server, and get views trigger functions relations 
       err = -1;
   }
-  fprintf(stdout, "Total use %f sec for getting object definition\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
+  fprintf(stdout, "[Info] Total use %f sec for getting object definition\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
 
   if (table_split)
   {
@@ -2737,6 +2737,9 @@ int main(int argc, char** argv)
 
   /* 打印分表情况 */
   binlogex_print_all_tables_in_hash();
+
+  fflush(stdout);
+  fflush(stderr);
 
   if (err)
   {
@@ -2814,7 +2817,7 @@ int main(int argc, char** argv)
 
   binlogex_wait_all_worker_thread_exit();
 
-  fprintf(stdout, "Total use %f sec\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
+  fprintf(stdout, "[Info] Total use %f sec\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
 
   binlogex_print_all_tables_in_hash();
 
@@ -3090,7 +3093,7 @@ binlogex_print_all_tables_in_hash()
 
     my_hash_delegate(&table_hash, binlogex_print_all_tables_in_hash_delegate, dnstr_arr);
 
-    fprintf(stdout, "Talbe in hash table\n");
+    fprintf(stdout, "[Info] Table in hash table\n");
     for (i = 0; i < concurrency; ++i)
     {
         int tab_cnt = 0, j = 0;
@@ -3396,6 +3399,7 @@ binlogex_task_entry_event_decide_dst_thread_id(
     min_tid = entry->ui.event.thread_id_arr[0];
     for (i = 1; i < entry->ui.event.n_thread_id; i++)
     {
+        my_assert(min_tid != entry->ui.event.thread_id_arr[i]);
         if (min_tid > entry->ui.event.thread_id_arr[i])
             min_tid = entry->ui.event.thread_id_arr[i];
     }
@@ -3793,12 +3797,12 @@ binlogex_worker_thread_deinit(
     if (!write_to_file_only_flag)
         mysql_close(&vm->mysql);
 
-    fprintf(stdout, "\nThread id %u %s stop\n\
-Normal event count "ULONGPF"\n\
-Complex event count "ULONGPF"\n\
-Sync event count "ULONGPF", wait_time %f, signal time %f\n\
-Max binlog event length "ULONGPF"\n\
-Sleep count "ULONGPF"\n\n", vm->thread_id, is_error ? "unnormal" : "normal", vm->normal_entry_cnt, vm->complex_entry_cnt, 
+    fprintf(stdout, "\n[Info] Thread id %u %s stop\n\
+\tNormal event count "ULONGPF"\n\
+\tComplex event count "ULONGPF"\n\
+\tSync event count "ULONGPF", wait_time %f, signal time %f\n\
+\tMax binlog event length "ULONGPF"\n\
+\tSleep count "ULONGPF"\n\n", vm->thread_id, is_error ? "unnormal" : "normal", vm->normal_entry_cnt, vm->complex_entry_cnt, 
                         vm->sync_entry_cnt, (float)vm->sync_wait_time / CLOCKS_PER_SEC, (float)vm->sync_signal_time / CLOCKS_PER_SEC, 
                         vm->dnstr.max_length, vm->sleep_cnt);
 
@@ -3841,7 +3845,7 @@ binlogex_worker_wait(
         len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
         if (len == (size_t)-1 || len != vm->dnstr.length)
         {
-            fprintf(stderr, "Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
+            fprintf(stderr, "[Error] Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
         }
 
@@ -3913,7 +3917,7 @@ binlogex_worker_signal(
         len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
         if (len == (size_t)-1 || len != vm->dnstr.length)
         {
-            fprintf(stderr, "Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
+            fprintf(stderr, "[Error] Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
             my_assert(0);
         }
         dynstr_clear(&vm->dnstr);
@@ -4071,7 +4075,7 @@ binlogex_worker_execute_task_entry(
             size_t len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
             if (len == (size_t) -1 || len != vm->dnstr.length)
             {
-                fprintf(stderr, "Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
+                fprintf(stderr, "[Error] Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
                 code = WORKER_STATUS_ERROR;
             }
         }
@@ -4139,7 +4143,7 @@ binlogex_worker_thread(void *arg)
 
             //my_sleep(2000000);
             //TODO
-            my_sleep(1000);
+            my_sleep(100000);
             vm->sleep_cnt++;
         } 
 
@@ -4465,9 +4469,9 @@ Exit_status binlogex_process_event(Log_event *ev,
                 // 可能库级操作！阻塞所有线程, 也可能由于保留字的语法分析出错
                 // 如 drop database d1;
 
-                fprintf(stdout, "DB Level operation: %s in %s:"ULONGPF"\n", query_ev->query, logname, (ulong)pos);
+                fprintf(stdout, "[Note] DB Level operation: %s in %s:"ULONGPF"\n", query_ev->query, logname, (ulong)pos);
                 if (strlen(parse_result.err_msg))
-                    fprintf(stdout, "parse error: %s\n", parse_result.err_msg); 
+                    fprintf(stdout, "[Warning] parse error: %s\n", parse_result.err_msg); 
 
                 for (i = 0; i < concurrency; ++i)
                 {
@@ -4501,10 +4505,15 @@ Exit_status binlogex_process_event(Log_event *ev,
 
                 if (binlogex_task_entry_add_to_queue(tmp_tsk_entry, tsk_entry->ui.event.dst_thread_id))
                     retval= ERROR_STOP;
-                    
             }
             /* 清空global_tmp_event_array */
             global_session_event_array.elements = 0;
+
+            /* 记录跨线程操作 */
+            if (tsk_entry->ui.event.n_thread_id > 1)
+                fprintf(stdout, "[Note] Complex sql \"%s\" at binlog %s offset "ULONGPF"; reference in %u threads, execute in %u thread_id\n", 
+                        query_ev->query, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off,
+                        tsk_entry->ui.event.n_thread_id, tsk_entry->ui.event.dst_thread_id);
 
             /* 新建同步任务，加入到其他线程中 */
             for (i = 0; i < tsk_entry->ui.event.n_thread_id; ++i)
