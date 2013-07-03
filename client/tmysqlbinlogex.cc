@@ -2904,7 +2904,7 @@ pthread_t*      global_pthread_array;
 ulong           mysql_version = 0;
 
 uint global_tables_pairs_num = 0; /* 表示从对象定义和table_split参数中得到的表关系个数 */
-ulong*       global_event_cnt_array;
+ulonglong*       global_event_rate_array;
 
 
 /*
@@ -2947,7 +2947,7 @@ binlogex_get_thread_id_by_name_low(
     uint folder = 0;
     uint len = strlen(full_table_name);
     uint start_threadid, thread_id;
-    ulong total_event_cnt = 0;
+    ulonglong total_event_cnt = 0;
 
     for (i = 0; i < len ;++i)
         folder += full_table_name[i] ^ 0xabcd;
@@ -2956,25 +2956,25 @@ binlogex_get_thread_id_by_name_low(
 
     for (i = 0; i < concurrency; ++i)
     {
-        total_event_cnt += global_event_cnt_array[i];
+        total_event_cnt += global_event_rate_array[i];
     }
 
-    if (total_event_cnt < 5000)
+    if (total_event_cnt < 500)
         return start_threadid;
     
     // 线程事件数是否小于平均值
-    if (global_event_cnt_array[start_threadid] < 1.0 / concurrency * total_event_cnt)
+    if (global_event_rate_array[start_threadid] < 1.0 / concurrency * total_event_cnt)
     {
         return start_threadid;
     }
 
     /* 寻找事件最少的线程 */
-    ulong min_event_cnt = global_event_cnt_array[start_threadid];
+    ulonglong min_event_cnt = global_event_rate_array[start_threadid];
     uint min_thread_id = start_threadid;
     
     for (thread_id = (start_threadid + 1) % concurrency; thread_id != start_threadid; thread_id = (thread_id + 1) % concurrency )
     {
-        ulong event_cnt = global_event_cnt_array[thread_id];
+        ulonglong event_cnt = global_event_rate_array[thread_id];
 
         if (event_cnt < min_event_cnt)
         {
@@ -3208,6 +3208,8 @@ struct task_entry_struct
     ulonglong       id;
 
     uint            thread_id;  /* 当前线程ID */
+
+    uint            rate;       /* 表示该event的权重 */
     //parse_table_t*  
 
     union {
@@ -3262,6 +3264,50 @@ binlogex_task_entry_event_new(
     entry->type = TASK_ENTRY_TYPE_EVENT;
     entry->thread_id = INVALID_THREAD_ID;
 
+    //TODO
+    switch (ev->get_type_code())
+    {
+    case QUERY_EVENT:
+        entry->rate = strlen(((Query_log_event*)ev)->query);
+        break;
+
+    case INTVAR_EVENT:
+    case RAND_EVENT:
+    case USER_VAR_EVENT:
+        entry->rate = 15;
+        break;
+
+    case LOAD_EVENT:
+    case NEW_LOAD_EVENT:
+    case EXEC_LOAD_EVENT:
+    case CREATE_FILE_EVENT:
+    case BEGIN_LOAD_QUERY_EVENT:
+    case APPEND_BLOCK_EVENT:
+    case EXECUTE_LOAD_QUERY_EVENT:
+    case DELETE_FILE_EVENT:
+        //TODO
+        entry->rate = 1000;
+        break;
+    
+    case TABLE_MAP_EVENT:
+    case WRITE_ROWS_EVENT:
+    case DELETE_ROWS_EVENT:
+    case UPDATE_ROWS_EVENT:
+        entry->rate = ((Rows_log_event*)ev)->get_data_size();
+        break;
+
+    case PRE_GA_WRITE_ROWS_EVENT:
+    case PRE_GA_DELETE_ROWS_EVENT:
+    case PRE_GA_UPDATE_ROWS_EVENT:
+        entry->rate = ((Old_rows_log_event*)ev)->get_data_size();
+        break;
+        break;
+
+    default :
+        entry->rate = 1;
+        break;
+    }
+
     entry->ui.event.ev = ev;
     entry->ui.event.off = off;
     entry->ui.event.log_file = strcpy((char*)entry + ALIGN_SIZE(sizeof(*entry)), log_file);
@@ -3291,6 +3337,7 @@ binlogex_task_entry_sync_new(
     entry->id = event_entry->id;
     entry->type = TASK_ENTRY_TYPE_SYNC;
     entry->thread_id = INVALID_THREAD_ID; // set in binlogex_task_entry_add_to_queue
+    entry->rate = event_entry->rate;
 
     entry->ui.sync.wait_thread_id = event_entry->ui.event.dst_thread_id;
     entry->ui.sync.off = event_entry->ui.event.off;
@@ -3439,6 +3486,7 @@ binlogex_task_entry_stmt_end_new(
     entry->id = id;
     entry->type = TASK_ENTRY_TYPE_ROW_STMT_END;
     entry->thread_id = INVALID_THREAD_ID;
+    entry->rate = 1;
 
     return entry;
 }
@@ -3453,6 +3501,7 @@ binlogex_task_entry_complete_new()
     entry->id = (ulonglong)-1;
     entry->type = TASK_ENTRY_TYPE_COMPLETE;
     entry->thread_id = INVALID_THREAD_ID;
+    entry->rate = 1;
 
     return entry;
 }
@@ -3474,6 +3523,7 @@ binlogex_task_entry_add_to_queue(
 )
 {
     uint n_retry = 0;
+    uint rate = 0;
     my_assert(task_entry != NULL && thread_id != INVALID_THREAD_ID);
     my_assert(task_entry->type != TASK_ENTRY_TYPE_EVENT || 
             thread_id == task_entry->ui.event.dst_thread_id);
@@ -3483,6 +3533,8 @@ binlogex_task_entry_add_to_queue(
     my_assert(thread_id < concurrency);
 
     task_entry->thread_id = thread_id;
+    rate = task_entry->rate;
+    my_assert(rate);
 
     //加入到相应任务队列中，如果对应队列满，则等待
     while (MQ_ARRAY[thread_id].send_message(0, task_entry, NULL, NULL, NULL))
@@ -3505,7 +3557,7 @@ binlogex_task_entry_add_to_queue(
         }
     }
 
-    global_event_cnt_array[thread_id]++;
+    global_event_rate_array[thread_id] += rate;
         
     return 0;
 }
@@ -4223,7 +4275,7 @@ binlogex_init()
     my_init_dynamic_array(&global_table_map_array, sizeof(table_map_ex_t), 16, 16);
 
     global_thread_tmap_flag_array = (uint*)calloc(concurrency, sizeof(uint));
-    global_event_cnt_array = (ulong*)calloc(concurrency, sizeof(ulong));
+    global_event_rate_array = (ulonglong*)calloc(concurrency, sizeof(ulonglong));
 
     MQ_ARRAY = new CMessageQueue[concurrency]();
 
@@ -4260,7 +4312,7 @@ binlogex_destroy()
     delete_dynamic(&global_table_map_array);
 
     free(global_thread_tmap_flag_array);
-    free(global_event_cnt_array);
+    free(global_event_rate_array);
 
     delete [] MQ_ARRAY;
 
