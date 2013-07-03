@@ -43,8 +43,10 @@
 
 #ifdef __WIN__
 #define ULONGPF "%u"
+#define ULONGLONGPF	"%I64u"
 #else
 #define ULONGPF "%lu"
+#define ULONGLONGPF	"%lu"
 #endif // _DEBUG
 #include "mysql_event.h"
 
@@ -2933,7 +2935,10 @@ typedef table_map_ex_struct table_map_ex_t;
 struct table_entry_struct 
 {
     char full_table_name[NAME_LEN * 2 + 3];      // 必须是第一个成员
+    char db[NAME_LEN];
+    char table[NAME_LEN];
     uint thread_id;
+    ulonglong rate;                         //binlog query_event rate
 };
 
 typedef struct table_entry_struct table_entry_t;
@@ -3003,7 +3008,10 @@ binlogex_new_table_entry(
     entry = (table_entry_t*)calloc(1, sizeof(*entry));
     my_assert(entry);
 
-    sprintf(entry->full_table_name, "%s.%s", dbname, tablename);
+    snprintf(entry->full_table_name, sizeof(entry->full_table_name), "%s.%s", dbname, tablename);
+
+    strcpy(entry->db, dbname);
+    strcpy(entry->table, tablename);
 
     if (thread_id_hint != INVALID_THREAD_ID)
         entry->thread_id = thread_id_hint;
@@ -3011,6 +3019,7 @@ binlogex_new_table_entry(
     {
         entry->thread_id = binlogex_get_thread_id_by_name_low(entry->full_table_name);
     }
+    entry->rate = 0;
 
     return entry;
 }
@@ -3044,11 +3053,8 @@ binlogex_adjust_hash_entry_thread_id(
     void*   id_pairs_org
 )
 {
-    table_entry_t* entry = (table_entry_t*)calloc(1, sizeof(table_entry_t));
     table_entry_t* org = (table_entry_t*)entry_org;
-
-    strcpy(entry->full_table_name, org->full_table_name);
-    entry->thread_id = org->thread_id;
+    table_entry_t* entry = binlogex_new_table_entry(org->db, org->table, org->thread_id);
 
     my_assert(entry->thread_id < global_tables_pairs_num);
     entry->thread_id %= concurrency; 
@@ -3068,47 +3074,80 @@ binlogex_adjust_hash_table_thread_id()
 void
 binlogex_print_all_tables_in_hash_delegate(
     uchar*      entry_org,
-    void*       dnstr_arr_org
+    void*       pp_entry_org 
 )
 {
     table_entry_t* entry = (table_entry_t*)entry_org;
-    DYNAMIC_STRING* dnstr_arr = (DYNAMIC_STRING*)dnstr_arr_org;
+    table_entry_t*** pp_entry = (table_entry_t***)pp_entry_org;
+    uint i;
+    table_entry_t** p_entry;
+    uint n_entry = 0;
+    uint insert_pos = 0;
 
     my_assert(entry->thread_id < concurrency);
 
-    dynstr_append(&dnstr_arr[entry->thread_id], entry->full_table_name);
-    dynstr_append(&dnstr_arr[entry->thread_id], ", ");
+    // 从大到小排序, 插入排序
+    p_entry = pp_entry[entry->thread_id];
+
+    /* 寻找插入位置 */
+    for (i = 0; p_entry[i] ; i++)
+    {
+        if (p_entry[i]->rate < entry->rate)
+            break;
+    }
+    
+    /* 寻找个数 */
+    for (insert_pos = i; p_entry[i]; i++);
+
+
+    /* [insert_pos, i) 向后拷贝一格 */
+    for (; i != insert_pos; --i)
+    {
+        p_entry[i] = p_entry[i - 1];
+    }
+
+    p_entry[insert_pos] = entry;
+
+
 }
 
 void
 binlogex_print_all_tables_in_hash()
 {
     DYNAMIC_STRING* dnstr_arr = (DYNAMIC_STRING*)calloc(concurrency, sizeof(DYNAMIC_STRING));
+    table_entry_t*** pp_entry = (table_entry_t***)calloc(concurrency, sizeof(table_entry_t**));
     uint i ;
 
     for (i = 0; i < concurrency; ++i)
     {
         init_dynamic_string(&dnstr_arr[i], "", 2*1024, 1024);
+        pp_entry[i] = (table_entry_t**)calloc(table_hash.records + 1, sizeof(table_entry_t*)); 
     }
 
-    my_hash_delegate(&table_hash, binlogex_print_all_tables_in_hash_delegate, dnstr_arr);
+    my_hash_delegate(&table_hash, binlogex_print_all_tables_in_hash_delegate, pp_entry);
 
     fprintf(stdout, "[Info] Table in hash table\n");
     for (i = 0; i < concurrency; ++i)
     {
+        char buf[1024];
         int tab_cnt = 0, j = 0;
+        table_entry_t** p_entry = pp_entry[i];
 
-        for (j = 0; dnstr_arr[i].str[j]; j++)
-        {
-            if (dnstr_arr[i].str[j] == ',')
-                tab_cnt++;
+        for (j = 0; p_entry[j]; j++)
+        {        
+            snprintf(buf, sizeof(buf), "%s("ULONGLONGPF"), ", p_entry[j]->full_table_name, p_entry[j]->rate); 
+            dynstr_append(&dnstr_arr[i], buf);
+
+            tab_cnt++;
         }
 
         fprintf(stdout, "\tTable of thread %u(table count %d): %s\n", i, tab_cnt, dnstr_arr[i].str);
         dynstr_free(&dnstr_arr[i]);
+        free(p_entry);
     }
 
     free(dnstr_arr);
+    free(pp_entry);
 }
 
 void
@@ -3154,7 +3193,8 @@ uint
 binlogex_get_thread_id_by_name(
     const char*       dbname,
     const char*       tblname,
-    uint              id_hint  
+    uint              id_hint,
+    uint              rate_for_query_event
 )
 {
     char buf[2*NAME_LEN + 3];
@@ -3173,6 +3213,7 @@ binlogex_get_thread_id_by_name(
         my_bool ret = my_hash_insert(&table_hash, (const uchar*)&entry->full_table_name[0]);
         my_assert(!ret); 
     }
+    entry->rate += rate_for_query_event;
 
     return entry->thread_id;
 }
@@ -3290,6 +3331,9 @@ binlogex_task_entry_event_new(
         break;
     
     case TABLE_MAP_EVENT:
+        entry->rate = 10;
+        break;
+
     case WRITE_ROWS_EVENT:
     case DELETE_ROWS_EVENT:
     case UPDATE_ROWS_EVENT:
@@ -3307,6 +3351,9 @@ binlogex_task_entry_event_new(
         entry->rate = 1;
         break;
     }
+
+    if (entry->rate == 0)
+        entry->rate = 1;
 
     entry->ui.event.ev = ev;
     entry->ui.event.off = off;
@@ -4536,7 +4583,7 @@ Exit_status binlogex_process_event(Log_event *ev,
                 /* 计算涉及的线程id */
                 for (i = 0; i < parse_result.n_tables; ++i)
                 {
-                    thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, thread_id); 
+                    thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, thread_id, tsk_entry->rate); 
 
                     binlogex_task_entry_event_add_thread_id(tsk_entry, thread_id);
                 }
@@ -4622,7 +4669,7 @@ Exit_status binlogex_process_event(Log_event *ev,
     {
         Load_log_event* lle = (Load_log_event*)ev;
 
-        thread_id = binlogex_get_thread_id_by_name((char*)lle->db, (char*)lle->table_name, INVALID_THREAD_ID);
+        thread_id = binlogex_get_thread_id_by_name((char*)lle->db, (char*)lle->table_name, INVALID_THREAD_ID, 0);
 
         tsk_entry = binlogex_task_entry_event_simple_new(rec_count, ev, logname, pos, thread_id);
         if (binlogex_task_entry_add_to_queue(tsk_entry, thread_id))
@@ -4671,7 +4718,7 @@ Exit_status binlogex_process_event(Log_event *ev,
                 "Create_file event for file_id: %u", ele->file_id);
         }
         else
-            thread_id = binlogex_get_thread_id_by_name((char*)cev->db, (char*)cev->table_name, INVALID_THREAD_ID);
+            thread_id = binlogex_get_thread_id_by_name((char*)cev->db, (char*)cev->table_name, INVALID_THREAD_ID, 0);
 
         for (i = 0; i < global_load_event_array.elements; ++i)
         {
@@ -4790,7 +4837,7 @@ Exit_status binlogex_process_event(Log_event *ev,
         parse_ret = query_parse((char*)exlq->query, &parse_result);
         my_assert(!parse_ret && parse_result.n_tables == 1);
 
-        thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[0].dbname, parse_result.table_arr[0].tablename, INVALID_THREAD_ID);
+        thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[0].dbname, parse_result.table_arr[0].tablename, INVALID_THREAD_ID, 0);
 
         /* 考虑是否可能多个load事件并发的情况 */
         for (i = 0; i < global_load_event_array.elements; ++i)
@@ -4925,7 +4972,7 @@ Exit_status binlogex_process_event(Log_event *ev,
         {
             table_map_ex_t tmap_ex;
 
-            thread_id = binlogex_get_thread_id_by_name(map->get_db_name(), map->get_table_name(), INVALID_THREAD_ID);
+            thread_id = binlogex_get_thread_id_by_name(map->get_db_name(), map->get_table_name(), INVALID_THREAD_ID, 0);
 
             tmap_ex.table_id = map->get_table_id();
             tmap_ex.thread_id = thread_id;
