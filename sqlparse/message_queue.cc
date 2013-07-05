@@ -24,7 +24,7 @@ static unsigned min2n(unsigned un)
     return mi?min2n(mi):un;
 }
 
-CMessageQueue::CMessageQueue(unsigned size /* = 8192 */)
+CMessageQueue::CMessageQueue(unsigned size /* = 25600 */)
 {
     unsigned i = 0;
 
