@@ -198,6 +198,11 @@ query_parse(char* query, parse_result_t* pr)
     TABLE_LIST* all_tables;
     TABLE_LIST* table;
     SELECT_LEX *select_lex;
+	int exit_code = 0;
+	bool err;
+	SELECT_LEX *sl;
+	sp_head* sp;
+	
 
     thd = (THD*)pr->thd_org;
     DBUG_ASSERT(pr->n_tables_alloced > 0 && thd);
@@ -208,29 +213,33 @@ query_parse(char* query, parse_result_t* pr)
     if (strlen(query) == 0)
     {
         sprintf(pr->err_msg, "%s", "empty string");
-        return -1;
+		exit_code = -1;
+        return exit_code;
     }
 
     if (alloc_query(thd, query, strlen(query))) 
     {
         sprintf(pr->err_msg, "%s", "alloc_query error");
-        return -1;
+		exit_code = -1;
+		return exit_code;
     }
     
     if (parser_state.init(thd, thd->query(), thd->query_length()))
     {
         sprintf(pr->err_msg, "%s", "parser_state.init error");
-        return -1;
+		exit_code = -1;
+		return exit_code;
     }
 
     lex_start(thd);
     mysql_reset_thd_for_next_command(thd);
 
-    bool err= parse_sql(thd, &parser_state, NULL);
+    err= parse_sql(thd, &parser_state, NULL);
     if (err)
     {
         strmake(pr->err_msg, thd->get_error(), sizeof(pr->err_msg) - 1);
-        return -1;
+		exit_code = -1;
+		goto exit_pos;
     }
     lex = thd->lex;
     /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
@@ -262,7 +271,7 @@ query_parse(char* query, parse_result_t* pr)
     {
     case SQLCOM_CHANGE_DB:
         {
-            LEX_STRING db_str= { (char *) select_lex->db, strlen(select_lex->db) };
+            LEX_STRING db_str = { (char *) select_lex->db, strlen(select_lex->db) };
 
             if (!mysql_change_db(thd, &db_str, FALSE))
                 my_ok(thd);
@@ -275,22 +284,24 @@ query_parse(char* query, parse_result_t* pr)
     {
         if (parse_result_add_table(pr, table->db, table->table_name))
         {
-            return -1;
+			exit_code = -1;
+			goto exit_pos;
         }
 
     }
-    SELECT_LEX *sl= lex->all_selects_list;
+    sl= lex->all_selects_list;
     for (; sl; sl= sl->next_select_in_list())
     {
         for (table = sl->table_list.first; table; table= table->next_global)
         {
             if (parse_result_add_table(pr, table->db, table->table_name))
             {
-                return -1;
+				exit_code = -1;
+                goto exit_pos;
             }
         }
     }
-    sp_head* sp = thd->lex->sphead;
+    sp = thd->lex->sphead;
     if (sp)
     {
         TABLE_LIST* sp_tl = NULL;
@@ -301,14 +312,18 @@ query_parse(char* query, parse_result_t* pr)
         {
             if (parse_result_add_table(pr, table->db, table->table_name))
             {
-                return -1;
+				exit_code = -1;
+                goto exit_pos;
             }
         }
     }
+
+exit_pos:
+
     thd->end_statement();
     thd->cleanup_after_query();
 	free_root(thd->mem_root,MYF(MY_KEEP_PREALLOC));
-    return 0;
+    return exit_code;
 }
 
 void parse_result_init_db(parse_result_t* pr, char* db)
