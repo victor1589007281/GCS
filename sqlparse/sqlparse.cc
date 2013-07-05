@@ -508,6 +508,54 @@ int parse_result_audit_init(parse_result_audit* pra, char *version)
     return 0;
 }
 
+/*************************************************************
+void tmysql_parse(THD *thd, char *rawbuf, uint length, Parser_state *parser_state)
+{
+
+	lex_start(thd);
+	mysql_reset_thd_for_next_command(thd);
+	thd->client_capabilities|= CLIENT_MULTI_QUERIES;
+
+
+	 while (!thd->killed && (parser_state.m_lip.found_semicolon != NULL) &&
+           ! thd->is_error())
+    {
+      char *beginning_of_next_stmt= (char*) parser_state.m_lip.found_semicolon;
+
+      thd->update_server_status();
+      thd->protocol->end_statement();
+      query_cache_end_of_result(thd);
+      ulong length= (ulong)(packet_end - beginning_of_next_stmt);
+
+      log_slow_statement(thd);
+
+      while (length > 0 && my_isspace(thd->charset(), *beginning_of_next_stmt))
+      {
+        beginning_of_next_stmt++;
+        length--;
+      }
+
+      if (MYSQL_QUERY_DONE_ENABLED())
+      {
+        MYSQL_QUERY_DONE(thd->is_error());
+      }
+
+      MYSQL_QUERY_START(beginning_of_next_stmt, thd->thread_id,
+                        (char *) (thd->db ? thd->db : ""),
+                        &thd->security_ctx->priv_user[0],
+                        (char *) thd->security_ctx->host_or_ip);
+
+      thd->set_query_and_id(beginning_of_next_stmt, length,
+                            thd->charset(), next_query_id());
+      statistic_increment(thd->status_var.questions, &LOCK_status);
+      thd->set_time();
+      parser_state.reset(beginning_of_next_stmt, length);
+      mysql_parse(thd, beginning_of_next_stmt, length, &parser_state);
+    }
+}
+***********************************************/
+
+
 int query_parse_audit_low(char* query, parse_result_audit* pra)
 {
     THD* thd;
@@ -537,7 +585,7 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 		pra->result_type = 3;
 
         exit_code = -1;
-		goto exit_pos;
+		return exit_code;
     }
     if (alloc_query(thd, query, strlen(query))) 
     {
@@ -545,18 +593,20 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
         pra->result_type = 3;
 
 		exit_code = -1;
-		goto exit_pos;
+		return exit_code;
     }
+
     if (parser_state.init(thd, thd->query(), thd->query_length()))
     {
         sprintf(pra->err_msg, "%s", "parser_state.init error");
 		pra->result_type = 3;
         
 		exit_code = -1;
-		goto exit_pos;
+		return exit_code;
     }
     lex_start(thd);
     mysql_reset_thd_for_next_command(thd);
+	thd->client_capabilities|= CLIENT_MULTI_QUERIES;
     err = parse_sql(thd, &parser_state, NULL);
     if (err)
     {
@@ -726,6 +776,7 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 			}
 		}
 	}
+
 exit_pos:
     thd->end_statement();
     thd->cleanup_after_query();

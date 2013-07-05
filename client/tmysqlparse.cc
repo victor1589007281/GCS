@@ -3247,7 +3247,7 @@ static int
 com_use(String *buffer __attribute__((unused)), char *line)
 {
 	/* Óï·¨·ÖÎö */
-	if (query_parse_audit(buffer->c_ptr(), &pra))
+	if (query_parse_audit(line, &pra))
 	{
 		if(pra.result_type == 2)
 		{//parse fail
