@@ -1165,9 +1165,8 @@ int main(int argc,char *argv[])
 
 	put_info("Welcome to the TMySQLParse monitor.  Commands end with ; or \\g.",
 		INFO_INFO);
-	put_info((char*) glob_buffer.ptr(),INFO_INFO);
+//	put_info((char*) glob_buffer.ptr(),INFO_INFO);
 
-	put_info(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000, 2011"), INFO_INFO);
 
 #ifdef HAVE_READLINE
 	initialize_readline((char*) my_progname);
@@ -1353,9 +1352,9 @@ static struct my_option my_long_options[] =
 {
 	{"help", '?', "Display this help and exit.", 0, 0, 0, GET_NO_ARG, NO_ARG, 0,
 	0, 0, 0, 0, 0},
-	{"help", 'I', "Synonym for -?", 0, 0, 0, GET_NO_ARG, NO_ARG, 0,
+/*	{"help", 'I', "Synonym for -?", 0, 0, 0, GET_NO_ARG, NO_ARG, 0,
 	0, 0, 0, 0, 0},
-/*	{"auto-rehash", OPT_AUTO_REHASH,
+	{"auto-rehash", OPT_AUTO_REHASH,
 	"Enable automatic rehashing. One doesn't need to use 'rehash' to get table "
 	"and field completion, but startup and reconnecting may take a longer time. "
 	"Disable with --disable-auto-rehash.",
@@ -1532,8 +1531,8 @@ static struct my_option my_long_options[] =
 	0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
 */	{"version", 'V', "Output version information and exit.", 0, 0, 0,
 	GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
-	{"set_version", 'v', "set the version of mysql console, for example, \"5.0\" \"5.1\" \"5.5\"",
-	&set_version, &set_version, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+	{"set_version", 'v', "choose a version to parse sql, like, \"5.0\" \"5.1\" \"5.5\"."
+	"default value is \"5.5\"",&set_version, &set_version, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 /*	{"wait", 'w', "Wait and retry if connection is down.", 0, 0, 0, GET_NO_ARG,
 	NO_ARG, 0, 0, 0, 0, 0, 0},
 	{"connect_timeout", OPT_CONNECT_TIMEOUT,
@@ -1584,22 +1583,14 @@ static void usage(int version)
 	const char* readline= "readline";
 #endif
 
-#ifdef HAVE_READLINE
-	printf("%s  Ver %s Distrib %s, for %s (%s) using %s %s\n",
-		my_progname, VER, MYSQL_SERVER_VERSION, SYSTEM_TYPE, MACHINE_TYPE,
-		readline, rl_library_version);
-#else
-	printf("%s  Ver %s Distrib %s, for %s (%s)\n", my_progname, VER,
-		MYSQL_SERVER_VERSION, SYSTEM_TYPE, MACHINE_TYPE);
-#endif
-
+	printf("tmysqlparse Ver 1.0\n");
 	if (version)
 		return;
-	puts(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000, 2011"));
-	printf("Usage: %s [OPTIONS] [database]\n", my_progname);
+//	puts(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000, 2011"));
+	printf("Usage: %\n", my_progname);
 	my_print_help(my_long_options);
-	print_defaults("my", load_default_groups);
-	my_print_variables(my_long_options);
+//	print_defaults("my", load_default_groups);
+//	my_print_variables(my_long_options);
 }
 
 

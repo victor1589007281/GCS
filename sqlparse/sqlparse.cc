@@ -523,59 +523,14 @@ int parse_result_audit_init(parse_result_audit* pra, char *version)
     return 0;
 }
 
-/*************************************************************
-void tmysql_parse(THD *thd, char *rawbuf, uint length, Parser_state *parser_state)
+int 
+query_parse_audit_tsqlparse(
+		char *query,
+		Parser_state *parser_state,
+		parse_result_audit* pra)
 {
-
-	lex_start(thd);
-	mysql_reset_thd_for_next_command(thd);
-	thd->client_capabilities|= CLIENT_MULTI_QUERIES;
-
-
-	 while (!thd->killed && (parser_state.m_lip.found_semicolon != NULL) &&
-           ! thd->is_error())
-    {
-      char *beginning_of_next_stmt= (char*) parser_state.m_lip.found_semicolon;
-
-      thd->update_server_status();
-      thd->protocol->end_statement();
-      query_cache_end_of_result(thd);
-      ulong length= (ulong)(packet_end - beginning_of_next_stmt);
-
-      log_slow_statement(thd);
-
-      while (length > 0 && my_isspace(thd->charset(), *beginning_of_next_stmt))
-      {
-        beginning_of_next_stmt++;
-        length--;
-      }
-
-      if (MYSQL_QUERY_DONE_ENABLED())
-      {
-        MYSQL_QUERY_DONE(thd->is_error());
-      }
-
-      MYSQL_QUERY_START(beginning_of_next_stmt, thd->thread_id,
-                        (char *) (thd->db ? thd->db : ""),
-                        &thd->security_ctx->priv_user[0],
-                        (char *) thd->security_ctx->host_or_ip);
-
-      thd->set_query_and_id(beginning_of_next_stmt, length,
-                            thd->charset(), next_query_id());
-      statistic_increment(thd->status_var.questions, &LOCK_status);
-      thd->set_time();
-      parser_state.reset(beginning_of_next_stmt, length);
-      mysql_parse(thd, beginning_of_next_stmt, length, &parser_state);
-    }
-}
-***********************************************/
-
-
-int query_parse_audit_low(char* query, parse_result_audit* pra)
-{
-    THD* thd;
+	THD *thd;
     LEX* lex;
-    Parser_state parser_state;
     SELECT_LEX *select_lex;
 	TABLE_LIST* all_tables;
 	TABLE_LIST* table;
@@ -590,48 +545,26 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 
     thd = (THD*)pra->thd_org;
 	DBUG_ASSERT(pra->n_tables_alloced > 0 && thd);
-	pra->n_tables = 0;
-	pra->errcode = 0;
-	pra->err_msg[0] = 0;
 
     if (strlen(query) == 0)
     {
         sprintf(pra->err_msg, "%s", "empty string");
 		pra->result_type = 3;
-
         exit_code = -1;
-		return exit_code;
-    }
-    if (alloc_query(thd, query, strlen(query))) 
-    {
-        sprintf(pra->err_msg, "%s", "alloc_query error");
-        pra->result_type = 3;
-
-		exit_code = -1;
-		return exit_code;
-    }
-
-    if (parser_state.init(thd, thd->query(), thd->query_length()))
-    {
-        sprintf(pra->err_msg, "%s", "parser_state.init error");
-		pra->result_type = 3;
-        
-		exit_code = -1;
 		return exit_code;
     }
     lex_start(thd);
     mysql_reset_thd_for_next_command(thd);
-	thd->client_capabilities|= CLIENT_MULTI_QUERIES;
-    err = parse_sql(thd, &parser_state, NULL);
+    err = parse_sql(thd, parser_state, NULL);
     if (err)
     {
         strmake(pra->err_msg, thd->get_error(), sizeof(pra->err_msg) - 1);
         pra->errcode = thd->get_errcode();
-//		pra->result_type = 2;
 		pra->result_type = process_msg_error(pra->errcode, pra->err_msg);
 		exit_code = -1;
 		goto exit_pos;
     }
+	
     lex = thd->lex;
     /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
     select_lex= &lex->select_lex;
@@ -651,7 +584,6 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
             LEX_STRING db_str= { (char *) select_lex->db, strlen(select_lex->db) };
             if (!mysql_change_db(thd, &db_str, FALSE))
                 my_ok(thd);
-			pra->result_type = 0;
             break;
         }
 	case SQLCOM_DROP_DB:
@@ -686,8 +618,6 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 				pra->tbdb = 0;
 				pra->result_type = 1;
 			}
-			else
-				pra->result_type = 0;
 			break;
 		}
 	case SQLCOM_UPDATE:
@@ -697,21 +627,10 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 				pra->tbdb = 0;
 				pra->result_type = 1;
 			}
-			else
-				pra->result_type = 0;
 			break;
 		}
 	case SQLCOM_CREATE_TABLE:
 	case SQLCOM_ALTER_TABLE:
-		{//for create/alter table, if blob/text>=10,warnings
-/*			if(lex->sql_command==SQLCOM_CREATE_TABLE && list_field.elements == 0)
-			{//create table t1
-				strmake(pra->err_msg, "A table must have at least 1 column", sizeof(pra->err_msg) - 1);
-				pra->errcode = 1113;
-				pra->result_type = 2;
-				exit_code = -1;
-				goto exit_pos;
-			}*/
 			if(list_field.elements >= 10)
 			{
 				blob_text_count = 0;
@@ -734,13 +653,8 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 					pra->result_type = 1;
 					pra->blob_text_count = blob_text_count;
 				}
-				else
-					pra->result_type = 0;
 			}
-			else
-				pra->result_type = 0;
 			break;
-		}
 	case SQLCOM_DROP_INDEX:
 	case SQLCOM_DROP_FUNCTION:
 	case SQLCOM_DROP_USER:
@@ -751,23 +665,13 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 	case SQLCOM_DELETE_MULTI:
 	case SQLCOM_UPDATE_MULTI:
     default:
-		{
-			pra->result_type = 0;
 			break;
-		}
     }
-	for(table= all_tables; table; table= table->next_global)
+
+	if (pra->result_type != 0)
 	{
-		if (parse_result_add_table_audit(pra, table->db, table->table_name))
-		{
-			exit_code = -1;
-			goto exit_pos;
-		}
-	}
-	sl = lex->all_selects_list;
-	for(; sl; sl= sl->next_select_in_list())
-	{
-		for (table = sl->table_list.first; table; table= table->next_global)
+		pra->n_tables = 0;
+		for(table= all_tables; table; table= table->next_global)
 		{
 			if (parse_result_add_table_audit(pra, table->db, table->table_name))
 			{
@@ -775,19 +679,31 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 				goto exit_pos;
 			}
 		}
-	}
-	sp = thd->lex->sphead;
-	if (sp)
-	{
-		TABLE_LIST* sp_tl = NULL;
-		TABLE_LIST** sp_tl_ptr = &sp_tl;
-		sp->add_used_tables_to_table_list(thd, &sp_tl_ptr, NULL);
-		for (table= sp_tl; table; table= table->next_global)
+		sl = lex->all_selects_list;
+		for(; sl; sl= sl->next_select_in_list())
 		{
-			if (parse_result_add_table_audit(pra, table->db, table->table_name))
+			for (table = sl->table_list.first; table; table= table->next_global)
 			{
-				exit_code = -1;
-				goto exit_pos;
+				if (parse_result_add_table_audit(pra, table->db, table->table_name))
+				{
+					exit_code = -1;
+					goto exit_pos;
+				}
+			}
+		}
+		sp = thd->lex->sphead;
+		if (sp)
+		{
+			TABLE_LIST* sp_tl = NULL;
+			TABLE_LIST** sp_tl_ptr = &sp_tl;
+			sp->add_used_tables_to_table_list(thd, &sp_tl_ptr, NULL);
+			for (table= sp_tl; table; table= table->next_global)
+			{
+				if (parse_result_add_table_audit(pra, table->db, table->table_name))
+				{
+					exit_code = -1;
+					goto exit_pos;
+				}
 			}
 		}
 	}
@@ -795,9 +711,68 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 exit_pos:
     thd->end_statement();
     thd->cleanup_after_query();
+    return exit_code;
+}
+
+
+int query_parse_audit_low(char* query, parse_result_audit* pra)
+{
+    THD* thd;
+    Parser_state parser_state;
+	int exit_code = 0;
+	char *packet_end;
+    thd = (THD*)pra->thd_org;
+	DBUG_ASSERT(pra->n_tables_alloced > 0 && thd);
+	pra->n_tables = 0;
+	pra->errcode = 0;
+	pra->result_type = 0;
+	pra->err_msg[0] = 0;
+    if (strlen(query) == 0)
+    {
+        sprintf(pra->err_msg, "%s", "empty string");
+		pra->result_type = 3;
+
+        exit_code = -1;
+		return exit_code;
+    }
+    if (alloc_query(thd, query, strlen(query))) 
+    {
+        sprintf(pra->err_msg, "%s", "alloc_query error");
+        pra->result_type = 3;
+
+		exit_code = -1;
+		return exit_code;
+    }
+    if (parser_state.init(thd, thd->query(), thd->query_length()))
+    {
+        sprintf(pra->err_msg, "%s", "parser_state.init error");
+		pra->result_type = 3;
+		exit_code = -1;
+		return exit_code;
+    }
+	packet_end= thd->query() + thd->query_length();
+	thd->client_capabilities|= CLIENT_MULTI_QUERIES;
+	exit_code = query_parse_audit_tsqlparse(query, &parser_state, pra);
+	while (parser_state.m_lip.found_semicolon != NULL)
+	{
+		/*
+		Multiple queries exits, execute them individually
+		*/
+		char *beginning_of_next_stmt= (char*) parser_state.m_lip.found_semicolon;
+		ulong length= (ulong)(packet_end - beginning_of_next_stmt);
+		/* Remove garbage at start of query */
+		while (length > 0 && my_isspace(thd->charset(), *beginning_of_next_stmt))
+		{
+			beginning_of_next_stmt++;
+			length--;
+		}
+		parser_state.reset(beginning_of_next_stmt, length);
+		exit_code = query_parse_audit_tsqlparse(beginning_of_next_stmt, &parser_state, pra);
+	}
 	free_root(thd->mem_root,MYF(MY_KEEP_PREALLOC));
     return exit_code;
 }
+
 
 int query_parse_audit(char* query, parse_result_audit* pra )
 {
