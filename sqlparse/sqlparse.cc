@@ -511,7 +511,7 @@ int parse_result_audit_init(parse_result_audit* pra, char *version)
         return -1;
     }
     thd->security_ctx->skip_grants();
-    thd->set_db(PARSE_RESULT_DEFAULT_DB_NAME, strlen(PARSE_RESULT_DEFAULT_DB_NAME));
+    //thd->set_db(PARSE_RESULT_DEFAULT_DB_NAME, strlen(PARSE_RESULT_DEFAULT_DB_NAME));
     /* init parse_result */
     memset(pra, 0, sizeof(parse_result_audit));
     pra->thd_org = thd;
@@ -836,14 +836,14 @@ int parse_result_add_table_audit(
 	int i;
 	DBUG_ASSERT(db_name && table_name);
 	DBUG_ASSERT(pra->n_tables <= pra->n_tables_alloced);
-	if(0==strcmp(db_name, PARSE_RESULT_DEFAULT_DB_NAME))
+/*	if(0==strcmp(db_name, PARSE_RESULT_DEFAULT_DB_NAME))
 	{//No database selected
 		strmake(pra->err_msg, "No databases selected", sizeof(pra->err_msg) - 1);
 		pra->errcode = 1046;
 		pra->result_type = 2;
 		return -1;
 	}
-	if (strlen(db_name) > NAME_LEN || strlen(table_name) > NAME_LEN)
+*/	if (strlen(db_name) > NAME_LEN || strlen(table_name) > NAME_LEN)
 	{
 		sprintf(pra->err_msg, "%s", "too long db_name or table_name");
 		pra->result_type = 3;
