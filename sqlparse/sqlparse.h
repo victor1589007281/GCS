@@ -45,6 +45,12 @@ typedef struct parse_result_struct parse_result_t;
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
+typedef struct info_audit
+{
+	int no_ascii; //1 means has not ascii, 0 means has only ascii
+}info_audit;
+
+
 enum enum_result_types {SQLPARSE_SUCESS, SQLPARSE_WARNING, SQLPARSE_FAIL, SQLPARSE_FAIL_OTHER};
 struct parse_result_audit {
 	void* thd_org;
@@ -67,6 +73,10 @@ struct parse_result_audit {
 
 	int errcode;
 	char err_msg[PARSE_RESULT_MAX_STR_LEN + 1];
+
+	unsigned long line_number;//the error or warnings sql line
+
+	info_audit info; //other info for result of tmysqlparse
 };
 
 int

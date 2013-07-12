@@ -183,6 +183,8 @@ const char *default_dbug_option="d:t:o,/tmp/mysql.trace";
 /* add by willhan. 2013-06-17
 use global variable pra to store the reuslt of parse */
 /************************************************************************/
+unsigned long line_number_audit = 0;
+int info_audit_no_ascii = 1; //0 means has only ascii; 1 means has not ascii 
 static parse_result_audit pra;
 const static int RESULT_OUTPUT_AUDIT_LEN = 10;
 typedef struct result_audit
@@ -1855,6 +1857,11 @@ static int read_and_execute(bool interactive)
 			line_number++;
 			if (!glob_buffer.length())
 				status.query_start_line=line_number;
+
+			/************************************************************************/
+			/* add by willhan. 2013-7-12. for the err or warning sql line                                                                     */
+			/************************************************************************/
+			line_number_audit = line_number;
 		}
 		else
 		{
@@ -1952,6 +1959,8 @@ static int read_and_execute(bool interactive)
 	tmpbuf.free();
 #endif
 
+
+
 	return status.exit_status;
 }
 
@@ -2034,6 +2043,11 @@ static bool add_line(String &buffer,char *line,char *in_string,
 
 	for (pos=out=line ; (inchar= (uchar) *pos) ; pos++)
 	{
+		/************************************************************************/
+		/* add by willhan. 2013-7-12. judge no-ascii char                                                                     */
+		/************************************************************************/
+		if((uchar)*pos > 127)
+			info_audit_no_ascii = 0;
 		if (!preserve_comments)
 		{
 			// Skip spaces at the beginning of a statement
@@ -3781,6 +3795,13 @@ static void tmysqlparse_add_pra(result_output_audit *roa, char *sql, parse_resul
 		roa->ra = new_ra;
 		roa->maxlen =roa->maxlen*2;
 	}
+
+	/************************************************************************/
+	/* add by willhan. 2013-7-12. for judging if has ascii                                                                     */
+	/************************************************************************/
+	pra->line_number = line_number_audit;
+	pra->info.no_ascii = info_audit_no_ascii;
+
 	(roa->ra)[roa->len].sql = (char*)calloc(strlen(sql)+1,sizeof(char));
 	memcpy((roa->ra)[roa->len].sql, sql, sizeof(char)*(strlen(sql)+1));
 	memcpy(&((roa->ra)[roa->len].pra),pra,sizeof(parse_result_audit));
@@ -3846,6 +3867,10 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 				print_quoted_xml(xml_file, (roa->ra)[i].pra.err_msg, strlen((roa->ra)[i].pra.err_msg));
 				fputs("</error_msg>\n",xml_file);
 
+				fputs("\t\t\t<line>",xml_file);
+				fprintf(xml_file,"%d",(roa->ra)[i].pra.line_number);
+				fputs("</line>\n",xml_file);
+
 				fputs("\t\t</failed_info>\n",xml_file);
 			}
 		}
@@ -3891,6 +3916,10 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 				print_quoted_xml(xml_file, (roa->ra)[i].sql, strlen((roa->ra)[i].sql));
 				fputs("</text>\n",xml_file);
 
+				fputs("\t\t\t<line>",xml_file);
+				fprintf(xml_file,"%d",(roa->ra)[i].pra.line_number);
+				fputs("</line>\n",xml_file);
+
 				if(tmp_type == 1 || tmp_type == 3)
 				{//alter table or create table, have more than 10 blob/text field
 					fputs("\t\t\t<extra>",xml_file);
@@ -3902,6 +3931,13 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 		}
 		fputs("\t</risk_warnings>\n",xml_file);
 	}
+
+	fputs("\t<info>\n",xml_file);
+	fputs("\t\t<no_ascii>",xml_file);
+	fprintf(xml_file, "%d", info_audit_no_ascii);
+	fputs("</no_ascii>\n",xml_file);
+	fputs("\t</info>\n",xml_file);
+
 	fputs("</result>\n",xml_file);
 }
 
