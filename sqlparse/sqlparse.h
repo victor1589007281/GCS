@@ -47,7 +47,7 @@ typedef struct parse_result_struct parse_result_t;
 /************************************************************************/
 typedef struct info_audit
 {
-	int no_ascii; //1 means has not ascii, 0 means has only ascii
+	int non_ascii; //1 means has not ascii, 0 means has only ascii
 }info_audit;
 
 

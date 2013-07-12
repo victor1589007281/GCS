@@ -519,7 +519,7 @@ int parse_result_audit_init(parse_result_audit* pra, char *version)
 	pra->n_tables_alloced = PARSE_RESULT_N_TABLE_ARR_INITED;
 	pra->n_tables = 0;
 	pra->line_number = 0;
-	pra->info.no_ascii = 1;
+	pra->info.non_ascii = 1;
 	pra->table_arr = (parse_table_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_table_t));
 	pra->mysql_version = current_version;
     return 0;
