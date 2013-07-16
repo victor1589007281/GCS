@@ -1573,6 +1573,39 @@ static Exit_status safe_connect()
   return OK_CONTINUE;
 }
 
+/* 但带来的问题是重连前的option丢失，因此慎用这接口 */
+MYSQL * mysql_real_connect_5times(
+    MYSQL *mysql, 
+    const char *host,
+    const char *user,
+    const char *passwd,
+    const char *db,
+    unsigned int port,
+    const char *unix_socket,
+    unsigned long clientflag)
+{
+    uint i = 0;
+
+    while (i++ < 5)
+    {
+        if (mysql_real_connect(mysql, host, user, passwd, db, port, unix_socket, clientflag))
+            return mysql;
+
+        /* 最后一次不重新init，否则mysql内的错误信息损失 */
+        if (i <= 4) 
+        {
+            my_sleep(500000);
+            /* 这里需要close+init 否则遇到空指针断言，详见create_shared_memory */
+            /* 但带来的问题是重连前的option丢失，因此慎用这接口 */
+            mysql_close(mysql);
+            mysql_init(mysql);
+        }
+    }
+
+    return NULL;
+
+}
+
 
 /**
   High-level function for dumping a named binlog.
@@ -2627,7 +2660,7 @@ get_events_tables(
     MYSQL_ROW row;
     MYSQL_RES* rs = NULL;
 
-    /* 获得所有视图名字 */
+    /* 获得所有event名字 */
     if (mysql_query(mysql, "select count(*) from information_schema.events"))
     {
         /* information_schema.events not exists */
@@ -2691,7 +2724,7 @@ test_remote_server_and_get_definition()
     /* 总以binary导出定义，即使乱码也无所谓，只用于获得表名 */
     mysql_options(&m, MYSQL_SET_CHARSET_NAME, "binary");
 
-    if (!mysql_real_connect(&m, remote_host, remote_user, remote_pass, 0, remote_port, remote_sock, 0))
+    if (!mysql_real_connect_5times(&m, remote_host, remote_user, remote_pass, 0, remote_port, remote_sock, 0))
     {
         error("Fail to connect remote server %u:%s", mysql_errno(&m), mysql_error(&m));
         return -1;
@@ -2706,6 +2739,7 @@ test_remote_server_and_get_definition()
     }
     else
     {
+        ret = 0;
         /* information_schema.events not exists */
         if (mysql_errno(&m) != ER_UNKNOWN_SYSTEM_VARIABLE)
         {
@@ -2777,6 +2811,10 @@ int main(int argc, char** argv)
   {
       err = -1;
       fprintf(stderr, "[Error] Invalid argment --sql-files-output-dir\n");
+
+      free_defaults(defaults_argv);
+      my_end(my_end_arg);
+      exit(1);
   }
 
   binlogex_init();
@@ -2786,6 +2824,7 @@ int main(int argc, char** argv)
   {
       //test connect to remote server, and get views trigger functions relations 
       err = -1;
+      goto destroy;
   }
   fprintf(stdout, "[Info] Total use %f sec for getting object definition\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
 
@@ -2802,14 +2841,6 @@ int main(int argc, char** argv)
 
   fflush(stdout);
   fflush(stderr);
-
-  if (err)
-  {
-      binlogex_destroy();
-      free_defaults(defaults_argv);
-      my_end(my_end_arg);
-      exit(1);
-  }
 
   if (opt_base64_output_mode == BASE64_OUTPUT_UNSPEC)
     opt_base64_output_mode= BASE64_OUTPUT_AUTO;
@@ -2831,6 +2862,8 @@ int main(int argc, char** argv)
       exit(1);
     dirname_for_local_load= my_strdup(my_tmpdir(&tmpdir), MY_WME);
   }
+
+  binlogex_create_worker_thread();
 
   //if (load_processor.init())
   //  exit(1);
@@ -2920,6 +2953,16 @@ int main(int argc, char** argv)
   exit(retval == ERROR_STOP ? 1 : 0);
   /* Keep compilers happy. */
   DBUG_RETURN(retval == ERROR_STOP ? 1 : 0);
+
+destroy:
+  if (err)
+  {
+      binlogex_destroy();
+      free_defaults(defaults_argv);
+      my_end(my_end_arg);
+      exit(1);
+  }
+
 }
 
 /*
@@ -3768,7 +3811,7 @@ binlogex_worker_thread_init(
             shared_memory_base_name);
 #endif
         */
-        if (!mysql_real_connect(&vm->mysql, remote_host, remote_user, remote_pass, 0, remote_port, remote_sock, 0))
+        if (!mysql_real_connect_5times(&vm->mysql, remote_host, remote_user, remote_pass, 0, remote_port, remote_sock, 0))
         {
             error_vm(vm, "Failed on connect %u:%s", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
             return -1;
@@ -4356,6 +4399,17 @@ binlogex_wait_all_worker_thread_exit()
     
 }
 
+void
+binlogex_create_worker_thread()
+{
+    uint i = 0; 
+
+    for (i = 0; i < concurrency; ++i)
+    {
+        pthread_create(&global_pthread_array[i], &worker_attrib, binlogex_worker_thread, global_vm_array[i]);
+    }
+}
+
 /**********  worker thread **************/
 
 
@@ -4398,7 +4452,6 @@ binlogex_init()
     for (i = 0; i < concurrency; ++i)
     {
         global_vm_array[i] = new Worker_vm(i);
-        pthread_create(&global_pthread_array[i], &worker_attrib, binlogex_worker_thread, global_vm_array[i]);
     }
 
     return 0;
@@ -5175,6 +5228,8 @@ binlogex_execute_sql(
 {
     char* pos, *start;
     int ret = 0;
+    char inchar = 0;
+    char in_string = 0;
 //   MYSQL_RES* res;
     pos = sql;
 
@@ -5194,75 +5249,79 @@ new_line:
     start = pos;
     while (pos && *pos)
     {
-        if (is_prefix(pos, vm->print_info.delimiter))
+        inchar = *pos;
+
+        /* 若为转义字符，取下一个字符 */
+        if (inchar == '\\' /*&& no_*** */)
         {
-            /* 总是接着\n，这种情况没有考虑SQL中包含delimiter的情况，暂不处理 TODO */
-            my_assert(pos[vm->delimiter_len] == '\n');
+            my_assert(*(pos+1));
 
-            /* like com_charset, this is a mysql command */
-            if (is_prefix(start, "/*!\\C "))
+            pos += 2;
+            continue;
+        }
+
+        if(!in_string)
+        {
+            if(inchar=='\'' || inchar=='\"' || inchar=='`')
             {
-                /* 目前binlog输出总是 */
-                /*!\C gbk */
-                char charset_name[256] = {0};
-                char* end = start + 6; // strlen("/*!\\C ") 
-                CHARSET_INFO* new_cs;
-                
-                for (; end < pos; end++)
-                {
-                    if (*end == ' ')
-                        break;
-                }
-                my_assert(end < pos);
-                strnmov(charset_name, start + 6, end - start - 6);
-
-                new_cs= get_charset_by_csname(charset_name, MY_CS_PRIMARY, MYF(MY_WME));
-                if (new_cs)
-                {
-                    charset_info= new_cs;
-                    mysql_set_character_set(&vm->mysql, charset_info->csname);
-                }
+                in_string = inchar;
             }
             else
             {
-                //ret = mysql_real_query(&vm->mysql, start, pos - start);
-                //if (ret)
-                //    error_vm(vm, "Error %d:%s", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
+                if (is_prefix(pos, vm->print_info.delimiter))
+                {
+                    /* 总是接着\n，这种情况没有考虑SQL中包含delimiter的情况，暂不处理 TODO */
+                    my_assert(pos[vm->delimiter_len] == '\n');
 
-                //if (ret && exit_when_error)
-                //    goto exit;
+                    /* like com_charset, this is a mysql command */
+                    if (is_prefix(start, "/*!\\C "))
+                    {
+                        /* 目前binlog输出总是 */
+                        /*!\C gbk */
+                        char charset_name[256] = {0};
+                        char* end = start + 6; // strlen("/*!\\C ") 
+                        CHARSET_INFO* new_cs;
 
-                //res = mysql_store_result(&vm->mysql);
-                //if (res)
-                //{
-                //    mysql_free_result(res);
-                //}
-                //else
-                //{
-                //    if (mysql_field_count(&vm->mysql) == 0)
-                //    {
-                //        //mysql_affected_rows(&vm->mysql);
-                //    }
-                //    else
-                //    {
-                //        error_vm(vm, "Error %d:%s, could not retrieve result set", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
-                //    }
-                //}
+                        for (; end < pos; end++)
+                        {
+                            if (*end == ' ')
+                                break;
+                        }
+                        my_assert(end < pos);
+                        strnmov(charset_name, start + 6, end - start - 6);
 
-                ret = safe_execute_sql(&vm->mysql, start, pos - start);
-                if (ret)
-                    error_vm(vm, "Error %d:%s", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
+                        new_cs= get_charset_by_csname(charset_name, MY_CS_PRIMARY, MYF(MY_WME));
+                        if (new_cs)
+                        {
+                            charset_info= new_cs;
+                            mysql_set_character_set(&vm->mysql, charset_info->csname);
+                        }
+                    }
+                    else
+                    {
+                        ret = safe_execute_sql(&vm->mysql, start, pos - start);
+                        if (ret)
+                            error_vm(vm, "Error %d:%s", mysql_errno(&vm->mysql), mysql_error(&vm->mysql));
 
-                if (ret && exit_when_error)
-                    goto exit;
+                        if (ret && exit_when_error)
+                            goto exit;
 
+                    }
+
+                    // the last + 1 for \n
+                    start = pos += vm->delimiter_len + 1;
+
+                    continue;
+                }
             }
-            
-            // the last + 1 for \n
-            start = pos += vm->delimiter_len + 1;
         }
         else
-            pos++;
+        {
+            if(inchar == in_string)
+                in_string = 0;
+        }
+
+        pos++;
     }
 
     /* 语句正常结束 */
