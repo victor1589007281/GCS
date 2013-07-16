@@ -5920,6 +5920,17 @@ references:
           opt_match_clause
           opt_on_update_delete
           {
+            if (parse_export)
+            {
+			  THD *thd= YYTHD;
+              LEX *lex= thd->lex;
+              /* only use in sqlparse module */
+			  if (!lex->select_lex.add_table_to_list(thd, $2, NULL,
+                                                   TL_OPTION_UPDATING,
+                                                   TL_IGNORE,
+                                                   MDL_EXCLUSIVE))
+                MYSQL_YYABORT;
+            }
             $$=$2;
           }
         ;

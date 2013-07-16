@@ -46,7 +46,7 @@
 #define ULONGLONGPF	"%I64u"
 #else
 #define ULONGPF "%lu"
-#define ULONGLONGPF	"%lu"
+#define ULONGLONGPF	"%llu"
 #endif // _DEBUG
 #include "mysql_event.h"
 
@@ -2410,28 +2410,88 @@ int get_fkey_tables(
     MYSQL_RES* rs = NULL;
 
     /* 获得所有外键信息*/
-    if (mysql_query(mysql, "select CONSTRAINT_SCHEMA,TABLE_NAME,UNIQUE_CONSTRAINT_SCHEMA,REFERENCED_TABLE_NAME from information_schema.REFERENTIAL_CONSTRAINTS"))
+    if (!mysql_query(mysql, "select CONSTRAINT_SCHEMA,TABLE_NAME,UNIQUE_CONSTRAINT_SCHEMA,REFERENCED_TABLE_NAME from information_schema.REFERENTIAL_CONSTRAINTS"))
     {
-        error("select error on information_schema.REFERENTIAL_CONSTRAINTS, %u:%s", mysql_errno(mysql), mysql_error(mysql));
-        return -1;
-    }
+        rs= mysql_store_result(mysql);
+        if (!rs)
+        {
+            error("store result error on information_schema.REFERENTIAL_CONSTRAINTS");
+            goto err;
+        }
 
-    rs= mysql_store_result(mysql);
-    if (!rs)
+        while ((row = mysql_fetch_row(rs)))
+        {
+            binlogex_add_to_hash_tab(row[0], row[1], global_tables_pairs_num);
+            binlogex_add_to_hash_tab(row[2], row[3], global_tables_pairs_num);
+
+            global_tables_pairs_num++;
+        }
+
+        mysql_free_result(rs);
+
+    }
+    else
     {
-        error("store result error on information_schema.REFERENTIAL_CONSTRAINTS");
-        goto err;
+        if (mysql_query(mysql, "select TABLE_SCHEMA,TABLE_NAME from information_schema.TABLE_CONSTRAINTS where CONSTRAINT_TYPE = 'FOREIGN KEY'"))
+        {
+            error("mysql_query error on information_schema.TABLE_CONSTRAINTS");
+            goto err;
+        }
+
+        rs= mysql_store_result(mysql);
+        if (!rs)
+        {
+            error("store result error on information_schema.TABLE_CONSTRAINTS");
+            goto err;
+        }
+
+        while ((row = mysql_fetch_row(rs)))
+        {
+            char buf[1024];
+            MYSQL_RES* ct_rs = NULL;
+            MYSQL_ROW r;
+            uint    i;
+
+            snprintf(buf, sizeof(buf), "show create table `%s`.`%s`", row[0], row[1]);
+
+            if (mysql_query(mysql, buf))
+            {
+                error("mysql_query error on %s", buf);
+                goto err;
+            }
+
+            ct_rs= mysql_store_result(mysql);
+            if (!ct_rs)
+            {
+                error("mysql_store_result error on %s", buf);
+                goto err;
+            }
+
+            r = mysql_fetch_row(ct_rs);
+            my_assert(r);
+
+            parse_result_init_db(&parse_result, (char*)row[0]);
+            /* 分析show create table语句 */
+            if (query_parse(r[1], &parse_result))
+            {
+                error("%s syntax error %s", r[1], parse_result.err_msg);
+
+                mysql_free_result(ct_rs);
+                goto err;
+            }
+
+            for (i = 0; i < parse_result.n_tables; i++)
+            {
+                binlogex_add_to_hash_tab(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, global_tables_pairs_num);
+            }
+
+            mysql_free_result(ct_rs);
+            global_tables_pairs_num++;
+        }
+
+        mysql_free_result(rs);
+
     }
-
-    while ((row = mysql_fetch_row(rs)))
-    {
-        binlogex_add_to_hash_tab(row[0], row[1], global_tables_pairs_num);
-        binlogex_add_to_hash_tab(row[2], row[3], global_tables_pairs_num);
-
-        global_tables_pairs_num++;
-    }
-
-    mysql_free_result(rs);
     return 0;
 
 err:
@@ -3081,7 +3141,6 @@ binlogex_print_all_tables_in_hash_delegate(
     table_entry_t*** pp_entry = (table_entry_t***)pp_entry_org;
     uint i;
     table_entry_t** p_entry;
-    uint n_entry = 0;
     uint insert_pos = 0;
 
     my_assert(entry->thread_id < concurrency);
