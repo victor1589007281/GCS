@@ -3821,7 +3821,7 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 	//flag=1 means only risk warnings; 
 	//flag=2 means only parse fail
 	//flag=3 means both risk warnings and parse fail
-	fputs("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n",xml_file);
+	fputs("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n",xml_file);
 	for(int i=0; i<roa->len; ++i)
 	{
 		if(flag == 3)
