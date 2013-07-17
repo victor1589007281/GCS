@@ -48,6 +48,7 @@ TARGET_LINK_LIBRARIES(mysqldump mysqlclient)
 MYSQL_ADD_EXECUTABLE(tmysqldump tmysqldump.cc ../sql-common/my_user.c)
 TARGET_LINK_LIBRARIES(tmysqldump mysqlclient)
 
+
 MYSQL_ADD_EXECUTABLE(mysqlimport mysqlimport.c)
 TARGET_LINK_LIBRARIES(mysqlimport mysqlclient)
 
@@ -72,6 +73,19 @@ TARGET_LINK_LIBRARIES(mysqlbinlog mysqlclient)
 #                     POST_BUILD 
 #                     COMMAND copy ..\\sqlparse\\Debug\\sqlparse.dll Debug\\sqlparse.dll)
 #ENDIF()
+
+#add by willhan. 2013-06-07
+MYSQL_ADD_EXECUTABLE(tmysqlparse completion_hash.cc tmysqlparse.cc readline.cc sql_string.cc)
+TARGET_LINK_LIBRARIES(tmysqlparse mysqlclient sqlparse)
+IF(UNIX)
+  TARGET_LINK_LIBRARIES(tmysqlparse ${READLINE_LIBRARY})
+ENDIF(UNIX)
+IF(MSVC)
+	 ADD_CUSTOM_COMMAND(TARGET tmysqlparse
+                     POST_BUILD 
+                     COMMAND copy ..\\sqlparse\\Debug\\sqlparse.dll Debug\\sqlparse.dll)
+ENDIF()
+
 
 MYSQL_ADD_EXECUTABLE(mysqladmin mysqladmin.cc)
 TARGET_LINK_LIBRARIES(mysqladmin mysqlclient)
