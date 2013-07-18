@@ -1229,7 +1229,8 @@ binlog of the MySQL server. If you send the output to the same MySQL server, \
 that may lead to an endless loop.",
    &to_last_remote_log, &to_last_remote_log, 0, GET_BOOL,
    NO_ARG, 0, 0, 0, 0, 0, 0},
-  {"table-split", OPT_TABLE_SPLIT, "Rule of table spliting. ", &table_split, &table_split,
+  {"table-split", OPT_TABLE_SPLIT, "Rule of table spliting， each group split to same thread. like --table-split=d1.t1,d1.t2;d3.t1,d3.t2 ", 
+   &table_split, &table_split,
    0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   /*{"user", 'u', "Connect to the remote server as username.",
    &user, &user, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0,
@@ -2780,6 +2781,70 @@ err:
     return ret;
 }
 
+/* return -1 : error input */
+int
+binlogex_parse_table_split()
+{
+    uint i = 0;
+    char full_tabname[NAME_LEN*2+3];
+
+    char dbname[NAME_LEN];
+    char tabname[NAME_LEN];
+
+    uint len = 0;
+    uint pos = 0;
+
+    if (!table_split)
+        return 0;
+
+    len = strlen(table_split);
+
+    /* skip the begin and tail " ' */
+    if (table_split[0] == '"' || table_split[0] == '\'')
+        i = 1;
+
+    if (table_split[len - 1] == '"' || table_split[len - 1] == '\'')
+        len -= 1;
+    
+    for (; i < len ;i++)
+    {
+        if (table_split[i] == ',' || table_split[i] == ';')
+        {
+            full_tabname[pos] = 0;
+
+            if (binlogex_split_full_table_name(full_tabname, dbname, NAME_LEN, tabname, NAME_LEN))
+                return -1;
+            
+            binlogex_add_to_hash_tab(dbname, tabname, global_tables_pairs_num);
+
+            pos = 0;
+
+            /* 遇到; 表示新的关系 */
+            if(table_split[i] == ';')
+                global_tables_pairs_num++;
+
+            continue;
+
+        }
+
+        full_tabname[pos++] = table_split[i];
+    }
+
+    /* 最后一个输入，可能没有; 当;处理 */
+    if (pos > 0)
+    {
+        full_tabname[pos] = 0;
+
+        if (binlogex_split_full_table_name(full_tabname, dbname, NAME_LEN, tabname, NAME_LEN))
+            return -1;
+
+        binlogex_add_to_hash_tab(dbname, tabname, global_tables_pairs_num++);
+    }
+    
+    
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
   char **defaults_argv;
@@ -2828,9 +2893,11 @@ int main(int argc, char** argv)
   }
   fprintf(stdout, "[Info] Total use %f sec for getting object definition\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
 
-  if (table_split)
+  if (binlogex_parse_table_split())
   {
-    //TODO
+      error("error input --table-split=\"%s\"", table_split);
+      err = -1;
+      goto destroy;
   }
 
   /* 调整为合适的thread_id */
@@ -3250,6 +3317,66 @@ binlogex_print_all_tables_in_hash()
 
     free(dnstr_arr);
     free(pp_entry);
+}
+
+#define IS_SPACE(c) ((c) == ' ' || (c) == '\t')
+
+/* return -1 error */
+int
+binlogex_split_full_table_name(
+    const char*       full_tabname,
+    char*             dbname_out,
+    uint              dbname_len,
+    char*             tabname_out,
+    uint              tabname_len
+)
+{
+    uint i=0;
+    uint len = strlen(full_tabname);
+    uint pos = 0;
+
+    // skip space
+    while (i < len)
+    {
+        if (!IS_SPACE(full_tabname[i]))
+            break;
+
+        i++;
+    }
+
+    /* copy dbnanme */
+    for (; i < len && full_tabname[i] != '.'; i++)
+    {
+        if (pos < dbname_len - 1)
+            dbname_out[pos++] = full_tabname[i];
+        else
+            return -1;
+    }
+
+    dbname_out[pos] = 0;
+    /* dbname不能为空 */
+    if (pos == 0 || i == len)
+        return -1;
+
+    // skip the '.'
+    i++;
+
+    pos = 0;
+    /* copy tabname and skip the tail space */
+    for (; i < len && !IS_SPACE(full_tabname[i]); i++)
+    {
+        if (pos < tabname_len - 1)
+            tabname_out[pos++] = full_tabname[i];
+        else
+            return -1;
+    }
+
+    tabname_out[pos] = 0;
+    if (pos == 0)
+        return -1;
+
+    return 0;
+
 }
 
 void

@@ -21,6 +21,15 @@ binlogex_create_worker_thread();
 void
 binlogex_wait_all_worker_thread_exit();
 
+int
+binlogex_split_full_table_name(
+    const char*       full_tabname,
+    char*             dbname_out,
+    uint              dbname_len,
+    char*             tabname_out,
+    uint              tabname_len
+);
+
 class Worker_vm
 {
 public:
