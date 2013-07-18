@@ -16,6 +16,9 @@ void
 binlogex_destroy();
 
 void
+binlogex_create_worker_thread();
+
+void
 binlogex_wait_all_worker_thread_exit();
 
 class Worker_vm
