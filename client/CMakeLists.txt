@@ -68,18 +68,24 @@ TARGET_LINK_LIBRARIES(mysqlbinlog mysqlclient)
 #MYSQL_ADD_EXECUTABLE(tmysqlbinlogex tmysqlbinlogex.cc ../sqlparse/message_queue.cc)
 #TARGET_LINK_LIBRARIES(tmysqlbinlogex mysqlclient sqlparse)
 
-#IF(MSVC)
-#	 ADD_CUSTOM_COMMAND(TARGET tmysqlbinlogex
-#                     POST_BUILD 
-#                     COMMAND copy ..\\sqlparse\\Debug\\sqlparse.dll Debug\\sqlparse.dll)
-#ENDIF()
+IF(MSVC)
+	 ADD_CUSTOM_COMMAND(TARGET tmysqlbinlogex
+                     POST_BUILD 
+                     COMMAND copy ..\\sqlparse\\Debug\\sqlparse.dll Debug\\sqlparse.dll)
+ENDIF()
 
 #add by willhan. 2013-06-07
-MYSQL_ADD_EXECUTABLE(tmysqlparse completion_hash.cc tmysqlparse.cc readline.cc sql_string.cc)
+IF(UNIX)
+  MYSQL_ADD_EXECUTABLE(tmysqlparse completion_hash.cc tmysqlparse.cc readline.cc sql_string.cc DESTINATION ${INSTALL_BINDIR}/tmysqlparse)
+ELSE()
+  MYSQL_ADD_EXECUTABLE(tmysqlparse completion_hash.cc tmysqlparse.cc readline.cc sql_string.cc)
+ENDIF(UNIX)
+
 TARGET_LINK_LIBRARIES(tmysqlparse mysqlclient sqlparse)
 IF(UNIX)
   TARGET_LINK_LIBRARIES(tmysqlparse ${READLINE_LIBRARY})
 ENDIF(UNIX)
+
 IF(MSVC)
 	 ADD_CUSTOM_COMMAND(TARGET tmysqlparse
                      POST_BUILD 
