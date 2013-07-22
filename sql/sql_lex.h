@@ -765,6 +765,7 @@ public:
   enum olap_type olap;
   /* FROM clause - points to the beginning of the TABLE_LIST::next_local list. */
   SQL_I_List<TABLE_LIST>  table_list;
+  SQL_I_List<ROUTINE_LIST>  routine_list;
 
   /*
     GROUP BY clause.
@@ -926,6 +927,12 @@ public:
                                 enum_mdl_type mdl_type= MDL_SHARED_READ,
 				List<Index_hint> *hints= 0,
                                 LEX_STRING *option= 0);
+  ROUTINE_LIST *add_routine_to_list(THD *thd,
+      LEX_STRING dbname,
+      LEX_STRING func,
+      Item *item
+      );
+
   TABLE_LIST* get_table_list();
   bool init_nested_join(THD *thd);
   TABLE_LIST *end_nested_join(THD *thd);

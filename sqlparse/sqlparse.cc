@@ -8,6 +8,7 @@
 
 extern int parse_export;
 #define PARSE_RESULT_N_TABLE_ARR_INITED 5
+#define PARSE_RESULT_N_ROUTINE_ARR_INITED PARSE_RESULT_N_TABLE_ARR_INITED
 #define PARSE_RESULT_DEFAULT_DB_NAME "<unknow_db>"
 
 static int ignore_error_code[] = {ER_UNKNOWN_SYSTEM_VARIABLE,0};//0 means the end
@@ -107,6 +108,10 @@ parse_result_init(parse_result_t* pr)
     pr->n_tables = 0;
     pr->table_arr = (parse_table_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_table_t));
 
+    pr->n_routines_alloced = PARSE_RESULT_N_TABLE_ARR_INITED;
+    pr->n_routines = 0;
+    pr->routine_arr = (parse_routine_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_routine_t));
+
     return 0;
 }
 
@@ -121,6 +126,13 @@ parse_result_destroy(parse_result_t* pr)
         free(pr->table_arr);
         pr->table_arr = NULL;
         pr->n_tables_alloced = pr->n_tables = 0;
+    }
+
+    if (pr->routine_arr)
+    {
+        free(pr->routine_arr);
+        pr->routine_arr = NULL;
+        pr->n_routines_alloced = pr->n_routines = 0;
     }
 
     thd = (THD*)pr->thd_org;
@@ -159,7 +171,7 @@ parse_result_add_table(
     DBUG_ASSERT(db_name && table_name);
     DBUG_ASSERT(pr->n_tables <= pr->n_tables_alloced);
 
-    if (strlen(db_name) > NAME_LEN || strlen(table_name) > NAME_LEN)
+    if (strlen(db_name) > NAME_LEN - 1 || strlen(table_name) > NAME_LEN - 1)
     {
         sprintf(pr->err_msg, "%s", "too long db_name or table_name");
         return -1;
@@ -190,6 +202,47 @@ parse_result_add_table(
 }
 
 int
+parse_result_add_routine(
+    parse_result_t* pr, 
+    char*           db_name,
+    char*           routine_name
+)
+{
+    int i;
+    DBUG_ASSERT(db_name && routine_name);
+    DBUG_ASSERT(pr->n_routines <= pr->n_routines_alloced);
+
+    if (strlen(db_name) > NAME_LEN - 1 || strlen(routine_name) > NAME_LEN - 1)
+    {
+        sprintf(pr->err_msg, "%s", "too long db_name or routine_name");
+        return -1;
+    }
+    for (i = 0; i < pr->n_routines; i++)
+    {
+        if (!strcmp(pr->routine_arr[i].dbname, db_name) && !strcmp(pr->routine_arr[i].routinename, routine_name))
+            return 0;
+    }
+    //buffer is not enough
+    if (pr->n_routines >= pr->n_routines_alloced)
+    {
+        parse_routine_t* new_routine_arr;
+
+        new_routine_arr = (parse_routine_t*)calloc(pr->n_routines_alloced * 2, sizeof(parse_routine_t));
+
+        memcpy(new_routine_arr, pr->routine_arr, sizeof(parse_routine_t) * pr->n_routines_alloced);
+        free(pr->routine_arr);
+
+        pr->routine_arr = new_routine_arr;
+        pr->n_routines_alloced *= 2;
+    }
+
+    strcpy(pr->routine_arr[pr->n_routines].dbname, db_name);
+    strcpy(pr->routine_arr[pr->n_routines++].routinename, routine_name);
+
+    return 0;
+}
+
+int
 query_parse(char* query, parse_result_t* pr)
 {
     THD* thd;
@@ -197,17 +250,18 @@ query_parse(char* query, parse_result_t* pr)
     Parser_state parser_state;
     TABLE_LIST* all_tables;
     TABLE_LIST* table;
+    ROUTINE_LIST* routine;
     SELECT_LEX *select_lex;
 	int exit_code = 0;
 	bool err;
 	SELECT_LEX *sl;
 	sp_head* sp;
-	
 
     thd = (THD*)pr->thd_org;
     DBUG_ASSERT(pr->n_tables_alloced > 0 && thd);
 
     pr->n_tables = 0;
+    pr->n_routines = 0;
     pr->err_msg[0] = 0;
 
     if (strlen(query) == 0)
@@ -280,6 +334,8 @@ query_parse(char* query, parse_result_t* pr)
     default:
         break;
     }
+
+    /* add table */
     for (table= all_tables; table; table= table->next_global)
     {
         if (parse_result_add_table(pr, table->db, table->table_name))
@@ -313,6 +369,40 @@ query_parse(char* query, parse_result_t* pr)
             if (parse_result_add_table(pr, table->db, table->table_name))
             {
 				exit_code = -1;
+                goto exit_pos;
+            }
+        }
+    }
+
+    /* add procedure and function */
+    for (routine= lex->select_lex.routine_list.first; routine; routine= routine->next_local)
+    {
+        if (parse_result_add_routine(pr, routine->dbname, routine->routine_name))
+        {
+            exit_code = -1;
+            goto exit_pos;
+        }
+    }       
+    sl= lex->all_selects_list;
+    for (; sl; sl= sl->next_select_in_list())
+    {
+        for (routine= sl->routine_list.first; routine; routine= routine->next_local)
+        {
+            if (parse_result_add_routine(pr, routine->dbname, routine->routine_name))
+            {
+                exit_code = -1;
+                goto exit_pos;
+            }
+        }
+    }
+    sp = thd->lex->sphead;
+    if (sp)
+    {
+        for (routine= sp->m_routine_list.first; routine; routine= routine->next_local)
+        {
+            if (parse_result_add_routine(pr, routine->dbname, routine->routine_name))
+            {
+                exit_code = -1;
                 goto exit_pos;
             }
         }

@@ -65,8 +65,8 @@ TARGET_LINK_LIBRARIES(mysql_plugin mysqlclient)
 MYSQL_ADD_EXECUTABLE(mysqlbinlog mysqlbinlog.cc)
 TARGET_LINK_LIBRARIES(mysqlbinlog mysqlclient)
 
-#MYSQL_ADD_EXECUTABLE(tmysqlbinlogex tmysqlbinlogex.cc ../sqlparse/message_queue.cc)
-#TARGET_LINK_LIBRARIES(tmysqlbinlogex mysqlclient sqlparse)
+MYSQL_ADD_EXECUTABLE(tmysqlbinlogex tmysqlbinlogex.cc ../sqlparse/message_queue.cc)
+TARGET_LINK_LIBRARIES(tmysqlbinlogex mysqlclient sqlparse)
 
 IF(MSVC)
 	 ADD_CUSTOM_COMMAND(TARGET tmysqlbinlogex

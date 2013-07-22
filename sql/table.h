@@ -1371,6 +1371,18 @@ enum enum_open_type
 
 struct LEX;
 class Index_hint;
+
+struct ROUTINE_LIST
+{
+    ROUTINE_LIST() {}
+	
+    char dbname[NAME_LEN];
+    char routine_name[NAME_LEN];
+    Item*   item;
+
+    ROUTINE_LIST *next_local;
+};
+
 struct TABLE_LIST
 {
   TABLE_LIST() {}                          /* Remove gcc warning */

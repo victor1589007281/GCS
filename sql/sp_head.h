@@ -488,6 +488,7 @@ public:
   }
 
   sp_pcontext *get_parse_context() { return m_pcont; }
+  SQL_I_List<ROUTINE_LIST>  m_routine_list;
 
 private:
 
@@ -540,6 +541,7 @@ private:
     by routine.
   */
   bool merge_table_list(THD *thd, TABLE_LIST *table, LEX *lex_for_tmp_check);
+  bool merge_routine_list(THD *thd, LEX *lex);
 }; // class sp_head : public Sql_alloc
 
 

@@ -5823,6 +5823,28 @@ bool add_to_list(THD *thd, SQL_I_List<ORDER> &list, Item *item,bool asc)
   DBUG_RETURN(0);
 }
 
+ROUTINE_LIST *st_select_lex::add_routine_to_list(THD *thd,
+                                                 LEX_STRING dbname,
+                                                 LEX_STRING func,
+                                                 Item *item
+)
+{
+    ROUTINE_LIST* ptr;
+
+    DBUG_ASSERT(parse_export);
+
+    ptr = (ROUTINE_LIST*)thd->calloc(sizeof(ROUTINE_LIST));
+    if (!ptr)
+        return NULL;
+    
+    ptr->item = item;
+    strncpy(ptr->dbname, dbname.str, sizeof(ptr->dbname) - 1);
+    strncpy(ptr->routine_name, func.str, sizeof(ptr->routine_name) - 1);
+
+    routine_list.link_in_list(ptr, &ptr->next_local);
+
+    return ptr;
+}
 
 /**
   Add a table to list of used tables.

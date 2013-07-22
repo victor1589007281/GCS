@@ -22,6 +22,7 @@ parse_result_init
 parse_result_destroy
 parse_result_init_db
 parse_result_get_stmt_type_str
+parse_result_add_table
 query_parse
 
 parse_result_audit_init

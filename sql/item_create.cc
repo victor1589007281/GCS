@@ -2578,6 +2578,10 @@ Create_sp_func::create(THD *thd, LEX_STRING db, LEX_STRING name,
   else
     func= new (thd->mem_root) Item_func_sp(lex->current_context(), qname);
 
+  /* 语法分析记录存储过程、函数调用 */
+  if (parse_export)
+      lex->select_lex.add_routine_to_list(thd, db, name, func);
+
   lex->safe_to_cache_query= 0;
   return func;
 }

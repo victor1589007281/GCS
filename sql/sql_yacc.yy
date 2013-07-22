@@ -2490,6 +2490,10 @@ call:
             lex->spname= $2;
             lex->value_list.empty();
             sp_add_used_routine(lex, YYTHD, $2, TYPE_ENUM_PROCEDURE);
+            
+            /* sqlparse add sp_name */
+            if (parse_export)
+              lex->select_lex.add_routine_to_list(YYTHD, $2->m_db, $2->m_name, NULL);
           }
           opt_sp_cparam_list {}
         ;

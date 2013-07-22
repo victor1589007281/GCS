@@ -804,6 +804,7 @@ sp_head::~sp_head()
 
   my_hash_free(&m_sptabs);
   my_hash_free(&m_sroutines);
+  m_routine_list.empty();
 
   delete m_next_cached_sp;
 
@@ -2361,6 +2362,7 @@ sp_head::restore_lex(THD *thd)
     procedures) to multiset of tables used by this routine.
   */
   merge_table_list(thd, sublex->query_tables, sublex);
+  merge_routine_list(thd, sublex);
   if (! sublex->sp_lex_in_use)
   {
     sublex->sphead= NULL;
@@ -4042,6 +4044,34 @@ uchar *sp_table_key(const uchar *ptr, size_t *plen, my_bool first)
   return (uchar *)tab->qname.str;
 }
 
+/*
+@retval
+TRUE    Success
+@retval
+FALSE   Error
+*/
+bool
+sp_head::merge_routine_list(THD *thd, LEX *lex)
+{
+    ROUTINE_LIST* ptr;
+    ROUTINE_LIST* i;
+    
+    for (i = lex->select_lex.routine_list.first; i ; i = i->next_local)
+    {
+	    DBUG_ASSERT(parse_export);
+        ptr = (ROUTINE_LIST*)thd->calloc(sizeof(ROUTINE_LIST));
+        if (!ptr)
+            return FALSE;
+
+        ptr->item = i->item;
+        strncpy(ptr->dbname, i->dbname, sizeof(ptr->dbname) - 1);
+        strncpy(ptr->routine_name, i->routine_name, sizeof(ptr->routine_name) - 1);
+
+        m_routine_list.link_in_list(ptr, &ptr->next_local);
+    }
+
+    return TRUE;
+}
 
 /**
   Merge the list of tables used by some query into the multi-set of

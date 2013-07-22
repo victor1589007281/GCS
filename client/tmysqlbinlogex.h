@@ -30,6 +30,45 @@ binlogex_split_full_table_name(
     uint              tabname_len
 );
 
+void
+binlogex_routine_entry_add_table(
+    char*           routine_db,
+    char*           routine_name,
+    char*           table_db,
+    char*           table_name   
+);
+
+struct table_entry_struct 
+{
+    char full_table_name[NAME_LEN * 2 + 3];      // 必须是第一个成员
+    char db[NAME_LEN];
+    char table[NAME_LEN];
+    uint thread_id;
+    ulonglong rate;                         //binlog query_event rate
+};
+
+typedef struct table_entry_struct table_entry_t;
+
+struct routine_entry_struct
+{
+    char full_routine_name[NAME_LEN*2 + 3];
+    char db[NAME_LEN];
+    char routine[NAME_LEN];
+
+    unsigned short n_table_arr_alloced;
+    unsigned short n_tables;
+
+    table_entry_t*  table_arr;
+};
+
+typedef struct routine_entry_struct routine_entry_t;
+
+routine_entry_t*
+binlogex_routine_entry_get_by_name(
+    char*           routine_db,
+    char*           routine_name
+);
+
 class Worker_vm
 {
 public:
@@ -82,5 +121,16 @@ void
 binlogex_print_all_tables_in_hash();
 
 extern ulong           mysql_version;
+
+#define ERR_PARSE_ERROR -1
+#define ERR_PF_NOT_EXIST -2
+
+int
+binglogex_query_parse(
+    char*               db,    
+    char*               query,
+    parse_result_t*     pr,
+    bool                check_query_type
+);
 
 #endif

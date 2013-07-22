@@ -47,6 +47,11 @@ int main(int argc, char **argv)
             {
                 printf("dbname:%s, tablename:%s\n", pr.table_arr[i].dbname, pr.table_arr[i].tablename);
             }
+
+            for ( i = 0; i < pr.n_routines; ++i)
+            {
+                printf("dbname:%s, routinename:%s\n", pr.routine_arr[i].dbname, pr.routine_arr[i].routinename);
+            }
             printf("\n");
         }
     }
