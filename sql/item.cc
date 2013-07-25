@@ -1412,7 +1412,25 @@ bool Item_name_const::fix_fields(THD *thd, Item **ref)
   {
     set_name(item_name->ptr(), (uint) item_name->length(), system_charset_info);
   }
-  collation.set(value_item->collation.collation, DERIVATION_IMPLICIT);
+
+  /*
+    TMySQL 1.3 sp1 fix: 
+    for upgrade from 5.0 to 5.5, if function nvl return charset is utf8,and the type of variable 'bb' is int, as follow:
+    CONCAT(nvl('a',0),name_const('bb',0));
+
+    In 5.5 concat(utf8/COERCIBLE,NAME_CONST('name',latin1))  would case SLAVE replication failed with:
+    
+    Last_SQL_Errno: 1270
+    Last_SQL_Error: Error 'Illegal mix of collations (utf8_general_ci,COERCIBLE), (latin1_swedish_ci,IMPLICIT), (utf8_general_ci,COERCIBLE) for operation 'concat'' on query
+
+    because NAME_CONST function's result got the lower DERIVATION than nvl function's result, need conv the utf8->latin1,which cause this error.
+    here we just get rid of setting the DERIVATION_IMPLICIT to value_item,because in 5.0 the NAME_CONST's result is my_charset_bin,so all these operation is allowed.
+    bug ref:http://bugs.mysql.com/bug.php?id=69292
+
+    In 5.0 this work fine because
+  */
+  //collation.set(value_item->collation.collation, DERIVATION_IMPLICIT);
+
   max_length= value_item->max_length;
   decimals= value_item->decimals;
   fixed= 1;
