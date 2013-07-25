@@ -34,6 +34,7 @@ void
 binlogex_routine_entry_add_table(
     char*           routine_db,
     char*           routine_name,
+    bool            is_proc,
     char*           table_db,
     char*           table_name   
 );
@@ -51,9 +52,10 @@ typedef struct table_entry_struct table_entry_t;
 
 struct routine_entry_struct
 {
-    char full_routine_name[NAME_LEN*2 + 3];
+    char full_routine_name[NAME_LEN*2 + 10];
     char db[NAME_LEN];
     char routine[NAME_LEN];
+    int  routine_type;
 
     unsigned short n_table_arr_alloced;
     unsigned short n_tables;
@@ -66,7 +68,8 @@ typedef struct routine_entry_struct routine_entry_t;
 routine_entry_t*
 binlogex_routine_entry_get_by_name(
     char*           routine_db,
-    char*           routine_name
+    char*           routine_name,
+    int             routine_type
 );
 
 class Worker_vm
@@ -101,6 +104,14 @@ binlogex_execute_sql(
     char*       sql,
     uint        len
 );
+
+int
+binlogex_get_count_by_sql(
+    MYSQL*          mysql,
+    const char*     sql,
+    uint*           count
+);
+
 #include "sqlparse.h"
 
 extern parse_result_t  parse_result;
@@ -119,6 +130,9 @@ binlogex_adjust_hash_table_thread_id();
 
 void
 binlogex_print_all_tables_in_hash();
+
+void
+binlogex_print_all_routines_in_hash();
 
 extern ulong           mysql_version;
 

@@ -92,9 +92,13 @@ struct parse_table_struct {
 };
 typedef struct parse_table_struct parse_table_t;
 
+#define ROUTINE_TYPE_FUNC 0
+#define ROUTINE_TYPE_PROC 1
+
 struct parse_routine_struct {
     char dbname[NAME_LEN];
     char routinename[NAME_LEN];
+    int  routine_type;
 };
 typedef struct parse_routine_struct parse_routine_t;
 
