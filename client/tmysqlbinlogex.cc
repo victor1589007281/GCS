@@ -2439,12 +2439,13 @@ get_routine_tables(
             bool is_proc;
             char* db_name = routine_arr[i].dbname;
             char* routine_name = routine_arr[i].routinename;
+            int routine_type = routine_arr[i].routine_type;
 
             /* 已分析，跳过 */
             if (parse_flag_arr[i])
                 continue;
             
-            is_proc = (routine_arr[i].routine_type == ROUTINE_TYPE_PROC);
+            is_proc = (routine_type == ROUTINE_TYPE_PROC);
             if (is_proc)
                 snprintf(query, sizeof(query), "show create procedure `%s`.`%s`", db_name, routine_name);
             else 
@@ -2501,11 +2502,11 @@ get_routine_tables(
                     binlogex_routine_entry_add_table(db_name, routine_name, is_proc, parse_result.table_arr[j].dbname, parse_result.table_arr[j].tablename);
 
                     /* 表个数大于1,表绑定在一起 */
-                    if (parse_result.n_tables > 1)
+                    if (parse_result.n_tables > 1 && routine_type != ROUTINE_TYPE_PROC)
                         binlogex_add_to_hash_tab(parse_result.table_arr[j].dbname, parse_result.table_arr[j].tablename, global_tables_pairs_num);
                 }
 
-                if (parse_result.n_tables > 1)
+                if (parse_result.n_tables > 1 && routine_type != ROUTINE_TYPE_PROC)
                     global_tables_pairs_num++;
             }
 
@@ -3717,6 +3718,7 @@ binlogex_print_all_tables_in_hash()
     {
         char buf[1024];
         int tab_cnt = 0, j = 0;
+        ulonglong total_rate = 0;
         table_entry_t** p_entry = pp_entry[i];
 
         for (j = 0; p_entry[j]; j++)
@@ -3725,9 +3727,10 @@ binlogex_print_all_tables_in_hash()
             dynstr_append(&dnstr_arr[i], buf);
 
             tab_cnt++;
+            total_rate += p_entry[j]->rate;
         }
 
-        fprintf(stdout, "\tTable of thread %u(table count %d): %s\n", i, tab_cnt, dnstr_arr[i].str);
+        fprintf(stdout, "\tTable of thread %u(table count %d, rate "ULONGLONGPF"): %s\n", i, tab_cnt, total_rate, dnstr_arr[i].str);
         dynstr_free(&dnstr_arr[i]);
         free(p_entry);
     }
