@@ -2947,9 +2947,9 @@ err:
 /* only can use select count(*) not contain group by */
 int
 binlogex_get_count_by_sql(
-    MYSQL*  mysql,
-    char*   sql,
-    uint*   count
+    MYSQL*          mysql,
+    const char*     sql,
+    uint*           count
 )
 {
     MYSQL_ROW row;
@@ -2987,7 +2987,6 @@ get_events_tables(
     MYSQL* mysql
 )
 {
-    MYSQL_RES* rs = NULL;
     uint count = 0;
 
     if (binlogex_get_count_by_sql(mysql, "select count(*) from information_schema.events", &count))
@@ -3745,9 +3744,9 @@ binlogex_print_all_routines_in_hash_delegate(
 {
     routine_entry_t* entry = (routine_entry_t*)entry_org;
     uint i;
-    int type = (int)type_org;
+    long type = (long)(long*)type_org;
 
-    if (entry->routine_type != type)
+    if (entry->routine_type != (int)type)
         return;
 
     fprintf(stdout, "\t%s %s.%s: ", entry->routine_type == ROUTINE_TYPE_PROC ? "Procedure" : "Function", entry->db, entry->routine);

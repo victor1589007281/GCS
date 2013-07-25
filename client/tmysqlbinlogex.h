@@ -107,9 +107,9 @@ binlogex_execute_sql(
 
 int
 binlogex_get_count_by_sql(
-    MYSQL*  mysql,
-    char*   sql,
-    uint*   count
+    MYSQL*          mysql,
+    const char*     sql,
+    uint*           count
 );
 
 #include "sqlparse.h"
