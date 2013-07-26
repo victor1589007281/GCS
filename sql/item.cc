@@ -1429,7 +1429,8 @@ bool Item_name_const::fix_fields(THD *thd, Item **ref)
 
     In 5.0 this work fine because
   */
-  //collation.set(value_item->collation.collation, DERIVATION_IMPLICIT);
+  //collation.set(value_item->collation.collation,DERIVATION_IMPLICIT);
+  collation.set(value_item->collation.collation, value_item->collation.derivation);
 
   max_length= value_item->max_length;
   decimals= value_item->decimals;
