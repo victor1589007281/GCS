@@ -260,7 +260,7 @@ row_mysql_read_blob_ref(
 					(not BLOB length) */
 {
 	byte*	data;
-
+//压缩的话，在这处改变data所指的值
 	*len = mach_read_from_n_little_endian(ref, col_len - 8);
 
 	memcpy(&data, ref + col_len - 8, sizeof data);

@@ -1305,7 +1305,7 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
 
 	if (field->unireg_check == Field::COMPRESSED_BLOG_FIELD )
 	{//add by willhan. 2013-7-23.
-		packet->append(STRING_WITH_LEN("/*!99104 COMPRESSED */"));
+		packet->append(STRING_WITH_LEN(" /*!99104 COMPRESSED */"));
 	}
 
     if (field->comment.length)

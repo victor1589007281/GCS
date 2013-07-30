@@ -2400,6 +2400,10 @@ static Sys_var_mybool Sys_big_tables(
        "temporary sets on file (Solves most 'table full' errors)",
        SESSION_VAR(big_tables), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_blob_compressed(
+	   "blob_compressed", "Set all blob/text field can be compressed when create table. ",
+	   SESSION_VAR(blob_compressed), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
 #ifndef TO_BE_DELETED   /* Alias for big_tables */
 static Sys_var_mybool Sys_sql_big_tables(
        "sql_big_tables", "alias for big_tables",

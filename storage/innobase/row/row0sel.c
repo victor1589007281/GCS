@@ -2817,7 +2817,7 @@ row_sel_store_mysql_rec(
 					prebuilt->blob_heap = mem_heap_create(
 						UNIV_PAGE_SIZE);
 				}
-
+//解压的话，在这里面改变data所指的值
 				data = memcpy(mem_heap_alloc(
 						prebuilt->blob_heap, len),
 						data, len);
