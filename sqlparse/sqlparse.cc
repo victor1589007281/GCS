@@ -270,6 +270,9 @@ query_parse(char* query, parse_result_t* pr)
     pr->n_tables = 0;
     pr->n_routines = 0;
     pr->err_msg[0] = 0;
+    pr->query_flags = 0;
+    pr->dbname[0] = 0;
+    pr->objname[0] = 0;
 
     if (strlen(query) == 0)
     {
@@ -338,6 +341,39 @@ query_parse(char* query, parse_result_t* pr)
                 my_ok(thd);
             break;
         }
+    case SQLCOM_CREATE_TABLE:
+        {
+            strncpy(pr->dbname, all_tables->db, sizeof(pr->dbname));
+            strncpy(pr->objname, all_tables->table_name, sizeof(pr->objname));
+
+            if (lex->create_info.options & HA_LEX_CREATE_TMP_TABLE)
+                pr->query_flags |= QUERY_FLAGS_CREATE_TEMPORARY_TABLE;
+
+            if (lex->alter_info.flags & ALTER_FOREIGN_KEY)
+                pr->query_flags |= QUERY_FLAGS_CREATE_FOREIGN_KEY; 
+        }
+        break;
+    case SQLCOM_CREATE_SPFUNCTION:
+        {
+            uint namelen;
+            char* name;
+            strncpy(pr->dbname, lex->sphead->m_db.str, min(lex->sphead->m_db.length, sizeof(pr->dbname)));
+            name= lex->sphead->name(&namelen);
+            strncpy(pr->objname, name, min(namelen, sizeof(pr->dbname)));
+        }
+        break;
+
+    case SQLCOM_CREATE_INDEX:
+    case SQLCOM_ALTER_TABLE:
+        {
+            strncpy(pr->dbname, all_tables->db, sizeof(pr->dbname));
+            strncpy(pr->objname, all_tables->table_name, sizeof(pr->objname));
+
+            if (lex->alter_info.flags | ALTER_FOREIGN_KEY)
+                pr->query_flags |= QUERY_FLAGS_CREATE_FOREIGN_KEY; 
+        }
+        break;
+
     default:
         break;
     }

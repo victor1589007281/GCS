@@ -2354,6 +2354,7 @@ get_routine_tables(
         if (!row[0] || strlen(row[0]) ==0)
         {
             error("Not support UDF `%s` error", row[1]);
+            mysql_free_result(rs);
             goto err;
         }
 
@@ -2469,6 +2470,14 @@ get_routine_tables(
                 mysql_free_result(proc_rs);
                 goto err;
             }
+
+            if (parse_result.query_type == STMT_CREATE_FUNCTION) //udf
+            {
+                error("Not support UDF `%s` error", routine_name);
+                mysql_free_result(proc_rs);
+                goto err;
+            }
+            
 
             /* 存储函数不能包含动态SQL、DDL，以及能调用包含动态SQL/DDL的存储过程 */
             
@@ -3386,7 +3395,7 @@ pthread_attr_t  worker_attrib;
 pthread_t*      global_pthread_array; 
 ulong           mysql_version = 0;
 
-uint global_tables_pairs_num = 0; /* 表示从对象定义和table_split参数中得到的表关系个数 */
+uint global_tables_pairs_num = 1; /* 表示从对象定义和table_split参数中得到的表关系个数，从1开始，0留给临时表 */
 ulonglong*       global_event_rate_array;
 
 
@@ -3491,6 +3500,7 @@ binlogex_new_table_entry(
         entry->thread_id = binlogex_get_thread_id_by_name_low(entry->full_table_name);
     }
     entry->rate = 0;
+    entry->is_temp = false;
 
     return entry;
 }
@@ -3577,7 +3587,8 @@ binlogex_routine_entry_add_table(
         uint i;
         if (!table_db || !table_name)
         {
-            my_assert(!table_db && !table_name);
+			// 有可能出现函数重建的情况，暂时这样处理 TODO
+            //my_assert(!table_db && !table_name);
             return ;
         }
 
@@ -3618,6 +3629,7 @@ struct thread_id_pairs
 {
     uint thread_id_old;
     uint thread_id_new;
+    bool contain_temp_table;		/* 输出参数 */
 };
 
 
@@ -3630,13 +3642,18 @@ binlogex_update_hash_entry_thread_id(
     table_entry_t*  entry = (table_entry_t*)entry_org;
     thread_id_pairs* ids = (thread_id_pairs*)id_pairs_org;
 
-    if (entry->thread_id == ids->thread_id_old)
+    if (entry->thread_id == ids->thread_id_old) {
+
+        /* 不管是否临时表，先统一改为目标线程号， */
         entry->thread_id = ids->thread_id_new;
 
+        if (entry->is_temp)
+            ids->contain_temp_table = true;
+    }
 }
 
 void
-binlogex_adjust_hash_entry_thread_id(
+binlogex_adjust_hash_table_thread_id_delegate(
     uchar*  entry_org,
     void*   id_pairs_org
 )
@@ -3644,8 +3661,16 @@ binlogex_adjust_hash_entry_thread_id(
     table_entry_t* org = (table_entry_t*)entry_org;
     table_entry_t* entry = binlogex_new_table_entry(org->db, org->table, org->thread_id);
 
-    my_assert(entry->thread_id < global_tables_pairs_num);
-    entry->thread_id %= concurrency; 
+    my_assert(org->thread_id < global_tables_pairs_num);
+
+    /* 如果entry->force 不调整thread_id */
+    if (!org->is_temp)
+        entry->thread_id %= concurrency; 
+    else
+    {
+        my_assert(entry->thread_id == TEMP_TABLE_THREAD_ID);
+        entry->is_temp = org->is_temp;
+    }
 
     my_bool ret = my_hash_insert(&table_hash, (const uchar*)&entry->full_table_name[0]);
     my_assert(!ret);
@@ -3656,7 +3681,17 @@ binlogex_adjust_hash_entry_thread_id(
 void
 binlogex_adjust_hash_table_thread_id()
 {
-    my_hash_delegate(&table_hash_org, binlogex_adjust_hash_entry_thread_id, NULL);
+    //fprintf(stdout, "***********Before***********\n");
+    //binlogex_print_all_tables_in_hash();
+
+    /* 先清空table_hash */
+    my_hash_reset(&table_hash);
+
+    /* 重新调整table_hash的thread_id */
+    my_hash_delegate(&table_hash_org, binlogex_adjust_hash_table_thread_id_delegate, NULL);
+
+    //fprintf(stdout, "***********After***********\n");
+    //binlogex_print_all_tables_in_hash();
 }
 
 void
@@ -3723,7 +3758,7 @@ binlogex_print_all_tables_in_hash()
 
         for (j = 0; p_entry[j]; j++)
         {        
-            snprintf(buf, sizeof(buf), "%s("ULONGLONGPF"), ", p_entry[j]->full_table_name, p_entry[j]->rate); 
+            snprintf(buf, sizeof(buf), "%s("ULONGLONGPF"%s), ", p_entry[j]->full_table_name, p_entry[j]->rate, p_entry[j]->is_temp ? ", tmp" : ""); 
             dynstr_append(&dnstr_arr[i], buf);
 
             tab_cnt++;
@@ -3833,11 +3868,10 @@ binlogex_split_full_table_name(
 
 }
 
-void
-binlogex_add_to_hash_tab(
+table_entry_t*
+binlogex_get_table_in_hash_org_by_name(
     const char*       dbname,
-    const char*       tblname,
-    uint              id_merge    /* 如果不在hash表，使用这个id_merge; 否则，将在hash表中该id的所有值转换成id_merge */
+    const char*       tblname
 )
 {
     char buf[2*NAME_LEN + 3];
@@ -3845,11 +3879,33 @@ binlogex_add_to_hash_tab(
 
     my_assert(strlen(dbname) < NAME_LEN);
     my_assert(strlen(tblname) < NAME_LEN);
-    my_assert(id_merge != INVALID_THREAD_ID);
 
     sprintf(buf, "%s.%s", dbname, tblname);
 
     entry = (table_entry_t*)my_hash_search(&table_hash_org, (const uchar*)&buf[0], strlen(buf));
+
+    return entry;
+}
+
+void
+binlogex_add_to_hash_tab_low(
+    const char*       dbname,
+    const char*       tblname,
+    uint              id_merge,    /* 如果不在hash表，使用这个id_merge; 否则，将在hash表中该id的所有值转换成id_merge */
+    bool              is_temp,     /* table_entry->force set to true? */
+    bool*             contain_tmp
+)
+{
+    table_entry_t* entry;
+
+    my_assert(id_merge != INVALID_THREAD_ID);
+
+    *contain_tmp = false;
+
+    if (is_temp)
+        *contain_tmp = true;
+
+    entry = binlogex_get_table_in_hash_org_by_name(dbname,  tblname);
     if (!entry)
     {
         /* 不在hash表中，使用id_merge作为其thread_id */
@@ -3866,18 +3922,56 @@ binlogex_add_to_hash_tab(
         thread_id_pairs ids;
         ids.thread_id_old = entry->thread_id;
         ids.thread_id_new = id_merge;
+        ids.contain_temp_table = false;
 
         my_hash_delegate(&table_hash_org, binlogex_update_hash_entry_thread_id, &ids);
+
+        if (ids.contain_temp_table)
+            *contain_tmp = true;
     }
 
+    if (!entry->is_temp)
+         entry->is_temp = is_temp;
+    else
+        *contain_tmp = true;
 }
 
-uint
-binlogex_get_thread_id_by_name(
+void
+binlogex_adjust_for_tmp_table(
+    uint        id_replace
+)
+{
+    thread_id_pairs ids;
+    ids.thread_id_old = id_replace;
+    ids.thread_id_new = TEMP_TABLE_THREAD_ID;
+    ids.contain_temp_table = false;
+
+    if (id_replace == TEMP_TABLE_THREAD_ID)
+        return;
+
+    my_hash_delegate(&table_hash_org, binlogex_update_hash_entry_thread_id, &ids);
+    my_assert(ids.contain_temp_table);
+}
+
+void
+binlogex_add_to_hash_tab(
     const char*       dbname,
     const char*       tblname,
-    uint              id_hint,
-    uint              rate_for_query_event
+    uint              id_merge    /* 如果不在hash表，使用这个id_merge; 否则，将在hash表中该id的所有值转换成id_merge */
+)
+{
+    bool contain_tmp = false;
+    binlogex_add_to_hash_tab_low(dbname, tblname, id_merge, false, &contain_tmp);
+
+    my_assert(!contain_tmp);
+}
+
+table_entry_t*
+binlogex_get_or_new_table_entry_by_name(
+    const char*       dbname,
+    const char*       tblname,
+    bool              new_flag, /* TRUE 表示新建一个id_hit的entry */
+    uint              id_hint
 )
 {
     char buf[2*NAME_LEN + 3];
@@ -3889,13 +3983,28 @@ binlogex_get_thread_id_by_name(
     sprintf(buf, "%s.%s", dbname, tblname);
 
     entry = (table_entry_t*)my_hash_search(&table_hash, (const uchar*)&buf[0], strlen(buf));
-    if (entry == NULL)
+    if (entry == NULL && new_flag)
     {
         entry = binlogex_new_table_entry(dbname, tblname, id_hint);
         my_assert((char*)entry == &entry->full_table_name[0]);
         my_bool ret = my_hash_insert(&table_hash, (const uchar*)&entry->full_table_name[0]);
         my_assert(!ret); 
     }
+
+    return entry;
+}
+
+uint
+binlogex_get_thread_id_by_name(
+    const char*       dbname,
+    const char*       tblname,
+    uint              id_hint,
+    uint              rate_for_query_event
+)
+{
+    table_entry_t* entry = binlogex_get_or_new_table_entry_by_name(dbname, tblname, true, id_hint);
+    my_assert(entry);
+
     entry->rate += rate_for_query_event;
 
     return entry->thread_id;
@@ -5937,16 +6046,12 @@ binglogex_query_parse(
 {
     uint i = 0,j;
     int code = 0;
+    bool need_to_rebuild = false;
 
     parse_result_init_db(pr, db);
     if (query_parse(query, pr))
     {
         return ERR_PARSE_ERROR;
-    }
-
-    if (check_query_type)
-    {
-        //TODO 分析语句类型
     }
     
     for (i = 0; i < parse_result.n_routines; i++)
@@ -5963,6 +6068,133 @@ binglogex_query_parse(
         /* 存储过程的涉及表直接加入parse_result表中 */
         for (j = 0; j < rentry->n_tables; ++j)
             parse_result_add_table(pr, rentry->table_arr[j].db, rentry->table_arr[j].table);
+    }
+
+    if (check_query_type)
+    {
+        //TODO 分析语句类型
+        switch (pr->query_type)
+        {
+        case STMT_CREATE_TABLE:
+            if (pr->query_flags | QUERY_FLAGS_CREATE_TEMPORARY_TABLE)
+            {
+                table_entry_t* entry;
+                bool contain_tmp = false;
+
+                /* 不可能同时存在 */
+                my_assert(!(pr->query_flags & QUERY_FLAGS_CREATE_FOREIGN_KEY));
+
+                /* 临时表如果不在0号线程
+                    例如，对于insert t select tmp_t; 分到不同线程
+                    tmp_t建表在线程a, 插入t在线程b，导致insert语句失败，由于线程b没有tmp_t表
+
+                    另外由于跨线程操作必须在线程号小的线程执行，所以，临时表需要建立在0号线程中
+                
+                */
+                entry = binlogex_get_or_new_table_entry_by_name(pr->dbname, pr->objname, false, 0);
+                if (!entry)   /* 第一次访问该表 */
+                {
+                    /* 必定不存在与table_hash_org中 */
+                    my_assert(!binlogex_get_table_in_hash_org_by_name(pr->dbname, pr->objname));
+
+                    /* 加入table_hash_org */
+                    binlogex_add_to_hash_tab_low(pr->dbname, pr->objname, TEMP_TABLE_THREAD_ID, true, &contain_tmp);
+                    my_assert(contain_tmp);
+
+                    /* 加入table_hash */
+                    binlogex_get_or_new_table_entry_by_name(pr->dbname, pr->objname, true, 0);
+                }
+                else if (entry->thread_id == TEMP_TABLE_THREAD_ID)  /* 如果已经在0号线程 */
+                {
+                    /* 如果entry在TEMP_TABLE_THREAD_ID中，与entry有强关系的其他entry必定在TEMP_TABLE_THREAD_ID中，不需调整table_hash
+                       只需调整table_hash_org，不管是新建、还是调整thread_id(可能目前是concurrency的倍数）
+                    */
+                    binlogex_add_to_hash_tab_low(pr->dbname, pr->objname, TEMP_TABLE_THREAD_ID, true, &contain_tmp);
+                    my_assert(contain_tmp);
+                }
+                else  /* 目前entry没有在TEMP_TABLE_THREAD_ID中, 需要调整！ */ 
+                {
+                    /* 新建或调整table_hash_org */
+                    binlogex_add_to_hash_tab_low(pr->dbname, pr->objname, TEMP_TABLE_THREAD_ID, true, &contain_tmp);
+                    my_assert(contain_tmp);
+                    
+                    /* 重新调整table_hash */
+                    binlogex_adjust_hash_table_thread_id();
+
+                    /* 标记为跨库操作 */
+                    pr->n_tables = 0;
+
+                }
+                return code;
+            }
+
+            if (pr->query_flags & QUERY_FLAGS_CREATE_FOREIGN_KEY)
+                need_to_rebuild = true;
+
+            break;
+
+            //TODO
+        case STMT_CREATE_FUNCTION: //UDF
+            error("Not support udf");
+            break;
+
+        case STMT_CREATE_EVENT:
+            error("Not support event");
+            break;
+
+        case STMT_CREATE_SPFUNCTION:
+            if (!parse_result.n_tables)
+            {
+                /* 不涉及表，也插入哈希表 */
+                binlogex_routine_entry_add_table(pr->dbname, pr->objname, false, NULL, NULL);
+            }
+            else
+            {
+                for (j=0; j < parse_result.n_tables; j++)
+                {
+                    binlogex_routine_entry_add_table(pr->dbname, pr->objname, false, parse_result.table_arr[j].dbname, parse_result.table_arr[j].tablename);
+                }
+            }
+
+        case STMT_CREATE_TRIGGER:
+        case STMT_CREATE_VIEW:
+            if (parse_result.n_tables > 1)
+                need_to_rebuild = true;
+            break;
+
+        case STMT_DROP_VIEW:
+            my_assert(parse_result.n_tables > 0); // 到指定线程中执行
+            break;
+
+        case STMT_DROP_FUNCTION:
+            //TODO 删除function,函数的哈希表没更新
+        case STMT_DROP_TRIGGER:
+            my_assert(parse_result.n_tables == 0);// 当作库级操作处理
+            break;
+
+        default:
+            break;
+        }
+
+        /* rebuild the hash table */
+        if (need_to_rebuild)
+        {
+            bool contain_tmp = false;
+
+            for (i = 0; i < parse_result.n_tables; i++)
+                binlogex_add_to_hash_tab_low(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, global_tables_pairs_num, false, &contain_tmp);
+
+            /* 如果刚刚调整中包含临时表，将global_tables_pairs_num -> 0 */
+            if (contain_tmp)
+                binlogex_adjust_for_tmp_table(global_tables_pairs_num);
+
+            /* 重新调整table_hash */
+            binlogex_adjust_hash_table_thread_id();
+            
+            global_tables_pairs_num++;
+
+            pr->n_tables = 0;
+        }
     }
 
     return code;

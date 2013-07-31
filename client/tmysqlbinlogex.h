@@ -46,7 +46,10 @@ struct table_entry_struct
     char table[NAME_LEN];
     uint thread_id;
     ulonglong rate;                         //binlog query_event rate
+    bool    is_temp;      /* 用于表示该表是否临时表，若是线程号不能改变，只能是TEMP_TABLE_THREAD_ID */
 };
+
+#define TEMP_TABLE_THREAD_ID 0
 
 typedef struct table_entry_struct table_entry_t;
 
