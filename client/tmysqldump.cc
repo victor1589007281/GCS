@@ -708,7 +708,7 @@ static void print_version(void)
 {
   printf("%s  Ver %s Distrib %s, for %s (%s)\n",my_progname,DUMP_VERSION,
          MYSQL_SERVER_VERSION,SYSTEM_TYPE,MACHINE_TYPE);
-  printf("%s %s Ver %s\n", my_progname, "with GZTAB support", "2.0.1");
+  printf("%s %s Ver %s\n", my_progname, "with GZTAB support", "2.0.2");
 } /* print_version */
 
 
@@ -6183,6 +6183,12 @@ int main(int argc, char **argv)
     }
   }
 
+  if (gzpath)
+  {
+      /* close dump_begin_file  */
+      my_close_zip(dump_begin_file);
+  }
+
   if (opt_single_transaction && do_unlock_tables(mysql)) /* unlock but no commit! */
     goto err;
 
@@ -6268,7 +6274,6 @@ err:
       exit(1);
     }
     z_write_footer(dump_end_file);
-    my_close_zip(dump_begin_file);
     my_close_zip(dump_end_file);
     fclose(META);
     free(global_buffer);
