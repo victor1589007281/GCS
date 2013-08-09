@@ -202,7 +202,7 @@ dict_mem_table_add_col(
 	mem_heap_t*	heap,	/*!< in: temporary memory heap, or NULL */
 	const char*	name,	/*!< in: column name, or NULL */
 	ulint		mtype,	/*!< in: main datatype */
-	ulint		prtype,	/*!< in: precise type */
+	ulint		prtype,	/*!< in: precise type, maybe 29 bit bolb compress */
 	ulint		len)	/*!< in: precision */
 {
 	dict_col_t*	col;
@@ -361,6 +361,10 @@ dict_mem_fill_column_struct(
 	ulint	mbmaxlen;
 #endif /* !UNIV_HOTBACKUP */
 
+	my_bool is_blob_compressed = (prtype&(1<<29))&&(1<<29);
+	prtype &= 0xFFFFFF;  /* prtypeÖ»ÐèÇ°24 bits */
+	ut_ad(mtype == DATA_BLOB || !is_blob_compressed);
+
 	column->ind = (unsigned int) col_pos;
 	column->ord_part = 0;
 	column->max_prefix = 0;
@@ -368,6 +372,7 @@ dict_mem_fill_column_struct(
 	column->prtype = (unsigned int) prtype;
 	column->len = (unsigned int) col_len;
     column->def_val = NULL;
+	column->is_blob_compressed = is_blob_compressed;
 #ifndef UNIV_HOTBACKUP
         dtype_get_mblen(mtype, prtype, &mbminlen, &mbmaxlen);
 	dict_col_set_mbminmaxlen(column, mbminlen, mbmaxlen);

@@ -5716,13 +5716,11 @@ bool add_field_to_list(THD *thd, LEX_STRING *field_name, enum_field_types type,
   case MYSQL_TYPE_BLOB:
 	  if(thd->variables.blob_compressed)
 	  {/*set all blob/text can be compressed when set BLOB_COMPRESSED=ON*/
-		  lex->type|= COMPRESSED_BLOG_FLAG;
-		  lex->alter_info.flags|= ALTER_ADD_INDEX;
-		  type_modifier|=COMPRESSED_BLOG_FLAG;
+		  type_modifier|=COMPRESSED_BLOB_FLAG;
 	  }
 	  break;
   default:
-	  if(type_modifier & COMPRESSED_BLOG_FLAG)
+	  if(type_modifier & COMPRESSED_BLOB_FLAG)
 	  {/*only BOLB type can have compressed property*/
 		  my_error(ER_FIELD_TYPE_NOT_ALLOWED_AS_COMPRESSED_FIELD, MYF(0), field_name->str);
 		  DBUG_RETURN(1);

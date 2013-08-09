@@ -5718,8 +5718,7 @@ attribute:
         | COMPRESSED_SYM
         {
             LEX *lex=Lex;
-            lex->type|= COMPRESSED_BLOG_FLAG;
-            lex->alter_info.flags|= ALTER_ADD_INDEX;
+            lex->type|= COMPRESSED_BLOB_FLAG;
         }  
         | UNIQUE_SYM
           {

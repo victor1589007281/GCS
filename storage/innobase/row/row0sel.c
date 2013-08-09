@@ -2453,7 +2453,7 @@ row_sel_convert_mysql_key_to_innobase(
 				dfield, buf,
 				FALSE, /* MySQL key value format col */
 				key_ptr + data_offset, data_len,
-				dict_table_is_comp(index->table));
+				dict_table_is_comp(index->table),NULL,0);
 			buf += data_len;
 		}
 
@@ -2736,6 +2736,7 @@ row_sel_store_mysql_rec(
 	for (i = 0; i < prebuilt->n_template; i++) {
 
 		const mysql_row_templ_t*templ = prebuilt->mysql_template + i;
+		uint			pos_in_mysql = templ->col_no;
 		const byte*		data;
 		ulint			len;
 		ulint			field_no;
@@ -2818,9 +2819,17 @@ row_sel_store_mysql_rec(
 						UNIV_PAGE_SIZE);
 				}
 //解压的话，在这里面改变data所指的值
-				data = memcpy(mem_heap_alloc(
+				if(prebuilt->table->cols[pos_in_mysql].is_blob_compressed)
+				{//blob字段有压缩属性，处理压缩数据
+						data = my_blob_uncompress(data, len, &len, prebuilt);
+						ut_a(data!=NULL);
+				}
+				else
+				{//blob字段没压缩发生，即普通blob字段，按原方式处理
+					data = memcpy(mem_heap_alloc(
 						prebuilt->blob_heap, len),
 						data, len);
+				}
 			}
 		}
 
