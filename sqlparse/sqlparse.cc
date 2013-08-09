@@ -205,12 +205,16 @@ int
 parse_result_add_routine(
     parse_result_t* pr, 
     char*           db_name,
-    char*           routine_name
+    char*           routine_name,
+    bool            is_proc
 )
 {
     int i;
     DBUG_ASSERT(db_name && routine_name);
     DBUG_ASSERT(pr->n_routines <= pr->n_routines_alloced);
+    int routine_type;
+
+    routine_type = is_proc ? ROUTINE_TYPE_PROC : ROUTINE_TYPE_FUNC;
 
     if (strlen(db_name) > NAME_LEN - 1 || strlen(routine_name) > NAME_LEN - 1)
     {
@@ -219,7 +223,9 @@ parse_result_add_routine(
     }
     for (i = 0; i < pr->n_routines; i++)
     {
-        if (!strcmp(pr->routine_arr[i].dbname, db_name) && !strcmp(pr->routine_arr[i].routinename, routine_name))
+        /* 已存在同名存储过程或函数 */
+        if (!strcmp(pr->routine_arr[i].dbname, db_name) && !strcmp(pr->routine_arr[i].routinename, routine_name) &&
+            pr->routine_arr[i].routine_type == routine_type)
             return 0;
     }
     //buffer is not enough
@@ -237,7 +243,8 @@ parse_result_add_routine(
     }
 
     strcpy(pr->routine_arr[pr->n_routines].dbname, db_name);
-    strcpy(pr->routine_arr[pr->n_routines++].routinename, routine_name);
+    strcpy(pr->routine_arr[pr->n_routines].routinename, routine_name);
+    pr->routine_arr[pr->n_routines++].routine_type = routine_type;
 
     return 0;
 }
@@ -263,6 +270,9 @@ query_parse(char* query, parse_result_t* pr)
     pr->n_tables = 0;
     pr->n_routines = 0;
     pr->err_msg[0] = 0;
+    pr->query_flags = 0;
+    pr->dbname[0] = 0;
+    pr->objname[0] = 0;
 
     if (strlen(query) == 0)
     {
@@ -331,6 +341,39 @@ query_parse(char* query, parse_result_t* pr)
                 my_ok(thd);
             break;
         }
+    case SQLCOM_CREATE_TABLE:
+        {
+            strncpy(pr->dbname, all_tables->db, sizeof(pr->dbname));
+            strncpy(pr->objname, all_tables->table_name, sizeof(pr->objname));
+
+            if (lex->create_info.options & HA_LEX_CREATE_TMP_TABLE)
+                pr->query_flags |= QUERY_FLAGS_CREATE_TEMPORARY_TABLE;
+
+            if (lex->alter_info.flags & ALTER_FOREIGN_KEY)
+                pr->query_flags |= QUERY_FLAGS_CREATE_FOREIGN_KEY; 
+        }
+        break;
+    case SQLCOM_CREATE_SPFUNCTION:
+        {
+            uint namelen;
+            char* name;
+            strncpy(pr->dbname, lex->sphead->m_db.str, min(lex->sphead->m_db.length, sizeof(pr->dbname)));
+            name= lex->sphead->name(&namelen);
+            strncpy(pr->objname, name, min(namelen, sizeof(pr->dbname)));
+        }
+        break;
+
+    case SQLCOM_CREATE_INDEX:
+    case SQLCOM_ALTER_TABLE:
+        {
+            strncpy(pr->dbname, all_tables->db, sizeof(pr->dbname));
+            strncpy(pr->objname, all_tables->table_name, sizeof(pr->objname));
+
+            if (lex->alter_info.flags | ALTER_FOREIGN_KEY)
+                pr->query_flags |= QUERY_FLAGS_CREATE_FOREIGN_KEY; 
+        }
+        break;
+
     default:
         break;
     }
@@ -377,7 +420,7 @@ query_parse(char* query, parse_result_t* pr)
     /* add procedure and function */
     for (routine= lex->select_lex.routine_list.first; routine; routine= routine->next_local)
     {
-        if (parse_result_add_routine(pr, routine->dbname, routine->routine_name))
+        if (parse_result_add_routine(pr, routine->dbname, routine->routine_name, routine->item == NULL))
         {
             exit_code = -1;
             goto exit_pos;
@@ -388,7 +431,7 @@ query_parse(char* query, parse_result_t* pr)
     {
         for (routine= sl->routine_list.first; routine; routine= routine->next_local)
         {
-            if (parse_result_add_routine(pr, routine->dbname, routine->routine_name))
+            if (parse_result_add_routine(pr, routine->dbname, routine->routine_name, routine->item == NULL))
             {
                 exit_code = -1;
                 goto exit_pos;
@@ -400,7 +443,7 @@ query_parse(char* query, parse_result_t* pr)
     {
         for (routine= sp->m_routine_list.first; routine; routine= routine->next_local)
         {
-            if (parse_result_add_routine(pr, routine->dbname, routine->routine_name))
+            if (parse_result_add_routine(pr, routine->dbname, routine->routine_name, routine->item == NULL))
             {
                 exit_code = -1;
                 goto exit_pos;

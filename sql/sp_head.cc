@@ -4098,7 +4098,7 @@ sp_head::merge_table_list(THD *thd, TABLE_LIST *table, LEX *lex_for_tmp_check)
   SP_TABLE *tab;
 
   if (lex_for_tmp_check->sql_command == SQLCOM_DROP_TABLE &&
-      lex_for_tmp_check->drop_temporary)
+      lex_for_tmp_check->drop_temporary)   /* 删除临时表暂不加入语法分析模块中 */ 
     return TRUE;
 
   for (uint i= 0 ; i < m_sptabs.records ; i++)
@@ -4225,7 +4225,7 @@ sp_head::add_used_tables_to_table_list(THD *thd,
     char *tab_buff, *key_buff;
     TABLE_LIST *table;
     SP_TABLE *stab= (SP_TABLE*) my_hash_element(&m_sptabs, i);
-    if (stab->temp)
+    if (stab->temp && !parse_export)  /* 语法分析模块不忽略存储过程中的临时表 */
       continue;
 
     if (!(tab_buff= (char *)thd->calloc(ALIGN_SIZE(sizeof(TABLE_LIST)) *

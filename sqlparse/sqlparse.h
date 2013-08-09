@@ -92,11 +92,18 @@ struct parse_table_struct {
 };
 typedef struct parse_table_struct parse_table_t;
 
+#define ROUTINE_TYPE_FUNC 0
+#define ROUTINE_TYPE_PROC 1
+
 struct parse_routine_struct {
     char dbname[NAME_LEN];
     char routinename[NAME_LEN];
+    int  routine_type;
 };
 typedef struct parse_routine_struct parse_routine_t;
+
+#define QUERY_FLAGS_CREATE_TEMPORARY_TABLE (1)          /* for STMT_CREATE_TABLE */
+#define QUERY_FLAGS_CREATE_FOREIGN_KEY (1 << 1)         /* for STMT_CREATE_TABLE STMT_ALTER_TABLE STMT_CREATE_INDEX */
 
 
 #define PARSE_RESULT_MAX_STR_LEN 512
@@ -104,6 +111,10 @@ struct parse_result_struct {
     void* thd_org;
 
     int query_type;
+    int query_flags;
+
+    char dbname[NAME_LEN];
+    char objname[NAME_LEN]; /* 记录DDL对象名(临时表，存储函数） */
 
     unsigned short n_tables_alloced;
     unsigned short n_tables;

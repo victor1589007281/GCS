@@ -132,7 +132,7 @@ static ulonglong start_position, stop_position;
 static char *start_datetime_str, *stop_datetime_str;
 static my_time_t start_datetime= 0, stop_datetime= MY_TIME_T_MAX;
 static ulonglong rec_count= 0;
-static short binlog_flags = 0; 
+//static short binlog_flags = 0; 
 static MYSQL* mysql = NULL;
 static char* dirname_for_local_load= 0;
 
@@ -173,7 +173,7 @@ static Exit_status dump_local_log_entries(PRINT_EVENT_INFO *print_event_info,
 //static Exit_status dump_remote_log_entries(PRINT_EVENT_INFO *print_event_info,
 //                                           const char* logname);
 static Exit_status dump_log_entries(const char* logname);
-static Exit_status safe_connect();
+//static Exit_status safe_connect();
 
 
 class Load_log_processor
@@ -2281,7 +2281,7 @@ get_views_tables(
         for (i = 0; i < parse_result.n_routines; i++)
         {
             int j = 0;
-            routine_entry_t* rentry = binlogex_routine_entry_get_by_name(parse_result.routine_arr[i].dbname, parse_result.routine_arr[i].routinename);
+            routine_entry_t* rentry = binlogex_routine_entry_get_by_name(parse_result.routine_arr[i].dbname, parse_result.routine_arr[i].routinename, parse_result.routine_arr[i].routine_type);
 
             if (rentry == NULL)
             {
@@ -2303,6 +2303,239 @@ get_views_tables(
     mysql_free_result(rs);
 
     return 0;
+}
+
+int
+get_routine_tables(
+    MYSQL*  mysql
+)
+{
+    char query[1024];
+    MYSQL_ROW row;
+    MYSQL_RES* rs;
+    uint i = 0,j,k;
+    uint count = 0;
+    parse_routine_t*    routine_arr = NULL;
+    uint n_routine = 0;
+    uint left_n_routine = 0;
+    uint last_left_n_routine = 0;
+    int* parse_flag_arr = NULL;
+
+    if (binlogex_get_count_by_sql(mysql, "select count(*) from mysql.proc", &count))
+    {
+        error("error on select count(*) from mysql.proc, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        return -1;
+    }
+
+    routine_arr = (parse_routine_t*)calloc(count, sizeof(parse_routine_t));
+    parse_flag_arr = (int*)calloc(count, sizeof(int));
+
+    /* GET ALL FUNCTION */
+    if (mysql_query(mysql, "show function status"))
+    {
+        error("error on show function status, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        goto err;
+    }
+    rs= mysql_store_result(mysql);
+    if (!rs)
+    {
+        error("store result error on show function status");
+        goto err;
+    }
+    while ((row = mysql_fetch_row(rs)))
+    {
+        if (i >=count)
+        {
+            //error
+            my_assert(0);
+        }
+
+        //UDF TODO
+        if (!row[0] || strlen(row[0]) ==0)
+        {
+            error("Not support UDF `%s` error", row[1]);
+            mysql_free_result(rs);
+            goto err;
+        }
+
+        strncpy(routine_arr[i].dbname, row[0], sizeof(routine_arr[i].dbname));
+        strncpy(routine_arr[i].routinename, row[1], sizeof(routine_arr[i].routinename));
+        routine_arr[i++].routine_type = ROUTINE_TYPE_FUNC;
+    }
+    mysql_free_result(rs);
+
+    /* GET ALL PROCEDURE */
+    if (mysql_query(mysql, "show procedure status"))
+    {
+        error("error on show procedure status, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        goto err;
+    }
+    rs= mysql_store_result(mysql);
+    if (!rs)
+    {
+        error("store result error on show procedure status");
+        goto err;
+    }
+    while ((row = mysql_fetch_row(rs)))
+    {
+        if (i >=count)
+        {
+            //error
+            my_assert(0);
+        }
+
+        strncpy(routine_arr[i].dbname, row[0], sizeof(routine_arr[i].dbname));
+        strncpy(routine_arr[i].routinename, row[1], sizeof(routine_arr[i].routinename));
+        routine_arr[i++].routine_type = ROUTINE_TYPE_PROC;
+    }
+    mysql_free_result(rs);
+
+    n_routine = i;
+    left_n_routine = n_routine;
+    last_left_n_routine = (uint)-1; /* 初始化一个大值 */
+    my_assert(n_routine <=count);
+
+    while (left_n_routine > 0)
+    {
+        /* 如果本次剩余小于上次，说明分析有效 */
+        if (left_n_routine < last_left_n_routine)
+        {
+            last_left_n_routine = left_n_routine;
+        }
+        else
+        {
+            //避免死循环
+            DYNAMIC_STRING str;
+
+            // 打印错误信息
+            for (i = 0; i < n_routine; i++)
+            {
+                /* 已分析，跳过 */
+                if (parse_flag_arr[i])
+                    continue;
+
+                if (routine_arr[i].routine_type == ROUTINE_TYPE_PROC)
+                    dynstr_append(&str, "Procedure:");
+                else
+                    dynstr_append(&str, "Function:");
+                
+                dynstr_append(&str, routine_arr[i].dbname);
+                dynstr_append(&str, ".");
+                dynstr_append(&str, routine_arr[i].routinename);
+                dynstr_append(&str, ", ");
+            }
+
+            dynstr_append(&str, " can't parse!");
+            error("%s", str.str);
+            dynstr_free(&str);
+            
+            goto err;
+        }
+        
+        /* 获得单个存储过程定义 */
+        for (i = 0; i < n_routine; i++)
+        {
+            MYSQL_RES *proc_rs ;
+            MYSQL_ROW r ;
+            bool is_proc;
+            char* db_name = routine_arr[i].dbname;
+            char* routine_name = routine_arr[i].routinename;
+            int routine_type = routine_arr[i].routine_type;
+
+            /* 已分析，跳过 */
+            if (parse_flag_arr[i])
+                continue;
+            
+            is_proc = (routine_type == ROUTINE_TYPE_PROC);
+            if (is_proc)
+                snprintf(query, sizeof(query), "show create procedure `%s`.`%s`", db_name, routine_name);
+            else 
+                snprintf(query, sizeof(query), "show create function `%s`.`%s`", db_name, routine_name);
+            
+            if (mysql_query(mysql, query))
+            {
+                error("%s error, %u:%s", query, mysql_errno(mysql), mysql_error(mysql));
+                goto err;
+            }
+
+            proc_rs = mysql_store_result(mysql);
+            r = mysql_fetch_row(proc_rs);
+            my_assert(r);
+
+            parse_result_init_db(&parse_result, (char*)db_name);
+            if (query_parse(r[2], &parse_result))
+            {
+                error("%s syntax error %s", r[2], parse_result.err_msg);
+
+                mysql_free_result(proc_rs);
+                goto err;
+            }
+
+            if (parse_result.query_type == STMT_CREATE_FUNCTION) //udf
+            {
+                error("Not support UDF `%s` error", routine_name);
+                mysql_free_result(proc_rs);
+                goto err;
+            }
+            
+
+            /* 存储函数不能包含动态SQL、DDL，以及能调用包含动态SQL/DDL的存储过程 */
+            
+
+            /* 获取依赖存储过程、函数表信息 */
+            for (j = 0; j < parse_result.n_routines; j++)
+            {
+                routine_entry_t* rentry = binlogex_routine_entry_get_by_name(parse_result.routine_arr[j].dbname, 
+                                    parse_result.routine_arr[j].routinename, parse_result.routine_arr[j].routine_type);
+                if (rentry == NULL)
+                {
+                    //含依赖的存储过程/函数未分析
+                    goto next_parse;
+                }
+
+                for (k = 0; k < rentry->n_tables; ++k)
+                {
+                    parse_result_add_table(&parse_result, rentry->table_arr[k].db, rentry->table_arr[k].table);
+                }
+            }
+
+            if (!parse_result.n_tables)
+            {
+                /* 不涉及表，也插入哈希表 */
+                binlogex_routine_entry_add_table(db_name, routine_name, is_proc, NULL, NULL);
+            }
+            else
+            {
+                for (j=0; j < parse_result.n_tables; j++)
+                {
+                    binlogex_routine_entry_add_table(db_name, routine_name, is_proc, parse_result.table_arr[j].dbname, parse_result.table_arr[j].tablename);
+
+                    /* 表个数大于1,表绑定在一起 */
+                    if (parse_result.n_tables > 1 && routine_type != ROUTINE_TYPE_PROC)
+                        binlogex_add_to_hash_tab(parse_result.table_arr[j].dbname, parse_result.table_arr[j].tablename, global_tables_pairs_num);
+                }
+
+                if (parse_result.n_tables > 1 && routine_type != ROUTINE_TYPE_PROC)
+                    global_tables_pairs_num++;
+            }
+
+            parse_flag_arr[i] = 1;
+            left_n_routine--;
+
+next_parse:
+            mysql_free_result(proc_rs);
+        }
+
+    }
+
+    free(routine_arr);
+    free(parse_flag_arr);
+    return 0;
+
+err:
+    free(routine_arr);
+    free(parse_flag_arr);
+    return -1;
 }
 
 int 
@@ -2365,13 +2598,13 @@ get_procedures_tables(
         if (!parse_result.n_tables)
         {
             /* 不涉及表，也插入哈希表 */
-            binlogex_routine_entry_add_table(row[0], row[1], NULL, NULL);
+            binlogex_routine_entry_add_table(row[0], row[1], true, NULL, NULL);
         }
         else
         {
             for (i=0; i < parse_result.n_tables; i++)
             {
-                binlogex_routine_entry_add_table(row[0], row[1], parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename);
+                binlogex_routine_entry_add_table(row[0], row[1], true, parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename);
 
                 /* 表个数大于1,表绑定在一起 */
                 if (parse_result.n_tables > 1)
@@ -2461,13 +2694,13 @@ get_functions_tables(
         if (!parse_result.n_tables)
         {
             /* 不涉及表，也插入哈希表 */
-            binlogex_routine_entry_add_table(row[0], row[1], NULL, NULL);
+            binlogex_routine_entry_add_table(row[0], row[1], false, NULL, NULL);
         }
         else
         {
             for (i=0; i < parse_result.n_tables; i++)
             {
-                binlogex_routine_entry_add_table(row[0], row[1], parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename);
+                binlogex_routine_entry_add_table(row[0], row[1], false, parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename);
 
                 /* 表个数大于1,即多个表被存储函数一起调用，将它们绑定在一起 */
                 if (parse_result.n_tables > 1)
@@ -2606,7 +2839,7 @@ int get_trigger_tables(
     DYNAMIC_STRING dynstr;
     char quoted_table_name_buf[NAME_LEN * 4 + 200];
 
-    /* 获得所有视图名字 */
+    /* 获得所有触发器名字 */
     if (mysql_query(mysql, "select TRIGGER_SCHEMA,TRIGGER_NAME,EVENT_MANIPULATION,EVENT_OBJECT_SCHEMA,EVENT_OBJECT_TABLE,ACTION_STATEMENT,ACTION_TIMING,CREATED,SQL_MODE,DEFINER from information_schema.triggers"))
     {
         error("select error on information_schema.triggers, %u:%s", mysql_errno(mysql), mysql_error(mysql));
@@ -2688,9 +2921,10 @@ parse:
             binlogex_add_to_hash_tab(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, global_tables_pairs_num);
         }
 
+        /* 触发器不能包含动态SQL、DDL，以及能调用包含动态SQL/DDL的存储过程 */
         for (i = 0; i < parse_result.n_routines; i++)
         {
-            routine_entry_t* rentry = binlogex_routine_entry_get_by_name(parse_result.routine_arr[i].dbname, parse_result.routine_arr[i].routinename);
+            routine_entry_t* rentry = binlogex_routine_entry_get_by_name(parse_result.routine_arr[i].dbname, parse_result.routine_arr[i].routinename, parse_result.routine_arr[i].routine_type);
             if (rentry == NULL)
             {
                 error("Function %s.%s in triggers %s.%s not exist", parse_result.routine_arr[i].dbname, parse_result.routine_arr[i].routinename,
@@ -2720,42 +2954,31 @@ err:
     return -1;
 }
 
-int 
-get_events_tables(
-    MYSQL* mysql
+/* only can use select count(*) not contain group by */
+int
+binlogex_get_count_by_sql(
+    MYSQL*          mysql,
+    const char*     sql,
+    uint*           count
 )
 {
     MYSQL_ROW row;
     MYSQL_RES* rs = NULL;
 
+    *count = 0;
+
     /* 获得所有event名字 */
-    if (mysql_query(mysql, "select count(*) from information_schema.events"))
-    {
-        /* information_schema.events not exists */
-        if (mysql_errno(mysql) == ER_UNKNOWN_TABLE)
-            return 0;
-        
-        error("select error on information_schema.events, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+    if (mysql_query(mysql, sql)) 
         return -1;
-    }
 
     rs= mysql_store_result(mysql);
     if (!rs)
-    {
-        error("store result error on information_schema.events");
         goto err;
-    }
 
     while ((row = mysql_fetch_row(rs)))
     {
         if (row[0])
-        {
-            if (atoi(row[0]) > 0)
-            {
-                error("It don't support server contained events");
-                goto err;
-            }
-        }
+            *count = atoi(row[0]);
     }
 
     mysql_free_result(rs);
@@ -2766,9 +2989,34 @@ err:
         mysql_free_result(rs);
 
     return -1;
+
 }
 
+int 
+get_events_tables(
+    MYSQL* mysql
+)
+{
+    uint count = 0;
 
+    if (binlogex_get_count_by_sql(mysql, "select count(*) from information_schema.events", &count))
+    {
+        /* information_schema.events not exists */
+        if (mysql_errno(mysql) == ER_UNKNOWN_TABLE)
+            return 0;
+        
+        error("select error on information_schema.events, %u:%s", mysql_errno(mysql), mysql_error(mysql));
+        return -1;
+
+    }
+
+    if (count > 0)
+    {
+        error("It don't support server contained events");
+        return -1;
+    }
+    return 0;
+}
 
 int
 test_remote_server_and_get_definition()
@@ -2819,8 +3067,9 @@ test_remote_server_and_get_definition()
         support_meta = false;
     }
 
-    if (get_functions_tables(&m) ||
-        get_procedures_tables(&m) ||  /* 虽然存储过程内容会保存在binlog中，但分析表间关系，用于如trigger调用call p1() */
+    if (/*get_functions_tables(&m) ||
+        get_procedures_tables(&m) || */ /* 虽然存储过程内容会保存在binlog中，但分析表间关系，用于如trigger调用call p1() */
+        get_routine_tables(&m) ||
         get_events_tables(&m) ||      /* 目前不支持event */
         get_trigger_tables(&m) ||
         get_fkey_tables(&m) ||
@@ -2837,10 +3086,6 @@ test_remote_server_and_get_definition()
 
 err:
     mysql_close(&m);
-
-    //TODO: get definition of views/trigger/
-
-    //not suppport, event, function contain DML
 
     parse_result_destroy(&parse_result);
     parse_result_inited = 0;
@@ -2967,6 +3212,9 @@ int main(int argc, char** argv)
       goto destroy;
   }
 
+  /* 打印存储函数、过程 */
+  binlogex_print_all_routines_in_hash();
+
   /* 调整为合适的thread_id */
   binlogex_adjust_hash_table_thread_id();
 
@@ -3048,6 +3296,8 @@ int main(int argc, char** argv)
 
   fprintf(stdout, "[Info] Total use %f sec\n", (float)(start_timer() - start) / CLOCKS_PER_SEC);
 
+  /* 打印存储函数、过程 */
+  binlogex_print_all_routines_in_hash();
   binlogex_print_all_tables_in_hash();
 
   /*
@@ -3093,7 +3343,9 @@ destroy:
   {
       binlogex_destroy();
       free_defaults(defaults_argv);
+#ifdef __WIN__
       my_end(my_end_arg);
+#endif
       exit(1);
   }
 
@@ -3143,7 +3395,7 @@ pthread_attr_t  worker_attrib;
 pthread_t*      global_pthread_array; 
 ulong           mysql_version = 0;
 
-uint global_tables_pairs_num = 0; /* 表示从对象定义和table_split参数中得到的表关系个数 */
+uint global_tables_pairs_num = 1; /* 表示从对象定义和table_split参数中得到的表关系个数，从1开始，0留给临时表 */
 ulonglong*       global_event_rate_array;
 
 
@@ -3248,6 +3500,7 @@ binlogex_new_table_entry(
         entry->thread_id = binlogex_get_thread_id_by_name_low(entry->full_table_name);
     }
     entry->rate = 0;
+    entry->is_temp = false;
 
     return entry;
 }
@@ -3271,13 +3524,14 @@ binlogex_routine_entry_free(
 routine_entry_t*
 binlogex_routine_entry_get_by_name(
     char*           routine_db,
-    char*           routine_name
+    char*           routine_name,
+    int             routine_type
 )
 {
-    char    buf[NAME_LEN*2+3];
+    char    buf[NAME_LEN*2+3+10];
     routine_entry_t*        entry;
 
-    snprintf(buf, sizeof(buf), "%s.%s", routine_db, routine_name);
+    snprintf(buf, sizeof(buf), "%s.%s.%d", routine_db, routine_name, routine_type);
 
     entry = (routine_entry_t*)my_hash_search(&routine_hash, (const uchar*)&buf[0], strlen(buf));
 
@@ -3288,19 +3542,23 @@ void
 binlogex_routine_entry_add_table(
     char*           routine_db,
     char*           routine_name,
+    bool            is_proc,
     char*           table_db,
     char*           table_name   
 )
 {
-    routine_entry_t* entry = binlogex_routine_entry_get_by_name(routine_db, routine_name);
+    int routine_type = is_proc ? ROUTINE_TYPE_PROC : ROUTINE_TYPE_FUNC;
+
+    routine_entry_t* entry = binlogex_routine_entry_get_by_name(routine_db, routine_name, routine_type);
     if (!entry)
     {
         entry = (routine_entry_t*)calloc(1, sizeof(routine_entry_t));
 
-        snprintf(entry->full_routine_name, sizeof(entry->full_routine_name), "%s.%s", routine_db, routine_name);
+        snprintf(entry->full_routine_name, sizeof(entry->full_routine_name), "%s.%s.%d", routine_db, routine_name, routine_type);
 
         strncpy(entry->db, routine_db, sizeof(entry->db));
         strncpy(entry->routine, routine_name, sizeof(entry->routine));
+        entry->routine_type = routine_type;
 
         entry->table_arr = (table_entry_t*)calloc(5, sizeof(table_entry_t));
         entry->n_table_arr_alloced = 5;
@@ -3329,7 +3587,8 @@ binlogex_routine_entry_add_table(
         uint i;
         if (!table_db || !table_name)
         {
-            my_assert(!table_db && !table_name);
+			// 有可能出现函数重建的情况，暂时这样处理 TODO
+            //my_assert(!table_db && !table_name);
             return ;
         }
 
@@ -3370,6 +3629,7 @@ struct thread_id_pairs
 {
     uint thread_id_old;
     uint thread_id_new;
+    bool contain_temp_table;		/* 输出参数 */
 };
 
 
@@ -3382,13 +3642,18 @@ binlogex_update_hash_entry_thread_id(
     table_entry_t*  entry = (table_entry_t*)entry_org;
     thread_id_pairs* ids = (thread_id_pairs*)id_pairs_org;
 
-    if (entry->thread_id == ids->thread_id_old)
+    if (entry->thread_id == ids->thread_id_old) {
+
+        /* 不管是否临时表，先统一改为目标线程号， */
         entry->thread_id = ids->thread_id_new;
 
+        if (entry->is_temp)
+            ids->contain_temp_table = true;
+    }
 }
 
 void
-binlogex_adjust_hash_entry_thread_id(
+binlogex_adjust_hash_table_thread_id_delegate(
     uchar*  entry_org,
     void*   id_pairs_org
 )
@@ -3396,8 +3661,16 @@ binlogex_adjust_hash_entry_thread_id(
     table_entry_t* org = (table_entry_t*)entry_org;
     table_entry_t* entry = binlogex_new_table_entry(org->db, org->table, org->thread_id);
 
-    my_assert(entry->thread_id < global_tables_pairs_num);
-    entry->thread_id %= concurrency; 
+    my_assert(org->thread_id < global_tables_pairs_num);
+
+    /* 如果entry->force 不调整thread_id */
+    if (!org->is_temp)
+        entry->thread_id %= concurrency; 
+    else
+    {
+        my_assert(entry->thread_id == TEMP_TABLE_THREAD_ID);
+        entry->is_temp = org->is_temp;
+    }
 
     my_bool ret = my_hash_insert(&table_hash, (const uchar*)&entry->full_table_name[0]);
     my_assert(!ret);
@@ -3408,7 +3681,17 @@ binlogex_adjust_hash_entry_thread_id(
 void
 binlogex_adjust_hash_table_thread_id()
 {
-    my_hash_delegate(&table_hash_org, binlogex_adjust_hash_entry_thread_id, NULL);
+    //fprintf(stdout, "***********Before***********\n");
+    //binlogex_print_all_tables_in_hash();
+
+    /* 先清空table_hash */
+    my_hash_reset(&table_hash);
+
+    /* 重新调整table_hash的thread_id */
+    my_hash_delegate(&table_hash_org, binlogex_adjust_hash_table_thread_id_delegate, NULL);
+
+    //fprintf(stdout, "***********After***********\n");
+    //binlogex_print_all_tables_in_hash();
 }
 
 void
@@ -3470,23 +3753,59 @@ binlogex_print_all_tables_in_hash()
     {
         char buf[1024];
         int tab_cnt = 0, j = 0;
+        ulonglong total_rate = 0;
         table_entry_t** p_entry = pp_entry[i];
 
         for (j = 0; p_entry[j]; j++)
         {        
-            snprintf(buf, sizeof(buf), "%s("ULONGLONGPF"), ", p_entry[j]->full_table_name, p_entry[j]->rate); 
+            snprintf(buf, sizeof(buf), "%s("ULONGLONGPF"%s), ", p_entry[j]->full_table_name, p_entry[j]->rate, p_entry[j]->is_temp ? ", tmp" : ""); 
             dynstr_append(&dnstr_arr[i], buf);
 
             tab_cnt++;
+            total_rate += p_entry[j]->rate;
         }
 
-        fprintf(stdout, "\tTable of thread %u(table count %d): %s\n", i, tab_cnt, dnstr_arr[i].str);
+        fprintf(stdout, "\tTable of thread %u(table count %d, rate "ULONGLONGPF"): %s\n", i, tab_cnt, total_rate, dnstr_arr[i].str);
         dynstr_free(&dnstr_arr[i]);
         free(p_entry);
     }
 
     free(dnstr_arr);
     free(pp_entry);
+}
+
+void
+binlogex_print_all_routines_in_hash_delegate(
+    uchar*      entry_org,
+    void*       type_org 
+)
+{
+    routine_entry_t* entry = (routine_entry_t*)entry_org;
+    uint i;
+    long type = (long)(long*)type_org;
+
+    if (entry->routine_type != (int)type)
+        return;
+
+    fprintf(stdout, "\t%s %s.%s: ", entry->routine_type == ROUTINE_TYPE_PROC ? "Procedure" : "Function", entry->db, entry->routine);
+
+    for (i = 0; i < entry->n_tables; ++i)
+    {
+        fprintf(stdout, "%s.%s, ", entry->table_arr[i].db, entry->table_arr[i].table);
+    }
+
+    fprintf(stdout, "\n");
+}
+
+void
+binlogex_print_all_routines_in_hash()
+{
+    fprintf(stdout, "[Info] Routines in hash table("ULONGPF")\n", routine_hash.records);
+
+    my_hash_delegate(&routine_hash, binlogex_print_all_routines_in_hash_delegate, (void*)ROUTINE_TYPE_PROC);
+    my_hash_delegate(&routine_hash, binlogex_print_all_routines_in_hash_delegate, (void*)ROUTINE_TYPE_FUNC);
+
+    fprintf(stdout, "\n");
 }
 
 #define IS_SPACE(c) ((c) == ' ' || (c) == '\t')
@@ -3549,11 +3868,10 @@ binlogex_split_full_table_name(
 
 }
 
-void
-binlogex_add_to_hash_tab(
+table_entry_t*
+binlogex_get_table_in_hash_org_by_name(
     const char*       dbname,
-    const char*       tblname,
-    uint              id_merge    /* 如果不在hash表，使用这个id_merge; 否则，将在hash表中该id的所有值转换成id_merge */
+    const char*       tblname
 )
 {
     char buf[2*NAME_LEN + 3];
@@ -3561,11 +3879,33 @@ binlogex_add_to_hash_tab(
 
     my_assert(strlen(dbname) < NAME_LEN);
     my_assert(strlen(tblname) < NAME_LEN);
-    my_assert(id_merge != INVALID_THREAD_ID);
 
     sprintf(buf, "%s.%s", dbname, tblname);
 
     entry = (table_entry_t*)my_hash_search(&table_hash_org, (const uchar*)&buf[0], strlen(buf));
+
+    return entry;
+}
+
+void
+binlogex_add_to_hash_tab_low(
+    const char*       dbname,
+    const char*       tblname,
+    uint              id_merge,    /* 如果不在hash表，使用这个id_merge; 否则，将在hash表中该id的所有值转换成id_merge */
+    bool              is_temp,     /* table_entry->force set to true? */
+    bool*             contain_tmp
+)
+{
+    table_entry_t* entry;
+
+    my_assert(id_merge != INVALID_THREAD_ID);
+
+    *contain_tmp = false;
+
+    if (is_temp)
+        *contain_tmp = true;
+
+    entry = binlogex_get_table_in_hash_org_by_name(dbname,  tblname);
     if (!entry)
     {
         /* 不在hash表中，使用id_merge作为其thread_id */
@@ -3582,18 +3922,56 @@ binlogex_add_to_hash_tab(
         thread_id_pairs ids;
         ids.thread_id_old = entry->thread_id;
         ids.thread_id_new = id_merge;
+        ids.contain_temp_table = false;
 
         my_hash_delegate(&table_hash_org, binlogex_update_hash_entry_thread_id, &ids);
+
+        if (ids.contain_temp_table)
+            *contain_tmp = true;
     }
 
+    if (!entry->is_temp)
+         entry->is_temp = is_temp;
+    else
+        *contain_tmp = true;
 }
 
-uint
-binlogex_get_thread_id_by_name(
+void
+binlogex_adjust_for_tmp_table(
+    uint        id_replace
+)
+{
+    thread_id_pairs ids;
+    ids.thread_id_old = id_replace;
+    ids.thread_id_new = TEMP_TABLE_THREAD_ID;
+    ids.contain_temp_table = false;
+
+    if (id_replace == TEMP_TABLE_THREAD_ID)
+        return;
+
+    my_hash_delegate(&table_hash_org, binlogex_update_hash_entry_thread_id, &ids);
+    my_assert(ids.contain_temp_table);
+}
+
+void
+binlogex_add_to_hash_tab(
     const char*       dbname,
     const char*       tblname,
-    uint              id_hint,
-    uint              rate_for_query_event
+    uint              id_merge    /* 如果不在hash表，使用这个id_merge; 否则，将在hash表中该id的所有值转换成id_merge */
+)
+{
+    bool contain_tmp = false;
+    binlogex_add_to_hash_tab_low(dbname, tblname, id_merge, false, &contain_tmp);
+
+    my_assert(!contain_tmp);
+}
+
+table_entry_t*
+binlogex_get_or_new_table_entry_by_name(
+    const char*       dbname,
+    const char*       tblname,
+    bool              new_flag, /* TRUE 表示新建一个id_hit的entry */
+    uint              id_hint
 )
 {
     char buf[2*NAME_LEN + 3];
@@ -3605,13 +3983,28 @@ binlogex_get_thread_id_by_name(
     sprintf(buf, "%s.%s", dbname, tblname);
 
     entry = (table_entry_t*)my_hash_search(&table_hash, (const uchar*)&buf[0], strlen(buf));
-    if (entry == NULL)
+    if (entry == NULL && new_flag)
     {
         entry = binlogex_new_table_entry(dbname, tblname, id_hint);
         my_assert((char*)entry == &entry->full_table_name[0]);
         my_bool ret = my_hash_insert(&table_hash, (const uchar*)&entry->full_table_name[0]);
         my_assert(!ret); 
     }
+
+    return entry;
+}
+
+uint
+binlogex_get_thread_id_by_name(
+    const char*       dbname,
+    const char*       tblname,
+    uint              id_hint,
+    uint              rate_for_query_event
+)
+{
+    table_entry_t* entry = binlogex_get_or_new_table_entry_by_name(dbname, tblname, true, id_hint);
+    my_assert(entry);
+
     entry->rate += rate_for_query_event;
 
     return entry->thread_id;
@@ -4117,7 +4510,6 @@ binlogex_worker_thread_init(
 //        char mysql_cmd[1024] = {0};
 //        char cmd[2048] = {0};
 //
-//        //TODO 
 //        snprintf(mysql_cmd, sizeof(mysql_cmd), "%s -u%s %s%s -h%s -P%d %s > %s/mysql_%u.log 2>&1 ", 
 //                    mysql_path, remote_user, 
 //                    (!remote_pass || strlen(remote_pass) == 0) ? "" : "-p" , 
@@ -4210,7 +4602,6 @@ binlogex_worker_thread_init(
     }
     else
     {
-        //TODO
         int ret = binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
         if (ret && exit_when_error)
         {
@@ -4420,7 +4811,6 @@ binlogex_worker_signal(
         }
         dynstr_clear(&vm->dnstr);
 
-        //TODO
         return;
     }
 
@@ -4464,6 +4854,7 @@ binlogex_worker_execute_task_entry(
     case TASK_ENTRY_TYPE_EVENT:
     {
         Log_event*  ev;
+        Log_event_type  type;
         ev = tsk_entry->ui.event.ev;
 
         vm->normal_entry_cnt++;
@@ -4485,6 +4876,8 @@ binlogex_worker_execute_task_entry(
                 binlogex_worker_wait(vm, tsk_entry, tsk_entry->thread_id, waitfor_thread_id); 
             }
         }
+
+        type = ev->get_type_code();
 
         /* 执行任务 */
         if (process_event(vm, ev, tsk_entry->ui.event.off, tsk_entry->ui.event.log_file) != OK_CONTINUE)
@@ -4510,16 +4903,25 @@ binlogex_worker_execute_task_entry(
         }
         else
         {
-            int ret = binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
-
-            if (ret)
+            if ((type == FORMAT_DESCRIPTION_EVENT ||
+                type == START_EVENT_V3) &&
+                mysql_get_server_version(&vm->mysql) < 50105)
             {
-                error_vm(vm, "when execute sql %s at binlog %s offset "ULONGPF"\n", vm->dnstr.str, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off);
-
-                if (exit_when_error)
-                    code = WORKER_STATUS_ERROR;
+                // contain binlog'*****', no need to execute below 50105
+                // do nothing
             }
-            
+            else
+            {
+                int ret = binlogex_execute_sql(vm, vm->dnstr.str, vm->dnstr.length);
+
+                if (ret)
+                {
+                    error_vm(vm, "when execute sql %s at binlog %s offset "ULONGPF"\n", vm->dnstr.str, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off);
+
+                    if (exit_when_error)
+                        code = WORKER_STATUS_ERROR;
+                }
+            }
         }
         
         dynstr_clear(&vm->dnstr);
@@ -4815,7 +5217,7 @@ Exit_status binlogex_process_event(Log_event *ev,
   uint i; 
   uint                thread_id = 0;
   task_entry_t*       tsk_entry;
-  uint                parse_ret;
+  int                parse_ret;
 
   if (!parse_result_inited)
   {
@@ -5644,21 +6046,17 @@ binglogex_query_parse(
 {
     uint i = 0,j;
     int code = 0;
+    bool need_to_rebuild = false;
 
     parse_result_init_db(pr, db);
     if (query_parse(query, pr))
     {
         return ERR_PARSE_ERROR;
     }
-
-    if (check_query_type)
-    {
-        //TODO 分析语句类型
-    }
     
     for (i = 0; i < parse_result.n_routines; i++)
     {
-        routine_entry_t* rentry = binlogex_routine_entry_get_by_name(parse_result.routine_arr[i].dbname, parse_result.routine_arr[i].routinename);
+        routine_entry_t* rentry = binlogex_routine_entry_get_by_name(parse_result.routine_arr[i].dbname, parse_result.routine_arr[i].routinename, parse_result.routine_arr[i].routine_type);
         /* 分析继续，不返回 */
         if (rentry == NULL) {
             code = ERR_PF_NOT_EXIST;
@@ -5670,6 +6068,133 @@ binglogex_query_parse(
         /* 存储过程的涉及表直接加入parse_result表中 */
         for (j = 0; j < rentry->n_tables; ++j)
             parse_result_add_table(pr, rentry->table_arr[j].db, rentry->table_arr[j].table);
+    }
+
+    if (check_query_type)
+    {
+        //TODO 分析语句类型
+        switch (pr->query_type)
+        {
+        case STMT_CREATE_TABLE:
+            if (pr->query_flags | QUERY_FLAGS_CREATE_TEMPORARY_TABLE)
+            {
+                table_entry_t* entry;
+                bool contain_tmp = false;
+
+                /* 不可能同时存在 */
+                my_assert(!(pr->query_flags & QUERY_FLAGS_CREATE_FOREIGN_KEY));
+
+                /* 临时表如果不在0号线程
+                    例如，对于insert t select tmp_t; 分到不同线程
+                    tmp_t建表在线程a, 插入t在线程b，导致insert语句失败，由于线程b没有tmp_t表
+
+                    另外由于跨线程操作必须在线程号小的线程执行，所以，临时表需要建立在0号线程中
+                
+                */
+                entry = binlogex_get_or_new_table_entry_by_name(pr->dbname, pr->objname, false, 0);
+                if (!entry)   /* 第一次访问该表 */
+                {
+                    /* 必定不存在与table_hash_org中 */
+                    my_assert(!binlogex_get_table_in_hash_org_by_name(pr->dbname, pr->objname));
+
+                    /* 加入table_hash_org */
+                    binlogex_add_to_hash_tab_low(pr->dbname, pr->objname, TEMP_TABLE_THREAD_ID, true, &contain_tmp);
+                    my_assert(contain_tmp);
+
+                    /* 加入table_hash */
+                    binlogex_get_or_new_table_entry_by_name(pr->dbname, pr->objname, true, 0);
+                }
+                else if (entry->thread_id == TEMP_TABLE_THREAD_ID)  /* 如果已经在0号线程 */
+                {
+                    /* 如果entry在TEMP_TABLE_THREAD_ID中，与entry有强关系的其他entry必定在TEMP_TABLE_THREAD_ID中，不需调整table_hash
+                       只需调整table_hash_org，不管是新建、还是调整thread_id(可能目前是concurrency的倍数）
+                    */
+                    binlogex_add_to_hash_tab_low(pr->dbname, pr->objname, TEMP_TABLE_THREAD_ID, true, &contain_tmp);
+                    my_assert(contain_tmp);
+                }
+                else  /* 目前entry没有在TEMP_TABLE_THREAD_ID中, 需要调整！ */ 
+                {
+                    /* 新建或调整table_hash_org */
+                    binlogex_add_to_hash_tab_low(pr->dbname, pr->objname, TEMP_TABLE_THREAD_ID, true, &contain_tmp);
+                    my_assert(contain_tmp);
+                    
+                    /* 重新调整table_hash */
+                    binlogex_adjust_hash_table_thread_id();
+
+                    /* 标记为跨库操作 */
+                    pr->n_tables = 0;
+
+                }
+                return code;
+            }
+
+            if (pr->query_flags & QUERY_FLAGS_CREATE_FOREIGN_KEY)
+                need_to_rebuild = true;
+
+            break;
+
+            //TODO
+        case STMT_CREATE_FUNCTION: //UDF
+            error("Not support udf");
+            break;
+
+        case STMT_CREATE_EVENT:
+            error("Not support event");
+            break;
+
+        case STMT_CREATE_SPFUNCTION:
+            if (!parse_result.n_tables)
+            {
+                /* 不涉及表，也插入哈希表 */
+                binlogex_routine_entry_add_table(pr->dbname, pr->objname, false, NULL, NULL);
+            }
+            else
+            {
+                for (j=0; j < parse_result.n_tables; j++)
+                {
+                    binlogex_routine_entry_add_table(pr->dbname, pr->objname, false, parse_result.table_arr[j].dbname, parse_result.table_arr[j].tablename);
+                }
+            }
+
+        case STMT_CREATE_TRIGGER:
+        case STMT_CREATE_VIEW:
+            if (parse_result.n_tables > 1)
+                need_to_rebuild = true;
+            break;
+
+        case STMT_DROP_VIEW:
+            my_assert(parse_result.n_tables > 0); // 到指定线程中执行
+            break;
+
+        case STMT_DROP_FUNCTION:
+            //TODO 删除function,函数的哈希表没更新
+        case STMT_DROP_TRIGGER:
+            my_assert(parse_result.n_tables == 0);// 当作库级操作处理
+            break;
+
+        default:
+            break;
+        }
+
+        /* rebuild the hash table */
+        if (need_to_rebuild)
+        {
+            bool contain_tmp = false;
+
+            for (i = 0; i < parse_result.n_tables; i++)
+                binlogex_add_to_hash_tab_low(parse_result.table_arr[i].dbname, parse_result.table_arr[i].tablename, global_tables_pairs_num, false, &contain_tmp);
+
+            /* 如果刚刚调整中包含临时表，将global_tables_pairs_num -> 0 */
+            if (contain_tmp)
+                binlogex_adjust_for_tmp_table(global_tables_pairs_num);
+
+            /* 重新调整table_hash */
+            binlogex_adjust_hash_table_thread_id();
+            
+            global_tables_pairs_num++;
+
+            pr->n_tables = 0;
+        }
     }
 
     return code;
