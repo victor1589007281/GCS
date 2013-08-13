@@ -482,6 +482,7 @@ typedef struct system_variables
   my_bool old_alter_table;
   my_bool old_passwords;
   my_bool big_tables;
+  my_bool blob_compressed;
 
   plugin_ref table_plugin;
 

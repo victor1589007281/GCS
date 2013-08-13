@@ -220,7 +220,10 @@ dict_create_sys_columns_tuple(
 	dfield = dtuple_get_nth_field(entry, 4/*PRTYPE*/);
 
 	ptr = mem_heap_alloc(heap, 4);
-	mach_write_to_4(ptr, column->prtype);
+	ut_a(column->is_blob_compressed <=1);
+	ut_ad(column->mtype == DATA_BLOB || !column->is_blob_compressed); 
+	mach_write_to_4(ptr, (ulint)column->prtype | ((ulint)column->is_blob_compressed << 29));
+	//if the field is blob_compressed, then set the 30th bit as 1 in PRTYPE
 
 	dfield_set_data(dfield, ptr, 4);
 	/* 7: LEN ----------------------------*/

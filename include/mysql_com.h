@@ -119,6 +119,8 @@ enum enum_server_command
 #define FIELD_FLAGS_COLUMN_FORMAT 24    /* Field column format, bit 24-25,
                                            reserved by MySQL Cluster */
 
+#define COMPRESSED_BLOB_FLAG (1 << 31)    /** field is blob and set compressed, bit 31**/
+
 #define REFRESH_GRANT		1	/* Refresh grant tables */
 #define REFRESH_LOG		2	/* Start on new log file */
 #define REFRESH_TABLES		4	/* close all tables */

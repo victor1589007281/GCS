@@ -1555,7 +1555,7 @@ get_field_def_value_from_frm(
     ut_a(dfield.type.mtype != DATA_INT || copy_length <= DATA_INT_MAX_LEN);
 
     row_mysql_store_col_in_innobase_format(&dfield,(unsigned char *)&int_buff[0],TRUE,
-        def_pos,copy_length,is_comp);
+        def_pos,copy_length,is_comp,NULL,0);
 
     // maybe default value is ''
     ut_ad(dfield.len <= field->pack_length());

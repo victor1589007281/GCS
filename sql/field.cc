@@ -1820,7 +1820,7 @@ Field *Field::new_field(MEM_ROOT *root, TABLE *new_table,
   tmp->part_of_sortkey.init(0);
   tmp->unireg_check= Field::NONE;
   tmp->flags&= (NOT_NULL_FLAG | BLOB_FLAG | UNSIGNED_FLAG |
-                ZEROFILL_FLAG | BINARY_FLAG | ENUM_FLAG | SET_FLAG);
+                ZEROFILL_FLAG | BINARY_FLAG | ENUM_FLAG | SET_FLAG | COMPRESSED_BLOB_FLAG);
   tmp->reset_fields();
   return tmp;
 }
@@ -7326,6 +7326,9 @@ Field_blob::Field_blob(uchar *ptr_arg, uchar *null_ptr_arg, uchar null_bit_arg,
 {
   DBUG_ASSERT(blob_pack_length <= 4); // Only pack lengths 1-4 supported currently
   flags|= BLOB_FLAG;
+  if (unireg_check_arg == COMPRESSED_BLOB_FIELD)
+	  flags |= COMPRESSED_BLOB_FLAG;
+
   share->blob_fields++;
   /* TODO: why do not fill table->s->blob_field array here? */
 }

@@ -5431,6 +5431,13 @@ calc_row_difference(
 	/* We use upd_buff to convert changed fields */
 	buf = (byte*) upd_buff;
 
+
+	if (prebuilt->blob_heap_for_compress)
+	{
+		mem_heap_free(prebuilt->blob_heap_for_compress);
+		prebuilt->blob_heap_for_compress = NULL;
+	}
+
 	for (i = 0; i < n_fields; i++) {
 		field = table->field[i];
 
@@ -5516,7 +5523,9 @@ calc_row_difference(
 					TRUE,
 					new_mysql_row_col,
 					col_pack_len,
-					dict_table_is_comp(prebuilt->table));
+					dict_table_is_comp(prebuilt->table),
+					prebuilt,
+					i);
 				dfield_copy(&ufield->new_val, &dfield);
 			} else {
 				dfield_set_null(&ufield->new_val);
@@ -6701,6 +6710,11 @@ err_col:
 				| binary_type | long_true_varchar,
 				charset_no),
 			col_len);
+
+		if(field->unireg_check == Field::COMPRESSED_BLOB_FIELD)
+		{//save the blob_compressed flag
+			table->cols[i].is_blob_compressed = 1; 
+		}
 	}
 
 	error = row_create_table_for_mysql(table, trx);
@@ -9175,6 +9189,11 @@ ha_innobase::extra(
 			if (prebuilt->blob_heap) {
 				row_mysql_prebuilt_free_blob_heap(prebuilt);
 			}
+			if (prebuilt->blob_heap_for_compress){
+				mem_heap_free(prebuilt->blob_heap_for_compress);
+				prebuilt->blob_heap_for_compress = NULL;
+			}
+
 			break;
 		case HA_EXTRA_RESET_STATE:
 			reset_template(prebuilt);
@@ -9221,6 +9240,11 @@ ha_innobase::reset()
 {
 	if (prebuilt->blob_heap) {
 		row_mysql_prebuilt_free_blob_heap(prebuilt);
+	}
+
+	if (prebuilt->blob_heap_for_compress){
+		mem_heap_free(prebuilt->blob_heap_for_compress);
+		prebuilt->blob_heap_for_compress = NULL;
 	}
 
 	reset_template(prebuilt);

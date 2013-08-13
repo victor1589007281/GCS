@@ -5715,6 +5715,11 @@ attribute:
             lex->type|= PRI_KEY_FLAG | NOT_NULL_FLAG;
             lex->alter_info.flags|= ALTER_ADD_INDEX;
           }
+        | COMPRESSED_SYM
+        {
+            LEX *lex=Lex;
+            lex->type|= COMPRESSED_BLOB_FLAG;
+        }  
         | UNIQUE_SYM
           {
             LEX *lex=Lex;

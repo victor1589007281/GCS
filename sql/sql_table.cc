@@ -2587,6 +2587,10 @@ int prepare_create_field(Create_field *sql_field,
       sql_field->pack_flag|=FIELDFLAG_BINARY;
     sql_field->length=8;			// Unireg field length
     sql_field->unireg_check=Field::BLOB_FIELD;
+	if(sql_field->flags & COMPRESSED_BLOB_FLAG)
+	{//add by willhan. 2013-07-23
+		sql_field->unireg_check=Field::COMPRESSED_BLOB_FIELD;
+	}
     (*blob_columns)++;
     break;
   case MYSQL_TYPE_GEOMETRY:
@@ -4580,6 +4584,13 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
   if (mysql_prepare_alter_table(thd, src_table->table, &local_create_info,
                                 &local_alter_info, NULL))
     goto err;
+
+  {
+	  List_iterator<Create_field>  it(local_alter_info.create_list);
+	  Create_field *cf;
+	  while(cf = it++);
+  }
+
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   /* Partition info is not handled by mysql_prepare_alter_table() call. */
   if (src_table->table->part_info)
@@ -4612,6 +4623,12 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
                                        &local_create_info, &local_alter_info,
                                        FALSE, 0, &is_trans)))
     goto err;
+
+  {
+	  List_iterator<Create_field>  it(local_alter_info.create_list);
+	  Create_field *cf;
+	  while(cf = it++);
+  }
 
   /*
     Ensure that we have an exclusive lock on target table if we are creating

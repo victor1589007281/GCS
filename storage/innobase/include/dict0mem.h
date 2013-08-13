@@ -353,6 +353,7 @@ struct dict_col_struct{
 	unsigned	max_prefix:12;	/*!< maximum index prefix length on
 					this column. Our current max limit is
 					3072 for Barracuda table */
+	unsigned    is_blob_compressed:1; /*1 means compressed, 0 means not compressed.*/
 
     dict_col_default_t*     def_val;
 };
