@@ -2429,6 +2429,8 @@ get_routine_tables(
             //避免死循环
             DYNAMIC_STRING str;
 
+            init_dynamic_string(&str, "", 2*1024, 1024);
+
             // 打印错误信息
             for (i = 0; i < n_routine; i++)
             {
@@ -2511,6 +2513,31 @@ get_routine_tables(
                                     parse_result.routine_arr[j].routinename, parse_result.routine_arr[j].routine_type);
                 if (rentry == NULL)
                 {
+                    if (routine_type == ROUTINE_TYPE_PROC)
+                    {
+                        uint k = 0;
+                        my_bool found = FALSE;
+                        for (k = 0; k < n_routine; k++)
+                        {
+                            if (routine_arr[k].routine_type == ROUTINE_TYPE_PROC &&
+                                !strcmp(parse_result.routine_arr[j].dbname, routine_arr[k].dbname) &&
+                                !strcmp(parse_result.routine_arr[j].routinename, routine_arr[k].routinename))
+                            {
+                                found = TRUE;
+                                break;
+                            }
+                        }
+
+                        if(!found)
+                        {
+                            error("Procedure %s.%s called by %s.%s does not exist", parse_result.routine_arr[j].dbname, 
+                                  parse_result.routine_arr[j].routinename, db_name, routine_name);
+
+                            // 依赖对象不存在，打印日志，不处理
+                            continue;
+                        }
+                    }
+
                     //含依赖的存储过程/函数未分析
                     goto next_parse;
                 }
@@ -5667,9 +5694,9 @@ Exit_status binlogex_process_event(Log_event *ev,
         else
         {
             my_assert(parse_result.n_tables == 1);
+            //TODO rate
             thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[0].dbname, parse_result.table_arr[0].tablename, INVALID_THREAD_ID, global_load_event_array.elements * 100);
         }
-        
 
         /* 考虑是否可能多个load事件并发的情况 */
         for (i = 0; i < global_load_event_array.elements; ++i)
