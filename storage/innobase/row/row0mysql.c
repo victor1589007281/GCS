@@ -4554,7 +4554,7 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 /************************************************************************/
 /* this function used to uncompress the blob filed when the fild have compressed property*/
 /************************************************************************/
-byte* 
+const byte* 
 row_blob_uncompress(/*函数返回解压后原数据的地址*/
 		const byte			*packet,     /*待解压内容*/
 		ulint				len,         /*待解压的内容及head信息的总长度*/
@@ -4565,8 +4565,8 @@ row_blob_uncompress(/*函数返回解压后原数据的地址*/
 	
 	uLongf tmp_complen;
 	const byte* data = NULL;
-	char isCompress;
-	uint data_byte;
+	my_bool isCompress;
+	ulint data_byte;
 	uint data_len;
 	int algo_type = 0;
 	int result;

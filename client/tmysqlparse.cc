@@ -121,7 +121,7 @@ enum enum_info_type { INFO_INFO,INFO_ERROR,INFO_RESULT};
 typedef enum enum_info_type INFO_TYPE;
 
 static my_bool ignore_errors=0,quick=0,
-connected=0,opt_raw_data=0,unbuffered=0,
+opt_raw_data=0,unbuffered=0,
 opt_rehash=1,skip_updates=0,one_database=0,
 using_opt_local_infile=0,
 vertical=0, line_numbers=1, column_names=1,opt_html=0,
@@ -215,7 +215,6 @@ void tee_fprintf(FILE *file, const char *fmt, ...);
 void tee_fputs(const char *s, FILE *file);
 void tee_puts(const char *s, FILE *file);
 void tee_putc(int c, FILE *file);
-static void tee_print_sized_data(const char *, unsigned int, unsigned int, bool);
 /* The names of functions that actually do the manipulation. */
 static int get_options(int argc,char **argv);
 extern "C" my_bool get_one_option(int optid, const struct my_option *opt,
@@ -241,14 +240,12 @@ static int put_info(const char *str,INFO_TYPE info,uint error=0,
 					const char *sql_state=0);
 static int put_error(MYSQL *mysql);
 static void safe_put_field(const char *pos,ulong length);
-static void xmlencode_print(const char *src, uint length);
 static void init_tee(const char *);
 static void end_tee();
 static const char* construct_prompt();
 static char *get_arg(char *line, my_bool get_next_arg);
 static void init_username();
 static void add_int_to_prompt(int toadd);
-static int get_field_disp_length(MYSQL_FIELD * field);
 
 /* A structure which contains information on the commands this program
 can understand. */
@@ -1058,9 +1055,7 @@ static COMMANDS *find_command(char *name,char cmd_name);
 static bool add_line(String &buffer,char *line,char *in_string,
 					 bool *ml_comment, bool truncated);
 static void remove_cntrl(String &buffer);
-static void print_tab_data(MYSQL_RES *result);
 static ulong start_timer(void);
-static void end_timer(ulong start_time,char *buff);
 static void nice_time(double sec,char *buff,bool part_second);
 extern "C" sig_handler mysql_end(int sig);
 extern "C" sig_handler handle_sigint(int sig);
@@ -2750,68 +2745,12 @@ com_ego(String *buffer,char *line)
 	return result;
 }
 
-
-/**
-For a new result, return the max number of characters that any
-upcoming row may return.
-
-@param  result  Pointer to the result to judge
-
-@returns  The max number of characters in any row of this result
-*/
-
-static void
-tee_print_sized_data(const char *data, unsigned int data_length, unsigned int total_bytes_to_send, bool right_justified)
-{
-	/* 
-	For '\0's print ASCII spaces instead, as '\0' is eaten by (at
-	least my) console driver, and that messes up the pretty table
-	grid.  (The \0 is also the reason we can't use fprintf() .) 
-	*/
-	unsigned int i;
-	const char *p;
-
-	if (right_justified) 
-		for (i= data_length; i < total_bytes_to_send; i++)
-			tee_putc((int)' ', PAGER);
-
-	for (i= 0, p= data; i < data_length; i+= 1, p+= 1)
-	{
-		if (*p == '\0')
-			tee_putc((int)' ', PAGER);
-		else
-			tee_putc((int)*p, PAGER);
-	}
-
-	if (! right_justified) 
-		for (i= data_length; i < total_bytes_to_send; i++)
-			tee_putc((int)' ', PAGER);
-}
 static const char *array_value(const char **array, char key)
 {
 	for (; *array; array+= 2)
 		if (**array == key)
 			return array[1];
 	return 0;
-}
-
-
-static void
-xmlencode_print(const char *src, uint length)
-{
-	if (!src)
-		tee_fputs("NULL", PAGER);
-	else
-	{
-		for (const char *p = src; length; p++, length--)
-		{
-			const char *t;
-			if ((t = array_value(xmlmeta, *p)))
-				tee_fputs(t, PAGER);
-			else
-				tee_putc(*p, PAGER);
-		}
-	}
 }
 
 
@@ -2856,37 +2795,6 @@ safe_put_field(const char *pos,ulong length)
 	}
 }
 
-
-static void
-print_tab_data(MYSQL_RES *result)
-{
-	MYSQL_ROW	cur;
-	MYSQL_FIELD	*field;
-	ulong		*lengths;
-
-	if (opt_silent < 2 && column_names)
-	{
-		int first=0;
-		while ((field = mysql_fetch_field(result)))
-		{
-			if (first++)
-				(void) tee_fputs("\t", PAGER);
-			(void) tee_fputs(field->name, PAGER);
-		}
-		(void) tee_fputs("\n", PAGER);
-	}
-	while ((cur = mysql_fetch_row(result)))
-	{
-		lengths=mysql_fetch_lengths(result);
-		safe_put_field(cur[0],lengths[0]);
-		for (uint off=1 ; off < mysql_num_fields(result); off++)
-		{
-			(void) tee_fputs("\t", PAGER);
-			safe_put_field(cur[off], lengths[off]);
-		}
-		(void) tee_fputs("\n", PAGER);
-	}
-}
 
 static int
 com_tee(String *buffer __attribute__((unused)),
@@ -3568,14 +3476,6 @@ static void nice_time(double sec,char *buff,bool part_second)
 		sprintf(buff,"%d sec",(int) sec);
 }
 
-
-static void end_timer(ulong start_time,char *buff)
-{
-	nice_time((double) (start_timer() - start_time) /
-		CLOCKS_PER_SEC,buff,1);
-}
-
-
 static const char* construct_prompt()
 {
 	processed_prompt.free();			// Erase the old prompt
@@ -3915,7 +3815,7 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 				fputs("</text>\n",xml_file);
 
 				fputs("\t\t\t<line>",xml_file);
-				fprintf(xml_file,"%d",(roa->ra)[i].pra.line_number);
+				fprintf(xml_file,"%lu",(roa->ra)[i].pra.line_number);
 				fputs("</line>\n",xml_file);
 
 				if(tmp_type == 1 || tmp_type == 3)

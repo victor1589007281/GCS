@@ -579,7 +579,7 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 			row_prebuilt_t		*prebuilt);	 /*heap相关*/
 
 
-byte* 
+const byte*
 row_blob_uncompress(/*函数返回解压后原数据的地址*/
 			const byte			*packet,     /*待解压内容*/
 			ulint				len,         /*待解压的内容及head信息的总长度*/
