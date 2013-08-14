@@ -291,7 +291,7 @@ row_mysql_read_blob_compressed_ref(
 
 	data_uncompress = row_mysql_read_blob_ref(&data_uncompress_len, ref, col_len);
 
-	data = my_blob_compress_alloc(data_uncompress, data_uncompress_len, len, prebuilt);
+	data = row_blob_compress_alloc(data_uncompress, data_uncompress_len, len, prebuilt);
 	if(!data)
 	{
 		ut_print_timestamp(stderr);
@@ -525,6 +525,13 @@ row_mysql_store_col_in_innobase_format(
 		}
 		else
 		{//通过本函数处理对blob字段的压缩
+			/*保留压缩前的内容与长度，主要用于进行前缀索引的处理*/
+//			const byte* org_ptr;
+//			uint org_len = col_len;
+//			org_ptr = row_mysql_read_blob_ref(&org_len, mysql_data, org_len);
+//			dfield_set_org_data(dfield, org_ptr, org_len);
+
+			/*压缩处理*/
 			ptr = row_mysql_read_blob_compressed_ref(&col_len, mysql_data, col_len, prebuilt);
 		}
 		
@@ -4453,7 +4460,7 @@ row_is_magic_monitor_table(
    the conditions of compressing*/
 /************************************************************************/
 byte* 
-my_blob_compress_alloc(/*函数返回压缩后的结果*/
+row_blob_compress_alloc(/*函数返回压缩后的结果*/
 		const byte			*packet,     /*待压缩内容*/
 		ulint				len,         /*待压缩的长度*/
 		ulint				*complen,	 /*压缩后的长度*/
@@ -4478,7 +4485,7 @@ my_blob_compress_alloc(/*函数返回压缩后的结果*/
 			return NULL; //malloc failed
 
 		//增加头部分，记录数据是否被压缩
-		my_blob_compress_head_write(&head, 0, 0, 0);
+		row_blob_compress_head_write(&head, 0, 0, 0);
 		memcpy(compbuf, &head, 1);
 		memcpy(compbuf+1, packet, len);
 		*complen=len + 1;
@@ -4526,7 +4533,7 @@ my_blob_compress_alloc(/*函数返回压缩后的结果*/
 			//my_bolb_get_header(is_compress, n);
 
 			ut_a( n <= 4);
-			my_blob_compress_head_write(&head, 0, 0, 0);
+			row_blob_compress_head_write(&head, 0, 0, 0);
 			memcpy(compbuf, &head, 1);
 			memcpy(compbuf+1, packet, len);
 			*complen=len + 1;
@@ -4534,7 +4541,7 @@ my_blob_compress_alloc(/*函数返回压缩后的结果*/
 		}
 		else
 		{//成功压缩
-			my_blob_compress_head_write(&head, 1, n, 0);
+			row_blob_compress_head_write(&head, 1, n, 0);
 			memcpy(compbuf, &head, 1);
 			*complen += n+1;
 		}
@@ -4548,7 +4555,7 @@ my_blob_compress_alloc(/*函数返回压缩后的结果*/
 /* this function used to uncompress the blob filed when the fild have compressed property*/
 /************************************************************************/
 byte* 
-my_blob_uncompress(/*函数返回解压后原数据的地址*/
+row_blob_uncompress(/*函数返回解压后原数据的地址*/
 		const byte			*packet,     /*待解压内容*/
 		ulint				len,         /*待解压的内容及head信息的总长度*/
 		ulint				*complen,	 /*解缩后的长度*/
@@ -4565,7 +4572,7 @@ my_blob_uncompress(/*函数返回解压后原数据的地址*/
 	int result;
 	uint compress_len;
 
-	my_blob_compress_head_read(packet, &isCompress, &data_byte, &algo_type);
+	row_blob_compress_head_read(packet, &isCompress, &data_byte, &algo_type);
 	
 	if (prebuilt->blob_heap == NULL) 
 		prebuilt->blob_heap = mem_heap_create(UNIV_PAGE_SIZE);
@@ -4608,7 +4615,7 @@ my_blob_uncompress(/*函数返回解压后原数据的地址*/
 /* head值中，第一个bit，0表示未压缩，1表示压缩；第2，3位表示算法类型
 第6，7，8位表示有几个字节来存储压缩长度*/
 /************************************************************************/
-void my_blob_compress_head_write(
+void row_blob_compress_head_write(
 		byte		*head,		/*一个字节，存储头*/
 		my_bool		isCompress, /*表示是否压缩*/
 		ulint		len,		/*后续用几个字节存储长度*/
@@ -4626,7 +4633,7 @@ void my_blob_compress_head_write(
 	}		
 }
 
-void my_blob_compress_head_read(
+void row_blob_compress_head_read(
 		byte		*data, 
 		my_bool     *isCompress,
 		ulint		*len,

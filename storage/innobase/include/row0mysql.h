@@ -557,7 +557,7 @@ Innobase and MySQL. */
 
 
 void
-my_blob_compress_head_read(
+row_blob_compress_head_read(
 			byte		*data, 
 			my_bool		*isCompress,
 			ulint		*len,
@@ -565,14 +565,14 @@ my_blob_compress_head_read(
 
 
 void
-my_blob_compress_head_write(
+row_blob_compress_head_write(
 			byte		*head,		/*一个字节，存储头*/
 			my_bool 	isCompress, /*表示是否压缩*/
 			ulint		len,		/*后续用几个字节存储长度*/
 			int			algo_type);	/*算法类型*/
 
 byte*
-my_blob_compress_alloc(/*函数返回压缩后的结果*/
+row_blob_compress_alloc(/*函数返回压缩后的结果*/
 			const byte			*packet,     /*待压缩内容*/
 			ulint				len,         /*待压缩的长度*/
 			ulint				*complen,	 /*压缩后的长度*/
@@ -580,7 +580,7 @@ my_blob_compress_alloc(/*函数返回压缩后的结果*/
 
 
 byte* 
-my_blob_uncompress(/*函数返回解压后原数据的地址*/
+row_blob_uncompress(/*函数返回解压后原数据的地址*/
 			const byte			*packet,     /*待解压内容*/
 			ulint				len,         /*待解压的内容及head信息的总长度*/
 			ulint				*complen,	 /*解缩后的长度*/

@@ -2283,11 +2283,14 @@ row_ins_index_entry_set_vals(
 		dfield_t*	field;
 		const dfield_t*	row_field;
 		ulint		len;
+//		byte*		data;
 
 		field = dtuple_get_nth_field(entry, i);
 		ind_field = dict_index_get_nth_field(index, i);
 		row_field = dtuple_get_nth_field(row, ind_field->col->ind);
+
 		len = dfield_get_len(row_field);
+//		data = dfield_get_data(row_field);
 
 		/* Check column prefix indexes */
 		if (ind_field->prefix_len > 0
@@ -2295,6 +2298,13 @@ row_ins_index_entry_set_vals(
 
 			const	dict_col_t*	col
 				= dict_field_get_col(ind_field);
+
+//			if (ind_field->col->is_blob_compressed)
+//			{
+				/*对于压缩字段，则取压缩前的org_data进行创建前缀索引*/
+//				data = dfield_get_org_data(row_field);
+//				len = dfield_get_org_len(row_field);
+//			}
 
 			len = dtype_get_at_most_n_mbchars(
 				col->prtype, col->mbminmaxlen,

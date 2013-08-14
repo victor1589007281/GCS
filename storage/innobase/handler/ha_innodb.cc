@@ -6708,13 +6708,9 @@ err_col:
 				(ulint)field->type()
 				| nulls_allowed | unsigned_type
 				| binary_type | long_true_varchar,
-				charset_no),
+				charset_no) | 
+				((field->unireg_check == Field::COMPRESSED_BLOB_FIELD) ? (1 << 29) : 0),
 			col_len);
-
-		if(field->unireg_check == Field::COMPRESSED_BLOB_FIELD)
-		{//save the blob_compressed flag
-			table->cols[i].is_blob_compressed = 1; 
-		}
 	}
 
 	error = row_create_table_for_mysql(table, trx);

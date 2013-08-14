@@ -2821,7 +2821,7 @@ row_sel_store_mysql_rec(
 //解压的话，在这里面改变data所指的值
 				if(prebuilt->table->cols[pos_in_mysql].is_blob_compressed)
 				{//blob字段有压缩属性，处理压缩数据
-						data = my_blob_uncompress(data, len, &len, prebuilt);
+						data = row_blob_uncompress(data, len, &len, prebuilt);
 						ut_a(data!=NULL);
 				}
 				else

@@ -361,7 +361,7 @@ dict_mem_fill_column_struct(
 	ulint	mbmaxlen;
 #endif /* !UNIV_HOTBACKUP */
 
-	my_bool is_blob_compressed = (prtype&(1<<29))&&(1<<29);
+	my_bool is_blob_compressed = (prtype&(1<<29)) ? TRUE : FALSE;
 	prtype &= 0xFFFFFF;  /* prtypeÖ»ÐèÇ°24 bits */
 	ut_ad(mtype == DATA_BLOB || !is_blob_compressed);
 

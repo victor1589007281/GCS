@@ -54,9 +54,20 @@ void*
 dfield_get_data(
 /*============*/
 	const dfield_t* field);	/*!< in: field */
+
+/*********************************************************************//**
+Gets pointer to the org_data in a field when compressed.
+@return	pointer to org_data */
+//UNIV_INLINE
+//void*
+//dfield_get_org_data(
+/*============*/
+//	const dfield_t* field);	/*!< in: field */
+
 #else /* UNIV_DEBUG */
 # define dfield_get_type(field) (&(field)->type)
 # define dfield_get_data(field) ((field)->data)
+//# define dfield_get_org_data(field) ((field)->org_data)
 #endif /* UNIV_DEBUG */
 /*********************************************************************//**
 Sets the type struct of SQL data field. */
@@ -74,6 +85,17 @@ ulint
 dfield_get_len(
 /*===========*/
 	const dfield_t* field);	/*!< in: field */
+
+/*********************************************************************//**
+Gets org_length of field org_data.
+@return	org_length of org_data; UNIV_SQL_NULL if SQL null data */
+//UNIV_INLINE
+//ulint
+//dfield_get_org_len(
+/*===========*/
+//	const dfield_t* field);	/*!< in: field */
+
+
 /*********************************************************************//**
 Sets length in a field. */
 UNIV_INLINE
@@ -116,6 +138,19 @@ dfield_set_data(
 	ulint		len);	/*!< in: length or UNIV_SQL_NULL */
 /*********************************************************************//**
 Sets a data field to SQL NULL. */
+
+/*********************************************************************//**
+Sets pointer to the org_data and org_length in a field. */
+//UNIV_INLINE
+//void
+//dfield_set_org_data(
+/*============*/
+//	dfield_t*	field,	/*!< in: field */
+//	const void*	org_data,	/*!< in: data */
+//	ulint		org_len);	/*!< in: length or UNIV_SQL_NULL */
+/*********************************************************************//**
+Sets a data field to SQL NULL. */
+
 UNIV_INLINE
 void
 dfield_set_null(
@@ -453,8 +488,10 @@ dtuple_big_rec_free(
 /** Structure for an SQL data field */
 struct dfield_struct{
 	void*		data;	/*!< pointer to data */
+//	void*		org_data;/*!< pointer to org_data */
 	unsigned	ext:1;	/*!< TRUE=externally stored, FALSE=local */
 	unsigned	len:32;	/*!< data length; UNIV_SQL_NULL if SQL null */
+//	unsigned	org_len:32;	/*!< data length; UNIV_SQL_NULL if SQL null */
 	dtype_t		type;	/*!< type of data */
 };
 

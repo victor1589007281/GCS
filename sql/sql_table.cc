@@ -4584,13 +4584,6 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
   if (mysql_prepare_alter_table(thd, src_table->table, &local_create_info,
                                 &local_alter_info, NULL))
     goto err;
-
-  {
-	  List_iterator<Create_field>  it(local_alter_info.create_list);
-	  Create_field *cf;
-	  while(cf = it++);
-  }
-
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   /* Partition info is not handled by mysql_prepare_alter_table() call. */
   if (src_table->table->part_info)
@@ -4623,12 +4616,6 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
                                        &local_create_info, &local_alter_info,
                                        FALSE, 0, &is_trans)))
     goto err;
-
-  {
-	  List_iterator<Create_field>  it(local_alter_info.create_list);
-	  Create_field *cf;
-	  while(cf = it++);
-  }
 
   /*
     Ensure that we have an exclusive lock on target table if we are creating
