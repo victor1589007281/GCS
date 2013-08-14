@@ -1574,12 +1574,6 @@ static struct my_option my_long_options[] =
 
 static void usage(int version)
 {
-#if defined(USE_LIBEDIT_INTERFACE)
-	const char* readline= "";
-#else
-	const char* readline= "readline";
-#endif
-
 	printf("tmysqlparse Ver 1.0\n");
 	if (version)
 		return;
