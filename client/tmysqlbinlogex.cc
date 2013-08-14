@@ -1282,7 +1282,30 @@ static void error(const char *format,...)
 {
   va_list args;
   va_start(args, format);
-  error_or_warning(format, args, "ERROR");
+  error_or_warning(format, args, "[ERROR]");
+  va_end(args);
+}
+
+static void note_or_info(const char *format, va_list args, const char *msg)
+{
+  fprintf(stdout, "%s: ", msg);
+  vfprintf(stdout, format, args);
+  fprintf(stdout, "\n");
+}
+
+static void note(const char *format,...)
+{
+  va_list args;
+  va_start(args, format);
+  note_or_info(format, args, "[Note]");
+  va_end(args);
+}
+
+static void info(const char *format,...)
+{
+  va_list args;
+  va_start(args, format);
+  note_or_info(format, args, "[Info]");
   va_end(args);
 }
 
@@ -1351,7 +1374,7 @@ static void sql_print_error(const char *format,...)
 {
   va_list args;
   va_start(args, format);
-  error_or_warning(format, args, "ERROR");
+  error_or_warning(format, args, "[ERROR]");
   va_end(args);
 }
 
@@ -1366,7 +1389,7 @@ static void warning(const char *format,...)
 {
   va_list args;
   va_start(args, format);
-  error_or_warning(format, args, "WARNING");
+  error_or_warning(format, args, "[WARNING]");
   va_end(args);
 }
 
@@ -1524,7 +1547,6 @@ static int parse_args(int *argc, char*** argv)
 {
   int ho_error;
 
-  //result_file = stdout;
   if ((ho_error=handle_options(argc, argv, my_long_options, get_one_option)))
     exit(ho_error);
   if (debug_info_flag)
@@ -2407,6 +2429,8 @@ get_routine_tables(
             //避免死循环
             DYNAMIC_STRING str;
 
+            init_dynamic_string(&str, "", 2*1024, 1024);
+
             // 打印错误信息
             for (i = 0; i < n_routine; i++)
             {
@@ -2489,6 +2513,31 @@ get_routine_tables(
                                     parse_result.routine_arr[j].routinename, parse_result.routine_arr[j].routine_type);
                 if (rentry == NULL)
                 {
+                    if (routine_type == ROUTINE_TYPE_PROC)
+                    {
+                        uint k = 0;
+                        my_bool found = FALSE;
+                        for (k = 0; k < n_routine; k++)
+                        {
+                            if (routine_arr[k].routine_type == ROUTINE_TYPE_PROC &&
+                                !strcmp(parse_result.routine_arr[j].dbname, routine_arr[k].dbname) &&
+                                !strcmp(parse_result.routine_arr[j].routinename, routine_arr[k].routinename))
+                            {
+                                found = TRUE;
+                                break;
+                            }
+                        }
+
+                        if(!found)
+                        {
+                            error("Procedure %s.%s called by %s.%s does not exist", parse_result.routine_arr[j].dbname, 
+                                  parse_result.routine_arr[j].routinename, db_name, routine_name);
+
+                            // 依赖对象不存在，打印日志，不处理
+                            continue;
+                        }
+                    }
+
                     //含依赖的存储过程/函数未分析
                     goto next_parse;
                 }
@@ -3187,7 +3236,7 @@ int main(int argc, char** argv)
       my_access(sql_files_output_dir, F_OK))
   {
       err = -1;
-      fprintf(stderr, "[Error] Invalid argment --sql-files-output-dir\n");
+      error("Invalid argment --sql-files-output-dir");
 
       free_defaults(defaults_argv);
       my_end(my_end_arg);
@@ -4361,7 +4410,6 @@ binlogex_task_entry_add_to_queue(
     uint                    thread_id
 )
 {
-    uint n_retry = 0;
     uint rate = 0;
     my_assert(task_entry != NULL && thread_id != INVALID_THREAD_ID);
     my_assert(task_entry->type != TASK_ENTRY_TYPE_EVENT || 
@@ -4381,17 +4429,18 @@ binlogex_task_entry_add_to_queue(
         /* 等待100毫秒 */
         my_sleep(100000);
 
-        if (++n_retry % 10 == 0)
-            fprintf(stderr, "[Warning] Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
+       // if (++n_retry % 10 == 0)
+       //     fprintf(stderr, "[Warning] Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
 
-        if (++global_n_add_to_queue_fail % 100 == 0) {
-            fprintf(stderr, "[Warning] Now Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
+        //if (++global_n_add_to_queue_fail % 100 == 0) {
+         //   fprintf(stderr, "[Warning] Now Waiting Task Entry add to MQ[%u], retry count: %u, global retry count: %u\n", thread_id, n_retry, global_n_add_to_queue_fail);
 
-        }
+        //}
+        ++global_n_add_to_queue_fail;
 
         if (!global_vm_array[thread_id])
         {
-            fprintf(stderr, "[ERROR] Thread %u has exited\n", thread_id);
+            error("Thread %u has exited", thread_id);
             return 1;
         }
     }
@@ -4472,14 +4521,6 @@ binlogex_worker_thread_init(
     }
     else
     {
-        //len = snprintf(file_name, sizeof(file_name), "%s/thread_%u.err", sql_files_output_dir, vm->thread_id);  
-        //if (len == sizeof(file_name) - 1 || len < 0)
-        //{
-        //    fprintf(stderr, "sql_files_output_dir too long\n");
-        //    return -1;
-        //}
-        //vm->result_file = my_fopen(file_name, O_WRONLY | O_BINARY, MYF(MY_WME));
-
         if (!mysql_init(&vm->mysql))
         {
             error_vm(vm, "thread_id: %u, mysql_init error");
@@ -4734,7 +4775,7 @@ binlogex_worker_wait(
         len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
         if (len == (size_t)-1 || len != vm->dnstr.length)
         {
-            fprintf(stderr, "[Error] Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
+            error("Write error: %zu, %s:%u", len, __FILE__, __LINE__);
             my_assert(0);
         }
 
@@ -4806,7 +4847,7 @@ binlogex_worker_signal(
         len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
         if (len == (size_t)-1 || len != vm->dnstr.length)
         {
-            fprintf(stderr, "[Error] Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
+            error("Write error: %zu, %s:%u", len, __FILE__, __LINE__);
             my_assert(0);
         }
         dynstr_clear(&vm->dnstr);
@@ -4975,7 +5016,7 @@ binlogex_worker_execute_task_entry(
             size_t len = my_fwrite(vm->result_file, (const uchar*)vm->dnstr.str, vm->dnstr.length, MYF(MY_WME));
             if (len == (size_t) -1 || len != vm->dnstr.length)
             {
-                fprintf(stderr, "[Error] Write error: %zu, %s:%u\n", len, __FILE__, __LINE__);
+                error_vm(vm, "Write error: %zu, %s:%u", len, __FILE__, __LINE__);
                 code = WORKER_STATUS_ERROR;
             }
         }
@@ -5027,7 +5068,7 @@ binlogex_worker_thread(void *arg)
     my_thread_init();
     if(binlogex_worker_thread_init(vm))
     {
-        fprintf(stderr, "[ERROR] Thread %u init error", vm->thread_id);
+        error("Thread %u init error", vm->thread_id);
         exit(-1);
     }
 
@@ -5043,7 +5084,7 @@ binlogex_worker_thread(void *arg)
 
             //my_sleep(2000000);
             //TODO
-            my_sleep(100000);
+            my_sleep(500000);
             vm->sleep_cnt++;
         } 
 
@@ -5223,7 +5264,7 @@ Exit_status binlogex_process_event(Log_event *ev,
   {
       if (parse_result_init(&parse_result))
       {
-          fprintf(stderr, "[ERROR] parse_result_init failed\n");
+          error("parse_result_init failed");
           return OK_STOP;
       }
 
@@ -5237,7 +5278,7 @@ Exit_status binlogex_process_event(Log_event *ev,
       if (parse_result_init(&parse_result))
       {
           parse_result_inited = 0;
-          fprintf(stderr, "[ERROR] parse_result_init failed, rec_count "ULONGPF"\n", (ulong)rec_count);
+          error("parse_result_init failed, rec_count "ULONGPF"", (ulong)rec_count);
           return OK_STOP;
       }
       parse_result_inited = 1;
@@ -5379,9 +5420,9 @@ Exit_status binlogex_process_event(Log_event *ev,
                 // 可能库级操作！阻塞所有线程, 也可能由于保留字的语法分析出错
                 // 如 drop database d1;
 
-                fprintf(stdout, "[Note] DB Level operation: %s in %s:"ULONGPF"\n", query_ev->query, logname, (ulong)pos);
+                note("DB Level operation: %s in %s:"ULONGPF"", query_ev->query, logname, (ulong)pos);
                 if (strlen(parse_result.err_msg))
-                    fprintf(stdout, "[Warning] parse error: %s\n", parse_result.err_msg); 
+                    warning("parse error: %s", parse_result.err_msg); 
 
                 for (i = 0; i < concurrency; ++i)
                 {
@@ -5421,7 +5462,7 @@ Exit_status binlogex_process_event(Log_event *ev,
 
             /* 记录跨线程操作 */
             if (tsk_entry->ui.event.n_thread_id > 1)
-                fprintf(stdout, "[Note] Complex sql \"%s\" at binlog %s offset "ULONGPF"; reference in %u threads, execute in %u thread_id\n", 
+                note("Complex sql \"%s\" at binlog %s offset "ULONGPF"; reference in %u threads, execute in %u thread_id", 
                         query_ev->query, tsk_entry->ui.event.log_file, (ulong)tsk_entry->ui.event.off,
                         tsk_entry->ui.event.n_thread_id, tsk_entry->ui.event.dst_thread_id);
 
@@ -5638,18 +5679,24 @@ Exit_status binlogex_process_event(Log_event *ev,
         Execute_load_query_log_event *exlq= (Execute_load_query_log_event*)ev;
         task_entry_t*       tmp_tentry = NULL;
         my_bool             should_skip = FALSE;
-        my_bool             find_begin_event;
+        my_bool             find_begin_event = FALSE;
         Log_event*          tmp_event = NULL;
         uint                tmp_file_id;
 
         should_skip = shall_skip_database(exlq->db);
 
-        parse_result_init_db(&parse_result, (char*)exlq->db);
-        //TODO
-        parse_ret = query_parse((char*)exlq->query, &parse_result);
-        my_assert(!parse_ret && parse_result.n_tables == 1);
-
-        thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[0].dbname, parse_result.table_arr[0].tablename, INVALID_THREAD_ID, 0);
+        parse_ret = binglogex_query_parse((char*)exlq->db, (char*)exlq->query, &parse_result, FALSE);
+        if (parse_ret)
+        {
+            //TODO
+            thread_id = 0;
+        }
+        else
+        {
+            my_assert(parse_result.n_tables == 1);
+            //TODO rate
+            thread_id = binlogex_get_thread_id_by_name(parse_result.table_arr[0].dbname, parse_result.table_arr[0].tablename, INVALID_THREAD_ID, global_load_event_array.elements * 100);
+        }
 
         /* 考虑是否可能多个load事件并发的情况 */
         for (i = 0; i < global_load_event_array.elements; ++i)
