@@ -103,6 +103,8 @@ innobase_col_to_mysql(
 		/* Store a pointer to the BLOB buffer to dest: the BLOB was
 		already copied to the buffer in row_sel_store_mysql_rec */
 
+        /* 只有索引列 */
+        ut_ad(!field->is_compressed());
 		row_mysql_store_blob_ref(dest, flen, data, len);
 		break;
 
@@ -1679,7 +1681,7 @@ innodbase_fill_col_info(
 
     prtype = dtype_form_prtype((ulint)field->type() | nulls_allowed | unsigned_type
                                     | binary_type | long_true_varchar,
-                                charset_no);
+                                charset_no, (ibool)field->is_compressed());
 
     dict_mem_fill_column_struct(col, field_idx, col_type, prtype, col_len);
 

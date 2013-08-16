@@ -1303,7 +1303,7 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
         !(thd->variables.sql_mode & MODE_NO_FIELD_OPTIONS))
       packet->append(STRING_WITH_LEN(" AUTO_INCREMENT"));
 
-	if (field->unireg_check == Field::COMPRESSED_BLOB_FIELD )
+	if (field->is_compressed() )
 	{//add by willhan. 2013-7-23.
 		packet->append(STRING_WITH_LEN(" /*!99104 COMPRESSED */"));
 	}

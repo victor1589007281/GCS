@@ -2347,6 +2347,7 @@ row_merge_create_temporary_table(
 		col = dict_table_get_nth_col(table, i);
 		col_name = dict_table_get_col_name(table, i);
 
+        /* 压缩列直接使用原列的prtype，能继承压缩信息 */
 		dict_mem_table_add_col(new_table, heap, col_name, col->mtype,
 				       row_merge_col_prtype(col, col_name,
 							    index_def),

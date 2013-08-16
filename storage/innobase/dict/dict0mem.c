@@ -361,9 +361,8 @@ dict_mem_fill_column_struct(
 	ulint	mbmaxlen;
 #endif /* !UNIV_HOTBACKUP */
 
-	my_bool is_blob_compressed = (prtype&(1<<29)) ? TRUE : FALSE;
-	prtype &= 0xFFFFFF;  /* prtypeÖ»ÐèÇ°24 bits */
-	ut_ad(mtype == DATA_BLOB || !is_blob_compressed);
+    /* only blob field have compressed  */
+	ut_ad(mtype == DATA_BLOB || !(prtype & DATA_IS_BLOB_COMPRESSED));
 
 	column->ind = (unsigned int) col_pos;
 	column->ord_part = 0;
@@ -372,7 +371,6 @@ dict_mem_fill_column_struct(
 	column->prtype = (unsigned int) prtype;
 	column->len = (unsigned int) col_len;
     column->def_val = NULL;
-	column->is_blob_compressed = is_blob_compressed;
 #ifndef UNIV_HOTBACKUP
         dtype_get_mblen(mtype, prtype, &mbminlen, &mbmaxlen);
 	dict_col_set_mbminmaxlen(column, mbminlen, mbmaxlen);

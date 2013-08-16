@@ -519,7 +519,7 @@ row_mysql_store_col_in_innobase_format(
 		}
 	} else if (type == DATA_BLOB && row_format_col) {
 
-		if(prebuilt == NULL || prebuilt->table->cols[i].is_blob_compressed == 0)
+		if(prebuilt == NULL || !dict_col_is_compressed(&prebuilt->table->cols[i]))
 		{
 			ptr = row_mysql_read_blob_ref(&col_len, mysql_data, col_len);
 		}
@@ -4471,8 +4471,6 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 	byte head;
 
 	ut_a(len <= 0xFFFFFFFF);
-
-
 
 	memset(&head, 0, 1);
 

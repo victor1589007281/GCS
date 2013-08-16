@@ -4703,6 +4703,8 @@ ha_innobase::store_key_val_for_row(
 
 			cs = field->charset();
 
+            /* 压缩字段不能作为索引 */
+            ut_a(!field->is_compressed());
 			blob_data = row_mysql_read_blob_ref(&blob_len,
 				(byte*) (record
 				+ (ulint)get_field_offset(table, field)),
@@ -6708,8 +6710,7 @@ err_col:
 				(ulint)field->type()
 				| nulls_allowed | unsigned_type
 				| binary_type | long_true_varchar,
-				charset_no) | 
-				((field->unireg_check == Field::COMPRESSED_BLOB_FIELD) ? (1 << 29) : 0),
+				charset_no, field->is_compressed()), 
 			col_len);
 	}
 

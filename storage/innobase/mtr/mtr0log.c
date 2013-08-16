@@ -623,6 +623,7 @@ mlog_parse_index(
 			/* The high-order bit of len is the NOT NULL flag;
 			the rest is 0 or 0x7fff for variable-length fields,
 			and 1..0x7ffe for fixed-length fields. */
+            /* redo阶段压缩属性不需指定 */
 			dict_mem_table_add_col(
 				table, NULL, NULL,
 				((len + 1) & 0x7fff) <= 1

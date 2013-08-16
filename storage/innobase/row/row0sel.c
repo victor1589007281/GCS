@@ -2818,8 +2818,8 @@ row_sel_store_mysql_rec(
 					prebuilt->blob_heap = mem_heap_create(
 						UNIV_PAGE_SIZE);
 				}
-//解压的话，在这里面改变data所指的值
-				if(prebuilt->table->cols[pos_in_mysql].is_blob_compressed)
+                //解压的话，在这里面改变data所指的值
+				if(dict_col_is_compressed(&prebuilt->table->cols[pos_in_mysql]))
 				{//blob字段有压缩属性，处理压缩数据
 						data = row_blob_uncompress(data, len, &len, prebuilt);
 						ut_a(data!=NULL);
