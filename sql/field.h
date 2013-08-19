@@ -276,6 +276,7 @@ public:
   */
   virtual void sql_type(String &str) const =0;
   virtual uint size_of() const =0;		// For new field
+  virtual bool is_compressed() { return false;}
   inline bool is_null(my_ptrdiff_t row_offset= 0)
   { return null_ptr ? (null_ptr[row_offset] & null_bit ? 1 : 0) : table->null_row; }
   inline bool is_real_null(my_ptrdiff_t row_offset= 0)
@@ -1779,6 +1780,7 @@ public:
   void sort_string(uchar *buff,uint length);
   uint32 pack_length() const
   { return (uint32) (packlength+table->s->blob_ptr_size); }
+  virtual bool is_compressed() { return unireg_check == COMPRESSED_BLOB_FIELD; }
 
   /**
      Return the packed length without the pointer size added. 

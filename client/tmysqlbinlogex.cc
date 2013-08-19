@@ -98,6 +98,7 @@ static void warning(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
 
 static bool one_database=0, to_last_remote_log= 0, disable_log_bin= 0;
 static bool opt_hexdump= 0;
+static bool opt_log_note= 0;
 const char *base64_output_mode_names[]=
 {"NEVER", "AUTO", "ALWAYS", "UNSPEC", "DECODE-ROWS", NullS};
 TYPELIB base64_output_mode_typelib=
@@ -1135,6 +1136,9 @@ static struct my_option my_long_options[] =
   {"local-load", 'l', "Prepare local temporary files for LOAD DATA INFILE in the specified directory.",
    &dirname_for_local_load, &dirname_for_local_load, 0,
    GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"log-note", 'N', "Print log level [Note], maybe very large(default FALSE).",
+  &opt_log_note, &opt_log_note, 0, GET_BOOL, NO_ARG,
+  0, 0, 0, 0, 0, 0},
   {"offset", 'o', "Skip the first N entries.", &offset, &offset,
    0, GET_ULL, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   /*{"password", 'p', "Password to connect to remote server.",
@@ -1296,6 +1300,10 @@ static void note_or_info(const char *format, va_list args, const char *msg)
 static void note(const char *format,...)
 {
   va_list args;
+
+  if (!opt_log_note)
+      return;
+  
   va_start(args, format);
   note_or_info(format, args, "[Note]");
   va_end(args);
@@ -1658,6 +1666,7 @@ static Exit_status dump_log_entries(const char* logname)
   strmov(print_event_info.delimiter, "/*!*/;");
   
   print_event_info.verbose= short_form ? 0 : verbose;
+  fprintf(stdout, "[dump] %s\n", logname);
 
   //TODO : support remote
   //rc= (remote_opt ? dump_remote_log_entries(&print_event_info, logname) :

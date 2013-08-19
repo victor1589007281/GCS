@@ -317,13 +317,6 @@ struct dict_col_struct{
 	so that all bit-fields can be packed tightly. */
 	/* @{ */
 	unsigned	mtype:8;	/*!< main data type */
-	unsigned	prtype:24;	/*!< precise type; MySQL data
-					type, charset code, flags to
-					indicate nullability,
-					signedness, whether this is a
-					binary string, whether this is
-					a true VARCHAR where MySQL
-					uses 2 bytes to store the length */
 
 	/* the remaining fields do not affect alphabetical ordering: */
 
@@ -353,7 +346,14 @@ struct dict_col_struct{
 	unsigned	max_prefix:12;	/*!< maximum index prefix length on
 					this column. Our current max limit is
 					3072 for Barracuda table */
-	unsigned    is_blob_compressed:1; /*1 means compressed, 0 means not compressed.*/
+	//unsigned    is_blob_compressed:1; /*1 means compressed, 0 means not compressed.*/
+    unsigned	prtype;	/*!< precise type; MySQL data
+					type, charset code, flags to
+					indicate nullability,
+					signedness, whether this is a
+					binary string, whether this is
+					a true VARCHAR where MySQL
+					uses 2 bytes to store the length */
 
     dict_col_default_t*     def_val;
 };
