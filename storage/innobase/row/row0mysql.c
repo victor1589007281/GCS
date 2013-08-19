@@ -4561,9 +4561,9 @@ row_blob_uncompress(/*函数返回解压后原数据的地址*/
 )
 {//return NULL means failed to uncompress
 	
-	uLongf tmp_complen;
+	uLongf tmp_complen = 0;
 	const byte* data = NULL;
-	my_bool isCompress;
+	my_bool isCompress = FALSE;
 	ulint data_byte;
 	uint data_len;
 	int algo_type = 0;
@@ -4591,6 +4591,7 @@ row_blob_uncompress(/*函数返回解压后原数据的地址*/
 			return NULL;
 
 		compress_len = len - 1 - data_byte;
+		tmp_complen = (uint) data_len;
 		result = uncompress((Bytef*) data, &tmp_complen, (Bytef*) (packet+1+data_byte), (uLong) compress_len);
 		if(result != Z_OK)//解压失败
 			return NULL;
