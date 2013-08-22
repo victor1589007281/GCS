@@ -183,6 +183,11 @@ enum enum_alter_inplace_result {
 */
 #define HA_CAN_REPAIR                    (LL(1) << 37)
 
+/*Engine supports BLOB file can be compressed.
+Only innobase supports this function.
+*/
+#define HA_BLOB_COMPRESSED				 (LL(1) << 50)
+
 /*
   Set of all binlog flags. Currently only contain the capabilities
   flags.

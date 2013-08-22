@@ -1713,7 +1713,7 @@ ha_innobase::ha_innobase(handlerton *hton, TABLE_SHARE *table_arg)
 		  HA_PRIMARY_KEY_IN_READ_INDEX |
 		  HA_BINLOG_ROW_CAPABLE |
 		  HA_CAN_GEOMETRY | HA_PARTIAL_COLUMN_READ |
-		  HA_TABLE_SCAN_ON_INDEX),
+		  HA_TABLE_SCAN_ON_INDEX | HA_BLOB_COMPRESSED),
   start_of_scan(0),
   num_write_row(0)
 {}
@@ -6616,6 +6616,20 @@ create_table_def(
 	if (path_of_temp_table) {
 		table->dir_path_of_temp_table =
 			mem_heap_strdup(table->heap, path_of_temp_table);
+	}
+
+	if(!is_gcs)
+	{//如果不是gcs行格式，则不能使用blob compressed特性
+		for (i = 0; i < n_cols; i++)
+		{
+			if(form->field[i]->is_compressed())
+			{
+				my_error(ER_FIELD_CAN_NOT_COMPRESSED_IN_CURRENT_FORMAT, MYF(0), form->field[i]->field_name);
+				error = DB_ERROR;
+				goto error_ret;
+
+			}
+		}
 	}
 
 	for (i = 0; i < n_cols; i++) {

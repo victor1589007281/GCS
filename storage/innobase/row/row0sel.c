@@ -2790,6 +2790,13 @@ row_sel_store_mysql_rec(
 			}
 
 			ut_a(len != UNIV_SQL_NULL);
+
+			if(dict_col_is_compressed(&prebuilt->table->cols[pos_in_mysql]))
+			{
+				/* 行外存储，如果数据标识被压缩，则需要进行解压 */
+				goto blob_uncompress;
+			}
+			
 		} else {
 			/* Field is stored in the row. */
 
@@ -2805,6 +2812,7 @@ row_sel_store_mysql_rec(
                 data = dict_index_get_nth_col_def(real_index, field_no, &len);
             }
 
+blob_uncompress:
 			if (UNIV_UNLIKELY(templ->type == DATA_BLOB)
 			    && len != UNIV_SQL_NULL) {
 
