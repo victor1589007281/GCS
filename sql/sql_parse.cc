@@ -5714,10 +5714,10 @@ bool add_field_to_list(THD *thd, LEX_STRING *field_name, enum_field_types type,
   case MYSQL_TYPE_MEDIUM_BLOB:
   case MYSQL_TYPE_LONG_BLOB:
   case MYSQL_TYPE_BLOB:
-	  if(thd->variables.blob_compressed)
-	  {/*set all blob/text can be compressed when set BLOB_COMPRESSED=ON*/
-		  type_modifier|=COMPRESSED_BLOB_FLAG;
-	  }
+//	  if(thd->variables.blob_compressed)
+//	  {/*set all blob/text can be compressed when set BLOB_COMPRESSED=ON*/
+//		  type_modifier|=COMPRESSED_BLOB_FLAG;
+//	  }
 	  break;
   default:
 	  if(type_modifier & COMPRESSED_BLOB_FLAG)
