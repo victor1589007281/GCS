@@ -273,7 +273,7 @@ Reads a reference to a BLOB in the MySQL format and compress the blob field
 @return	pointer to BLOB data after compress*/
 UNIV_INTERN
 const byte*
-row_mysql_read_blob_compressed_ref(
+row_mysql_read_blob_ref_and_compress(
 /*====================*/
 	ulint*		len,		/*!< out: BLOB compressed length */
 	const byte*	ref,		/*!< in: BLOB reference in the
@@ -285,13 +285,14 @@ row_mysql_read_blob_compressed_ref(
 	const byte*	data_uncompress;
 	ulint	data_uncompress_len = 0;
 	byte*	data;
-	
-	if(prebuilt->blob_heap_for_compress == NULL)
-		prebuilt->blob_heap_for_compress = mem_heap_create(UNIV_PAGE_SIZE);
 
 	data_uncompress = row_mysql_read_blob_ref(&data_uncompress_len, ref, col_len);
 
+	/* 需要被压缩的情况，二者的差别，在于要不要再分配一些内存 */
+	if(prebuilt->blob_heap_for_compress == NULL)
+		prebuilt->blob_heap_for_compress = mem_heap_create(UNIV_PAGE_SIZE);
 	data = row_blob_compress_alloc(data_uncompress, data_uncompress_len, len, prebuilt);
+	
 	if(!data)
 	{
 		ut_print_timestamp(stderr);
@@ -301,6 +302,7 @@ row_mysql_read_blob_compressed_ref(
 		ut_error;
 	}
 	
+
 	return data;
 }
 
@@ -532,7 +534,7 @@ row_mysql_store_col_in_innobase_format(
 //			dfield_set_org_data(dfield, org_ptr, org_len);
 
 			/*压缩处理*/
-			ptr = row_mysql_read_blob_compressed_ref(&col_len, mysql_data, col_len, prebuilt);
+			ptr = row_mysql_read_blob_ref_and_compress(&col_len, mysql_data, col_len, prebuilt);
 		}
 		
 	}
@@ -4468,31 +4470,30 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 )
 {
 	byte *compbuf;
-	byte head;
 
 	ut_a(len <= 0xFFFFFFFF);
 
-	memset(&head, 0, 1);
-
 	if (len < MIN_BLOB_COMPRESS_LENGTH)
-	{//长度小于MIN_BLOB_COMPRESS_LENGTH，则不压缩：
-		//对于不压缩的属性，同样要增加头部分
-		//blob数据拷贝
-		compbuf = mem_heap_alloc(prebuilt->blob_heap_for_compress, len+1);
-		if(!compbuf)
-			return NULL; //malloc failed
+	{ 
+		//长度小于MIN_BLOB_COMPRESS_LENGTH，则不压缩：
+		//对于不压缩的字段，同样要增加头部分
+		compbuf = (byte*)packet - 1;
+
+		ut_a(compbuf[0] == 0x7B);  /* see in Field_blob::store */
 
 		//增加头部分，记录数据是否被压缩
-		row_blob_compress_head_write(&head, 0, 0, 0);
-		memcpy(compbuf, &head, 1);
-		memcpy(compbuf+1, packet, len);
+		row_blob_compress_head_write(&compbuf[0], 0, 0, 0);
 		*complen=len + 1;
 	}
 	else
 	{//否则，进行压缩处理
 		int res;
 		int n = 0;
+		byte head;
+
 		*complen=  len + len/5 + 12 + 5; // 压缩长度总小于1.2倍原长度+12， 5表示（首字节+最长4字节长度）
+
+		memset(&head, 0, 1);
 
 		compbuf = mem_heap_alloc(prebuilt->blob_heap_for_compress, *complen);
 		if(!compbuf)
@@ -4562,7 +4563,7 @@ row_blob_uncompress(/*函数返回解压后原数据的地址*/
 {//return NULL means failed to uncompress
 	
 	uLongf tmp_complen = 0;
-	const byte* data = NULL;
+	byte* data = NULL;
 	my_bool isCompress = FALSE;
 	ulint data_byte;
 	uint data_len;
@@ -4633,7 +4634,7 @@ void row_blob_compress_head_write(
 }
 
 void row_blob_compress_head_read(
-		byte		*data, 
+		const byte	*data, 
 		my_bool     *isCompress,
 		ulint		*len,
 		int			*algo_type)
