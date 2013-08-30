@@ -7465,7 +7465,7 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
       it is possible that the content needs a character conversion.
     */
     uint32 dummy_offset;
-    if (!String::needs_conversion(length, cs, field_charset, &dummy_offset))
+    if (!String::needs_conversion(length, cs, field_charset, &dummy_offset) && !is_compressed())
     {
       Field_blob::store_length(length);
       bmove(ptr+packlength,(char*) &from,sizeof(char*));

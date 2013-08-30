@@ -4472,14 +4472,24 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 	byte *compbuf;
 
 	ut_a(len <= 0xFFFFFFFF);
+	ut_a(MIN_BLOB_COMPRESS_LENGTH > 0);
 
 	if (len < MIN_BLOB_COMPRESS_LENGTH)
 	{ 
-		//长度小于MIN_BLOB_COMPRESS_LENGTH，则不压缩：
-		//对于不压缩的字段，同样要增加头部分
-		compbuf = (byte*)packet - 1;
-
-		ut_a(compbuf[0] == 0x7B);  /* see in Field_blob::store */
+		if (packet)
+		{
+			//长度小于MIN_BLOB_COMPRESS_LENGTH，则不压缩：
+			//对于不压缩的字段，同样要增加头部分
+			compbuf = (byte*)packet - 1;
+			ut_a(compbuf[0] == 0x7B);  /* see in Field_blob::store */
+		}
+		else
+		{
+			ut_a(len == 0);
+			compbuf = mem_heap_alloc(prebuilt->blob_heap_for_compress, len + 1);
+			if(!compbuf)
+				return NULL;//malloc failed
+		}
 
 		//增加头部分，记录数据是否被压缩
 		row_blob_compress_head_write(&compbuf[0], 0, 0, 0);
