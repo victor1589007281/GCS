@@ -211,7 +211,7 @@ bool mysql_create_frm(THD *thd, const char *file_name,
 		  {
 			  /* 如果表中有blob compressed属性，若存储引擎不支持，则报错 */
 			  my_error(ER_FIELD_CAN_NOT_COMPRESSED_IN_CURRENT_ENGINESS, MYF(0), cur_field->field_name);
-			  goto err;
+			  DBUG_RETURN(1);
 		  }
 	  }
   }
@@ -239,7 +239,7 @@ bool mysql_create_frm(THD *thd, const char *file_name,
 				  if(is_compressed)
 				  {// 是索引键，同时还是blob compressed字段，报错
 					  my_error(ER_FIELD_CAN_NOT_COMPRESSED_AND_INDEX, MYF(0), cur_field->field_name);
-					  goto err;
+					  DBUG_RETURN(1);
 				  }
 			  }
 			  field_i++;

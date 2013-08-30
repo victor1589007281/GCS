@@ -2,245 +2,89 @@
 # Test what happens when a record is inserted or updated so that some
 # columns are stored off-page.
 
---source include/have_innodb.inc
-
-# DEBUG_SYNC must be compiled in.
---source include/have_debug_sync.inc
-
-# Valgrind would complain about memory leaks when we crash on purpose.
---source include/not_valgrind.inc
-# Embedded server does not support crashing
---source include/not_embedded.inc
-# Avoid CrashReporter popup on Mac
---source include/not_crashrep.inc
-
 CREATE TABLE t1 (a INT PRIMARY KEY, b TEXT compressed) ENGINE=InnoDB;
-CREATE TABLE t2 (a INT PRIMARY KEY) ENGINE=InnoDB;
 CREATE TABLE t3 (a INT PRIMARY KEY, b TEXT compressed, c TEXT compressed) ENGINE=InnoDB;
 
 INSERT INTO t1 VALUES (1,REPEAT('a',30000)),(2,REPEAT('b',40000));
-SET DEBUG_SYNC='before_row_upd_extern SIGNAL have_latch WAIT_FOR go1';
 BEGIN;
 # This will not block, because it will not store new BLOBs.
 UPDATE t1 SET a=a+2;
 ROLLBACK;
 BEGIN;
---send
 UPDATE t1 SET b=CONCAT(b,'foo');
 
-connect (con1,localhost,root,,);
-SET DEBUG_SYNC='now WAIT_FOR have_latch';
-
-# this one should block due to the clustered index tree and leaf page latches
---send
 SELECT a, RIGHT(b,20) FROM t1;
 
-connect (con2,localhost,root,,);
 
-# Check that the above SELECT is blocked
-let $wait_condition=
-  select count(*) = 1 from information_schema.processlist
-  where state = 'Sending data' and
-        info = 'SELECT a, RIGHT(b,20) FROM t1';
---source include/wait_condition.inc
-
-SET DEBUG_SYNC='now SIGNAL go1';
-
-connection con1;
-reap;
-connection default;
-reap;
-SET DEBUG='+d,row_ins_extern_checkpoint';
-SET DEBUG_SYNC='before_row_ins_extern_latch SIGNAL rec_not_blob WAIT_FOR crash';
-ROLLBACK;
-BEGIN;
---send
 INSERT INTO t1 VALUES (3,REPEAT('c',50000));
-
-connection con1;
-SET DEBUG_SYNC='now WAIT_FOR rec_not_blob';
-SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-SELECT @@tx_isolation;
 
 # this one should see (3,NULL_BLOB)
 SELECT a, RIGHT(b,20) FROM t1;
 SELECT a FROM t1;
 
-# Request a crash, and restart the server.
-SET DEBUG='+d,crash_commit_before';
---exec echo "restart" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
---error 2013
-INSERT INTO t2 VALUES (42);
-
-disconnect con1;
-disconnect con2;
-connection default;
-# This connection should notice the crash as well.
---error 2013
-reap;
-
-# Write file to make mysql-test-run.pl restart the server
---enable_reconnect
---source include/wait_until_connected_again.inc
---disable_reconnect
 
 CHECK TABLE t1;
 
 INSERT INTO t3 VALUES
        (1,REPEAT('d',7000),REPEAT('e',100)),
        (2,REPEAT('g',7000),REPEAT('h',100));
-SET DEBUG_SYNC='before_row_upd_extern SIGNAL have_latch WAIT_FOR go';
-# This should move column b off-page.
---send
 UPDATE t3 SET c=REPEAT('f',3000) WHERE a=1;
 
-connect (con1,localhost,root,,);
-SET DEBUG_SYNC='now WAIT_FOR have_latch';
-SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-SELECT @@tx_isolation;
-
 # this one should block
--- send
 SELECT a, RIGHT(b,20), RIGHT(c,20) FROM t3;
 
-connect (con2,localhost,root,,);
 
-# Check that the above SELECT is blocked
-let $wait_condition=
-  select count(*) = 1 from information_schema.processlist
-  where state = 'Sending data' and
-        info = 'SELECT a, RIGHT(b,20), RIGHT(c,20) FROM t3';
---source include/wait_condition.inc
 
-SET DEBUG_SYNC='now SIGNAL go';
 
-connection con1;
-reap;
-disconnect con1;
-
-connection default;
-reap;
-
-CHECK TABLE t1,t2,t3;
-
-connection con2;
-BEGIN;
-INSERT INTO t2 VALUES (347);
-connection default;
-
-# The row_upd_extern_checkpoint was removed in Bug#13721257,
-# because the mini-transaction of the B-tree modification would
-# remain open while we are writing the off-page columns and are
-# stuck in the DEBUG_SYNC. A checkpoint involves a flush, which
-# would wait for the buffer-fix to cease.
-SET DEBUG='+d,row_upd_extern_checkpoint';
-SET DEBUG_SYNC='before_row_upd_extern SIGNAL have_latch WAIT_FOR crash';
-# This should move column b off-page.
---send
 UPDATE t3 SET c=REPEAT('i',3000) WHERE a=2;
 
-connection con2;
-SET DEBUG_SYNC='now WAIT_FOR have_latch';
 
-# Check that the above UPDATE is blocked
-SELECT info FROM information_schema.processlist
-WHERE state = 'debug sync point: before_row_upd_extern';
 
-# Request a crash, and restart the server.
-SET DEBUG='+d,crash_commit_before';
---exec echo "restart" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
---error 2013
-COMMIT;
-
-disconnect con2;
-connection default;
-# This connection should notice the crash as well.
---error 2013
-reap;
-
-# Write file to make mysql-test-run.pl restart the server
---enable_reconnect
---source include/wait_until_connected_again.inc
---disable_reconnect
-
-CHECK TABLE t1,t2,t3;
+CHECK TABLE t1,t3;
 SELECT a, RIGHT(b,20), RIGHT(c,20) FROM t3;
 SELECT a FROM t3;
 
-connect (con2,localhost,root,,);
-BEGIN;
-INSERT INTO t2 VALUES (33101);
-connection default;
 
-# The row_upd_extern_checkpoint was removed in Bug#13721257,
-# because the mini-transaction of the B-tree modification would
-# remain open while we are writing the off-page columns and are
-# stuck in the DEBUG_SYNC. A checkpoint involves a flush, which
-# would wait for the buffer-fix to cease.
-SET DEBUG='+d,row_upd_extern_checkpoint';
-SET DEBUG_SYNC='after_row_upd_extern SIGNAL have_latch WAIT_FOR crash';
-# This should move column b off-page.
---send
 UPDATE t3 SET c=REPEAT('j',3000) WHERE a=2;
 
-connection con2;
-SET DEBUG_SYNC='now WAIT_FOR have_latch';
-
-# Check that the above UPDATE is blocked
-SELECT info FROM information_schema.processlist
-WHERE state = 'debug sync point: after_row_upd_extern';
-
-# Request a crash, and restart the server.
-SET DEBUG='+d,crash_commit_before';
---exec echo "restart" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
---error 2013
-COMMIT;
-
-disconnect con2;
-connection default;
-# This connection should notice the crash as well.
---error 2013
-reap;
-
-# Write file to make mysql-test-run.pl restart the server
---enable_reconnect
---source include/wait_until_connected_again.inc
---disable_reconnect
-
-CHECK TABLE t1,t2,t3;
 SELECT a, RIGHT(b,20), RIGHT(c,20) FROM t3;
 SELECT a FROM t3;
+DROP TABLE t1,t3;
 
-SELECT * FROM t2;
-
-DROP TABLE t1,t2,t3;
+# test for blob compressed
 
 CREATE TABLE t1 (a INT PRIMARY KEY, b TEXT compressed, c blob compressed) ENGINE=InnoDB;
 CREATE TABLE t2 like t1;
-CREATE TABLE t3 (a INT PRIMARY KEY, b TEXT compressed, c TEXT compressed) ENGINE=MyIsam;
+
+-- error ER_FIELD_CAN_NOT_COMPRESSED_IN_CURRENT_ENGINESS,1729
+create table t3 (a int primary key, b text compressed) engine=MyIsam;
+
+-- error ER_FIELD_CAN_NOT_COMPRESSED_AND_INDEX,1728
 create index index_t1_b on t1(b(10));
 begin;
 insert into t1 values(1,repeat('b',10),repeat('c',3000));
-select * from t1;
+select a,length(b),length(c) from t1;
 rollback;
 alter table t2 add column d blob compressed;
-show create table like t2;
+show create table t2;
 insert into t1 values(1,repeat('b',10),repeat('c',3000));
 insert into t1 values(2,repeat('d',10),repeat('e',3000));
-select * from t1;
+select a,length(b),length(c) from t1;
 update t1 set b='b',c='c';
-select * from t2;
-create temporary table t3(a blob compressed);
+select * from t1;
+create temporary table t3(a blob compressed) ENGINE=InnoDB;
 insert into t3 values(repeat('a',3000));
 insert into t3 values('');
-select * from t3;
+select length(a) from t3;
+
+-- error ER_BLOB_FIELD_IN_PART_FUNC_ERROR,1502
 CREATE TABLE employees (
     id INT NOT NULL,
     name blob compressed
-)
+)ENGINE=InnoDB
 PARTITION BY RANGE (name) (
     PARTITION p0 VALUES LESS THAN (6),
     PARTITION p1 VALUES LESS THAN (11)
 );
 
-DROP TABLE t1,t2,t3;
+DROP TABLE t1,t2;
