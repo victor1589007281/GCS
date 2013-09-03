@@ -110,7 +110,7 @@ Reads a reference to a BLOB in the MySQL format and compress the blob field
 @return	pointer to BLOB data after compress*/
 UNIV_INTERN
 const byte*
-row_mysql_read_blob_compressed_ref(
+row_mysql_read_blob_ref_and_compress(
 /*====================*/
 	ulint*		len,		/*!< out: BLOB length */
 	const byte*	ref,		/*!< in: BLOB reference in the
@@ -558,7 +558,7 @@ Innobase and MySQL. */
 
 void
 row_blob_compress_head_read(
-			byte		*data, 
+			const byte  *data, 
 			my_bool		*isCompress,
 			ulint		*len,
 			int			*algo_type);
@@ -856,7 +856,7 @@ struct row_prebuilt_struct {
 #define ROW_READ_TRY_SEMI_CONSISTENT	1
 #define ROW_READ_DID_SEMI_CONSISTENT	2
 
-#define MIN_BLOB_COMPRESS_LENGTH 3
+#define MIN_BLOB_COMPRESS_LENGTH 1024 
 
 #ifndef UNIV_NONINL
 #include "row0mysql.ic"

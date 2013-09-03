@@ -7438,6 +7438,8 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE;
   uint copy_length, new_length;
+  uint alloc_length;
+  char *ptr_ex;
   const char *well_formed_error_pos;
   const char *cannot_convert_error_pos;
   const char *from_end_pos, *tmp;
@@ -7463,7 +7465,7 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
       it is possible that the content needs a character conversion.
     */
     uint32 dummy_offset;
-    if (!String::needs_conversion(length, cs, field_charset, &dummy_offset))
+    if (!String::needs_conversion(length, cs, field_charset, &dummy_offset) && !is_compressed())
     {
       Field_blob::store_length(length);
       bmove(ptr+packlength,(char*) &from,sizeof(char*));
@@ -7475,17 +7477,29 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
   }
 
   new_length= min(max_data_length(), field_charset->mbmaxlen * length);
-  if (value.alloc(new_length))
+  /* 当new_length用于blob/text有 compressed属性时，为了压缩时不重复分配内存，
+  让new_length=new_length+1；多分配一个字节的head信息。 */
+  alloc_length =  is_compressed() ? (new_length + 1) : new_length;
+
+  if (value.alloc(alloc_length))
     goto oom_error;
 
+  ptr_ex = (char*)value.ptr(); 
+  if(is_compressed())
+  {
+	  /* magic number */
+	  *ptr_ex = 0x7B;
+	  ptr_ex +=1;
+  }
 
   if (f_is_hex_escape(flags))
   {
+	 
     copy_length= my_copy_with_hex_escaping(field_charset,
-                                           (char*) value.ptr(), new_length,
+                                           (char*) ptr_ex, new_length,
                                             from, length);
     Field_blob::store_length(copy_length);
-    tmp= value.ptr();
+    tmp= ptr_ex;
     bmove(ptr + packlength, (uchar*) &tmp, sizeof(char*));
     return 0;
   }
@@ -7494,8 +7508,9 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
     is never used to limit the length of the data. The cut of long data
     is done with the new_length value.
   */
+  /* 无compressed属性的blob/text字段处理 */
   copy_length= well_formed_copy_nchars(field_charset,
-                                       (char*) value.ptr(), new_length,
+                                       (char*) ptr_ex, new_length,
                                        cs, from, length,
                                        length,
                                        &well_formed_error_pos,
@@ -7503,9 +7518,9 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
                                        &from_end_pos);
 
   Field_blob::store_length(copy_length);
-  tmp= value.ptr();
+  tmp= ptr_ex;
   bmove(ptr+packlength,(uchar*) &tmp,sizeof(char*));
-
+  
   if (check_string_copy_error(this, well_formed_error_pos,
                               cannot_convert_error_pos, from + length, cs))
     return 2;
