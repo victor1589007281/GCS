@@ -1091,6 +1091,20 @@ innobase_mysql_print_thd(
 	putc('\n', f);
 }
 
+extern "C" UNIV_INTERN
+int
+innobase_get_current_sql_compressed_flag()
+{
+	THD* thd;
+
+	thd = current_thd;
+
+	if (!thd)
+		return 0;
+
+	return thd_get_sql_compressed_flag(thd);
+}
+
 /******************************************************************//**
 Get the variable length bounds of the given character set. */
 extern "C" UNIV_INTERN
@@ -5151,7 +5165,7 @@ ha_innobase::write_row(
 	uchar*	record)	/*!< in: a row in MySQL format */
 {
 	ulint		error = 0;
-        int             error_result= 0;
+    int             error_result= 0;
 	ibool		auto_inc_used= FALSE;
 	ulint		sql_command;
 	trx_t*		trx = thd_to_trx(user_thd);

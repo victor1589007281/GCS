@@ -2722,6 +2722,7 @@ row_sel_store_mysql_rec(
 	mem_heap_t*	extern_field_heap	= NULL;
 	mem_heap_t*	heap;
 	ulint		i;
+	int is_sql_compressed_flag =  innobase_get_current_sql_compressed_flag(); /* 用于导入导出优化*/
 
 	ut_ad(prebuilt->mysql_template);
 	ut_ad(prebuilt->default_rec);
@@ -2827,10 +2828,28 @@ blob_uncompress:
 						UNIV_PAGE_SIZE);
 				}
                 //解压的话，在这里面改变data所指的值
-				if(dict_col_is_compressed(&prebuilt->table->cols[pos_in_mysql]))
-				{//blob字段有压缩属性，处理压缩数据
-						data = row_blob_uncompress(data, len, &len, prebuilt);
-						ut_a(data!=NULL);
+				ut_a(is_sql_compressed_flag ==0 || is_sql_compressed_flag==1);
+				if(dict_col_is_compressed(&prebuilt->table->cols[pos_in_mysql]) && 
+					(!is_sql_compressed_flag || !dict_col_is_binary_blob(&prebuilt->table->cols[pos_in_mysql])))
+				{
+					//blob字段有压缩属性，处理压缩数据
+					byte* org_data = data;
+					ulint org_len = len;
+						
+					data = row_blob_uncompress(data, len, &len, prebuilt);
+					if (!data) {
+					/* 如果解压失败，一般会由韭正常使用sql_compressed的操作导致
+					    data则直接读取原数据
+					*/
+						data = memcpy(mem_heap_alloc(
+							prebuilt->blob_heap, org_len),
+							org_data, org_len);
+						len = org_len;
+
+						ut_print_timestamp(stderr);
+						fprintf(stderr, " [InnoDB compress ERROR] BLOB UNCOMPRESS FAILED, table_name : %s, SQL_COMPRESSED %s\n", 
+									prebuilt->table->name, is_sql_compressed_flag ? "TRUE" : "FALSE");
+					}
 				}
 				else
 				{//blob字段没压缩发生，即普通blob字段，按原方式处理

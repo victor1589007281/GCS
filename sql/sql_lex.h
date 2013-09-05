@@ -2525,6 +2525,8 @@ struct LEX: public Query_tables_list
     uint keyword_delayed_end_offset;
   };
 
+  bool is_sql_compressed; /* used for do not uncompress blob compressed data when select*/
+
   /**
     During name resolution search only in the table list given by 
     Name_resolution_context::first_name_resolution_table and

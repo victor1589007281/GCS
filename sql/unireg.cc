@@ -164,7 +164,7 @@ bool mysql_create_frm(THD *thd, const char *file_name,
 			  /* 但是，若该blob字段是索引，也不应该默认加上compressed特性*/
 			  my_bool is_index = FALSE;
 
-			  for (int key_i = 0; key_i < keys; key_i++)
+			  for (uint key_i = 0; key_i < keys; key_i++)
 			  {
 				  uint key_parts_i = 0;
 				  uint key_parts = key_info[key_i].key_parts;

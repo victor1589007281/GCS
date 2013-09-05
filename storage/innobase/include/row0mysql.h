@@ -456,6 +456,14 @@ row_get_background_drop_list_len_low(void);
 /*********************************************************************//**
 Truncates a table for MySQL.
 @return	error code or DB_SUCCESS */
+
+/* 只是一个声明，实现在ha_innodb.cc中，用于获取thd中的is_sql_compressed
+   这个值用于控制导入导出优化
+*/
+UNIV_INTERN
+int
+innobase_get_current_sql_compressed_flag();
+
 UNIV_INTERN
 int
 row_truncate_table_for_mysql(
@@ -555,10 +563,16 @@ row format which is presented to the table handler in ha_innobase.
 This template struct is used to speed up row transformations between
 Innobase and MySQL. */
 
+ibool
+row_blob_compress_is_valid(
+	const byte	*ptr,
+	ulint	    col_len
+);
 
-void
+int
 row_blob_compress_head_read(
 			const byte  *data, 
+			ulint		data_len,
 			my_bool		*isCompress,
 			ulint		*len,
 			int			*algo_type);
@@ -585,8 +599,6 @@ row_blob_uncompress(/*函数返回解压后原数据的地址*/
 			ulint				len,         /*待解压的内容及head信息的总长度*/
 			ulint				*complen,	 /*解缩后的长度*/
 			row_prebuilt_t		*prebuilt);	 /*heap相关*/
-
-
 
 typedef struct mysql_row_templ_struct mysql_row_templ_t;
 struct mysql_row_templ_struct {

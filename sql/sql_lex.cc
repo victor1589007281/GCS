@@ -420,7 +420,7 @@ void lex_start(THD *thd)
   lex->reset_query_tables_list(FALSE);
   lex->expr_allows_subselect= TRUE;
   lex->use_only_table_context= FALSE;
-
+  lex->is_sql_compressed= FALSE;
   lex->name.str= 0;
   lex->name.length= 0;
   lex->event_parse_data= NULL;
