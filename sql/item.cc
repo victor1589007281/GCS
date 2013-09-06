@@ -1430,7 +1430,26 @@ bool Item_name_const::fix_fields(THD *thd, Item **ref)
     In 5.0 this work fine because
   */
   //collation.set(value_item->collation.collation,DERIVATION_IMPLICIT);
-  collation.set(value_item->collation.collation, value_item->collation.derivation);
+  if(value_item->collation.derivation > DERIVATION_IMPLICIT){
+    collation.set(value_item->collation.collation, value_item->collation.derivation);
+  }else if(value_item->collation.derivation == DERIVATION_EXPLICIT && 
+      value_item->collation.collation->number == 8 ){ /* latin1 */
+          /* 
+          for support this case,we set the derivation of name_const(latin1) as COERCIBLE,maybe this sql will go err when repl
+
+            mysql> set names utf8;
+            mysql> select concat('中国',name_const('a',_latin1'aa' collate latin1_swedish_ci));
+            +----------------------------------------------------------------------+
+            | concat('中国',name_const('a',_latin1'aa' collate latin1_swedish_ci)) |
+            +----------------------------------------------------------------------+
+            | 中国aa                                                               |
+            +----------------------------------------------------------------------+
+            1 row in set (4.18 sec)
+          */
+          collation.set(value_item->collation.collation,DERIVATION_COERCIBLE);
+  }else{      
+    collation.set(value_item->collation.collation,DERIVATION_IMPLICIT);
+  }
 
   max_length= value_item->max_length;
   decimals= value_item->decimals;
