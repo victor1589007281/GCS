@@ -185,6 +185,18 @@ dict_col_is_compressed(
     return (col->prtype & DATA_IS_BLOB_COMPRESSED) ? TRUE : FALSE;
 }
 
+UNIV_INLINE
+ibool
+dict_col_is_binary_blob(
+	const dict_col_t* col)
+{
+	if(col->mtype == DATA_BLOB && (col->prtype & DATA_BINARY_TYPE))
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
 /*********************************************************************//**
 Gets the column number.
 @return	col->ind, table column position (starting from 0) */

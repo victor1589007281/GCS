@@ -1291,6 +1291,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  SQL_BIG_RESULT
 %token  SQL_BUFFER_RESULT
 %token  SQL_CACHE_SYM
+%token  SQL_COMPRESSED_SYM
 %token  SQL_CALC_FOUND_ROWS
 %token  SQL_NO_CACHE_SYM
 %token  SQL_SMALL_RESULT
@@ -7440,6 +7441,27 @@ select_option:
               Lex->select_lex.sql_cache= SELECT_LEX::SQL_CACHE;
             }
           }
+        | SQL_COMPRESSED_SYM
+         {
+             /* 
+              Allow this flag only on the first top-level SELECT statement, if
+              SQL_CACHE wasn't specified, and only once per query.
+             */
+            if (Lex->current_select != &Lex->select_lex)
+            {
+              my_error(ER_CANT_USE_OPTION_HERE, MYF(0), "SQL_COMPRESSED");
+              MYSQL_YYABORT;
+            }   
+            else if (Lex->select_lex.sql_cache != SELECT_LEX::SQL_NO_CACHE)
+            {
+              my_error(ER_CANT_USE_OPTION_HERE, MYF(0), "SQL_COMPRESSED");
+              MYSQL_YYABORT;
+            }
+            else
+            {
+              Lex->is_sql_compressed = TRUE;
+            }
+         }
         ;
 
 select_lock_type:
@@ -10527,6 +10549,10 @@ insert_lock_option:
           $$= TL_WRITE_DELAYED;
         }
         | HIGH_PRIORITY { $$= TL_WRITE; }
+        |  SQL_COMPRESSED_SYM
+         {
+              Lex->is_sql_compressed = TRUE;
+         }
         ;
 
 replace_lock_option:

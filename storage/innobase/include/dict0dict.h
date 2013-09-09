@@ -212,6 +212,12 @@ ibool
 dict_col_is_compressed(
 /*============*/
 	const dict_col_t*	col);	/*!< in: column */
+
+UNIV_INLINE
+ibool
+dict_col_is_binary_blob(
+	const dict_col_t* col);
+
 /*********************************************************************//**
 Gets the column number.
 @return	col->ind, table column position (starting from 0) */
