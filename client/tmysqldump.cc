@@ -47,6 +47,7 @@
 #include <m_ctype.h>
 #include <hash.h>
 #include <stdarg.h>
+#include <signal.h>
 
 #include "client_priv.h"
 #include "mysql.h"
@@ -140,7 +141,7 @@ static char  *opt_password=0,*current_user=0,
 static char **defaults_argv= 0;
 static char compatible_mode_normal_str[255];
 /* Server supports character_set_results session variable? */
-static my_bool server_supports_switching_charsets= TRUE;
+static my_bool server_supports_switching_charsets= TRUE ,interrupted_query = 0;
 static ulong opt_compatible_mode= 0;
 #define MYSQL_OPT_MASTER_DATA_EFFECTIVE_SQL 1
 #define MYSQL_OPT_MASTER_DATA_COMMENTED_SQL 2
@@ -438,7 +439,7 @@ static struct my_option my_long_options[] =
    0, 0},
   {"flush-wait-timeout", OPT_FLUSH_WAIT_TIMEOUT,
    "when set to > 0, it means timeout for flush tables and flush tables with read lock. "
-   "(valid only >= MySQL 5.5.3)",
+   "(valid for all mysql version: 4.0 kill thread,5.0+ kill query)",
    &opt_flush_wait_timeout, &opt_flush_wait_timeout, 0,
    GET_UINT, OPT_ARG, 0, 0, 31536000, 0, 0, 0},
   {"force", 'f', "Continue even if we get an SQL error.",
@@ -1254,6 +1255,105 @@ static int mysql_query_with_error_report(MYSQL *mysql_con, MYSQL_RES **res,
   }
   return 0;
 }
+
+/*
+  This function handles sig_timeout calls
+  If query is in process, kill query
+  no query in process, terminate like previous behavior
+ */
+sig_handler handle_sig_timeout(int sig)
+{
+  char kill_buffer[40];
+  MYSQL *kill_mysql= NULL;
+  int  ret = 0;
+
+  kill_mysql= mysql_init(kill_mysql);
+  if (!mysql_real_connect(kill_mysql,current_host, current_user, opt_password,
+                          "", opt_mysql_port, opt_mysql_unix_port,0))
+  {
+    fprintf(stderr, "%s: Error: cannot connect to server to kill query, giving up ...\n", my_progname);
+    fflush(stderr);
+    goto err;
+  }
+
+  /* terminate if no query being executed, or we already tried interrupting */
+  if (interrupted_query == 2)
+  {
+      fprintf(stderr, "no query being executed, or we already tried interrupting -- exit!\n");
+      fflush(stderr);
+      goto err;
+  }
+
+  interrupted_query++;
+
+  /* mysqld < 5 does not understand KILL QUERY, skip to KILL CONNECTION */
+  if ((interrupted_query == 1) && (mysql_get_server_version(&mysql_connection) < 50000))
+    interrupted_query= 2;
+
+  /* kill_buffer is always big enough because max length of %lu is 15 */
+  sprintf(kill_buffer, "KILL %s%lu",
+          (interrupted_query == 1) ? "QUERY " : "",
+          mysql_thread_id(&mysql_connection));
+  fprintf(stderr, "kill query -- sending \"%s\" to server ...\n", kill_buffer);
+  ret=mysql_real_query(kill_mysql, kill_buffer, (uint) strlen(kill_buffer));
+  mysql_close(kill_mysql);
+  fprintf(stderr, "kill query return: %d.\n",ret);
+
+  return;
+
+err:
+  return;
+}
+
+/*
+  Sends a query to server, optionally reads result, prints error message if 
+	some, and print error when query timeout,temporay support linux only!
+
+  SYNOPSIS
+    mysql_query_with_timeout_report()
+    mysql_con       connection to use
+    res             if non zero, result will be put there with
+                    mysql_store_result()
+    query           query to send to server
+	timeout			timeout for flush table operation
+
+  RETURN VALUES
+    0               query sending and (if res!=0) result reading went ok
+    1               error
+*/
+
+static int mysql_query_with_timeout_report(MYSQL *mysql_con, MYSQL_RES **res,
+                                         const char *query, uint timeout)
+{
+  int ret = 0;;
+
+  /* set the query timeout for query, if timeout, send kill query to stop the query and return */
+  if( timeout > 0 ){
+#ifndef __WIN__
+		  alarm(timeout);
+#endif
+  }
+
+  /* run the query, if timeout would trigger the  handle_sig_timeout operation */
+  ret = mysql_query(mysql_con, query);
+
+  if( timeout > 0 ){
+#ifndef __WIN__
+		  alarm(0);
+#endif
+  }
+
+  if ( ret || 
+		(res && !((*res)= mysql_store_result(mysql_con))))
+  {
+    maybe_die(EX_MYSQLERR, "Error: Couldn't execute '%s': %s (%d)",
+            query, mysql_error(mysql_con), mysql_errno(mysql_con));
+    return 1;
+  }
+
+  return 0;
+}
+
 
 
 static int fetch_db_collation(const char *db_name,
@@ -5411,20 +5511,20 @@ static int do_flush_tables_read_lock(MYSQL *mysql_con)
     update starts between the two FLUSHes, we have that bad stall.
   */
   /* flush tables 3 times */
-  if( mysql_query_with_error_report(mysql_con, 0, 
+  if( mysql_query_with_timeout_report(mysql_con, 0, 
                                     ((opt_master_data != 0) ? 
                                         "FLUSH /*!40101 LOCAL */ TABLES" : 
-                                        "FLUSH TABLES")) ||
-     mysql_query_with_error_report(mysql_con, 0, 
+                                        "FLUSH TABLES"), opt_flush_wait_timeout) ||
+     mysql_query_with_timeout_report(mysql_con, 0, 
                                     ((opt_master_data != 0) ? 
                                         "FLUSH /*!40101 LOCAL */ TABLES" : 
-                                        "FLUSH TABLES")) ||
-     mysql_query_with_error_report(mysql_con, 0, 
+                                        "FLUSH TABLES"), opt_flush_wait_timeout) ||
+     mysql_query_with_timeout_report(mysql_con, 0, 
                                     ((opt_master_data != 0) ? 
                                         "FLUSH /*!40101 LOCAL */ TABLES" : 
-                                        "FLUSH TABLES")) ||
-      mysql_query_with_error_report(mysql_con, 0,
-                                    "FLUSH TABLES WITH READ LOCK") )
+                                        "FLUSH TABLES"), opt_flush_wait_timeout) ||
+      mysql_query_with_timeout_report(mysql_con, 0,
+                                    "FLUSH TABLES WITH READ LOCK", opt_flush_wait_timeout) )
     return 1;
 
   if (timeout_flag && 
@@ -6135,6 +6235,11 @@ int main(int argc, char **argv)
     free_resources();
     exit(EX_MYSQLERR);
   }
+
+#ifndef __WIN__
+  signal(SIGALRM, handle_sig_timeout);
+#endif
+
   if (!path && !gzpath)
     write_header(md_result_file, *argv);
   if(gzpath)
