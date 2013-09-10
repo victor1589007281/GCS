@@ -6087,7 +6087,7 @@ int main(int argc, char **argv)
 
   if(opt_replace_into && !opt_disable_compress_optimization)
   {
-	  fprintf(stderr, "opt_replace_into must ", tmp_path);
+	  fprintf(stderr, "opt_replace_into must be use with opt_disable_compress_optimization.\n");
 	  exit(1);
   }
 
