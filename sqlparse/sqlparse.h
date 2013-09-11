@@ -151,6 +151,9 @@ struct parse_result_audit {
 	/** database name **/
 	int blob_text_count;
 	/*records the number of blob/text fields when create/alter table*/
+
+	int table_without_primarykey;  /* 置1表示建表没有主键 */
+	int create_table_not_innodb;   /* 置1表示建表指定了非innodb存储引擎 */
 	
 	unsigned short n_tables_alloced;
 	unsigned short n_tables;

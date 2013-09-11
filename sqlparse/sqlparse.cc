@@ -678,6 +678,7 @@ query_parse_audit_tsqlparse(
 	Create_field *cur_field;
 	uint blob_text_count;
 
+
     thd = (THD*)pra->thd_org;
 	DBUG_ASSERT(pra->n_tables_alloced > 0 && thd);
 
@@ -711,6 +712,10 @@ query_parse_audit_tsqlparse(
     pra->query_type = lex->sql_command;
 	list_field = lex->alter_info.create_list;
 	it_field = lex->alter_info.create_list;
+
+	List_iterator<Key> key_iterator(lex->alter_info.key_list);
+	Key *key;
+	
 
 	switch (lex->sql_command)
     {
@@ -766,30 +771,66 @@ query_parse_audit_tsqlparse(
 		}
 	case SQLCOM_CREATE_TABLE:
 	case SQLCOM_ALTER_TABLE:
-			if(list_field.elements >= 10)
+
+		/* 建表语句中，显示指定了非innodb的存储引擎，告警 */
+		if(lex->create_info.db_type)
+		{
+			/* 指针不为空，表示有显示指定存储引擎*/
+			if(lex->create_info.db_type->db_type != DB_TYPE_INNODB)
 			{
-				blob_text_count = 0;
-				while(!!(cur_field = it_field++))
+				pra->result_type = 1;
+				pra->create_table_not_innodb = 1;
+			}
+		}
+
+
+		/* 建表不带主键告警 */
+		key = key_iterator++;
+		if(key == NULL)
+		{
+			/* 没有索引，显然没有主键*/
+			pra->result_type = 0;
+			pra->table_without_primarykey = 0;
+		}
+		while (key)
+		{
+			/* 建表不带主键 */
+			pra->result_type = 1;
+			pra->table_without_primarykey = 1;
+			if(key->type == Key::PRIMARY)
+			{
+				pra->result_type = 0;
+				pra->table_without_primarykey = 0;
+			}
+			key = key_iterator++;
+		}
+
+
+		/* 建表中，blob字段过多的告警 */
+		if(list_field.elements >= 10)
+		{
+			blob_text_count = 0;
+			while(!!(cur_field = it_field++))
+			{
+				switch(cur_field->sql_type)
 				{
-					switch(cur_field->sql_type)
-					{
-					case MYSQL_TYPE_BLOB:
-					case MYSQL_TYPE_TINY_BLOB:
-					case MYSQL_TYPE_MEDIUM_BLOB:
-					case MYSQL_TYPE_LONG_BLOB:
-						blob_text_count++;
-						break;
-					default:
-						break;
-					}
-				}
-				if(blob_text_count >= 10)
-				{//have more than 10 blob/text field
-					pra->result_type = 1;
-					pra->blob_text_count = blob_text_count;
+				case MYSQL_TYPE_BLOB:
+				case MYSQL_TYPE_TINY_BLOB:
+				case MYSQL_TYPE_MEDIUM_BLOB:
+				case MYSQL_TYPE_LONG_BLOB:
+					blob_text_count++;
+					break;
+				default:
+					break;
 				}
 			}
-			break;
+			if(blob_text_count >= 10)
+			{//have more than 10 blob/text field
+				pra->result_type = 1;
+				pra->blob_text_count = blob_text_count;
+			}
+		}
+		break;
 	case SQLCOM_DROP_INDEX:
 	case SQLCOM_DROP_FUNCTION:
 	case SQLCOM_DROP_USER:
@@ -800,7 +841,7 @@ query_parse_audit_tsqlparse(
 	case SQLCOM_DELETE_MULTI:
 	case SQLCOM_UPDATE_MULTI:
     default:
-			break;
+		break;
     }
 
 	if (pra->result_type != 0)
