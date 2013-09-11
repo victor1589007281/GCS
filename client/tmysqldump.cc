@@ -1011,9 +1011,6 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
     opt_protocol= find_type_or_exit(argument, &sql_protocol_typelib,
                                     opt->name);
     break;
-  case (int) OPT_DISABLE_COMPRESS_OPTIMIZATION:
-	  opt_disable_compress_optimization = 1;
-	  break;
   }
   return 0;
 }
