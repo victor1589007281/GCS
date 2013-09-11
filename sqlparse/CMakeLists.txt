@@ -51,7 +51,7 @@ SET(SQL_PARSE_SOURCE sqlparse.cc)
 
 ADD_CONVENIENCE_LIBRARY(sqlparse_base ${SQL_PARSE_SOURCE})
 DTRACE_INSTRUMENT(sqlparse_base)
-#ADD_DEPENDENCIES(sqlparse_base mysqlserver)
+ADD_DEPENDENCIES(sqlparse_base mysqlserver)
 ############
 
 
