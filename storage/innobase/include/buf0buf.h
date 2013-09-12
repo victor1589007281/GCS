@@ -1852,7 +1852,12 @@ Use these instead of accessing buf_pool->mutex directly. */
 	mutex_exit(&b->flush_list_mutex);	\
 } while (0)
 
-
+UNIV_INTERN
+buf_block_t*
+buf_page_from_array(
+/*================*/
+	buf_pool_t*	buf_pool,
+	ulint		n_block);
 
 #if defined UNIV_DEBUG || defined UNIV_BUF_DEBUG
 /** Forbid the release of the buffer pool mutex. */

@@ -12101,7 +12101,22 @@ i_s_innodb_lock_waits,
 i_s_innodb_cmp,
 i_s_innodb_cmp_reset,
 i_s_innodb_cmpmem,
-i_s_innodb_cmpmem_reset
+i_s_innodb_cmpmem_reset,
+i_s_innodb_sys_tables,      /* add from percona */
+i_s_innodb_sys_tablestats,
+i_s_innodb_sys_indexes,
+i_s_innodb_sys_columns,
+i_s_innodb_sys_fields,
+i_s_innodb_sys_foreign,
+i_s_innodb_sys_foreign_cols,
+//i_s_innodb_sys_stats,
+i_s_innodb_rseg,
+i_s_innodb_table_stats,
+i_s_innodb_index_stats
+//i_s_innodb_buffer_pool_pages,
+//i_s_innodb_buffer_pool_pages_index,
+//i_s_innodb_buffer_pool_pages_blob,
+//i_s_innodb_admin_command
 mysql_declare_plugin_end;
 
 /** @brief Initialize the default value of innodb_commit_concurrency.
