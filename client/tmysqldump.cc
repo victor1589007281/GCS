@@ -3775,7 +3775,7 @@ static void dump_table(char *table, char *db)
                   "\n--\n-- Dumping data for table %s\n--\n",
                   result_table);
     if(opt_enable_compress_optimization && is_blob_compress_in_table)
-		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!91004 SQL_COMPRESSED */ * FROM ");
+		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
 	else
 		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
     dynstr_append_checked(&query_string, result_table);
@@ -4102,7 +4102,7 @@ static void dump_table(char *table, char *db)
                   "\n--\n-- Dumping data for table %s\n--\n",
                   result_table);
     if(opt_enable_compress_optimization && is_blob_compress_in_table)
-	    dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!91004 SQL_COMPRESSED */ * FROM ");
+	    dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
 	else
 		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
     dynstr_append_checked(&query_string, result_table);
@@ -6222,13 +6222,13 @@ int main(int argc, char **argv)
     sprintf(file_extend, ".BEGIN.sql.gz");
     if(!(dump_begin_file = my_open_zip(fn_format(filename, "DUMP", tmp_path, file_extend, 4))))
     {
-	fprintf(stderr, "Creat %s failed\n", filename);
+	fprintf(stderr, "Create %s failed\n", filename);
 	exit(1);
     }
     sprintf(meta_path, "%s/META", tmp_path);
     if(!(META = my_fopen(meta_path, O_WRONLY, MYF(MY_WME))))
     {
-	fprintf(stderr, "Creat META failed\n");
+	fprintf(stderr, "Create META failed\n");
 	exit(1);
     }
     global_buffer = (char*)malloc(sizeof(char)*GBUFF);
@@ -7506,6 +7506,13 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
     num_fields= mysql_num_rows(result);
     mysql_free_result(result);
   }
+  else
+  {
+     verbose_msg("%s: Warning: Can't set SQL_QUOTE_SHOW_CREATE option (%s)\n",
+		  my_progname, mysql_error(mysql));
+     exit(1);
+  }
+  
   
   if (complete_insert)
   {
