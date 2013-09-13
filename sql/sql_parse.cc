@@ -88,6 +88,7 @@
 #include "sp_cache.h"
 #include "events.h"
 #include "sql_trigger.h"
+#include "query_response_time.h"
 #include "transaction.h"
 #include "sql_audit.h"
 #include "sql_prepare.h"
@@ -1450,6 +1451,15 @@ void log_slow_statement(THD *thd)
   if (unlikely(thd->in_sub_stmt))
     DBUG_VOID_RETURN;                           // Don't set time for sub stmt
 
+
+#ifdef HAVE_RESPONSE_TIME_DISTRIBUTION
+  if (opt_query_response_time_stats)
+  {
+    if (thd->utime_after_lock > 0)
+      query_response_time_collect(thd->current_utime() - thd->utime_after_lock);
+  }
+#endif
+
   /*
     Do not log administrative statements unless the appropriate option is
     set.
@@ -1585,6 +1595,7 @@ int prepare_schema_table(THD *thd, LEX *lex, Table_ident *table_ident,
   case SCH_PROCEDURES:
   case SCH_CHARSETS:
   case SCH_ENGINES:
+  case SCH_QUERY_RESPONSE_TIME:
   case SCH_COLLATIONS:
   case SCH_COLLATION_CHARACTER_SET_APPLICABILITY:
   case SCH_USER_PRIVILEGES:
@@ -5714,10 +5725,6 @@ bool add_field_to_list(THD *thd, LEX_STRING *field_name, enum_field_types type,
   case MYSQL_TYPE_MEDIUM_BLOB:
   case MYSQL_TYPE_LONG_BLOB:
   case MYSQL_TYPE_BLOB:
-//	  if(thd->variables.blob_compressed)
-//	  {/*set all blob/text can be compressed when set BLOB_COMPRESSED=ON*/
-//		  type_modifier|=COMPRESSED_BLOB_FLAG;
-//	  }
 	  break;
   default:
 	  if(type_modifier & COMPRESSED_BLOB_FLAG)

@@ -50,6 +50,7 @@
 #include "event_data_objects.h"
 #endif
 #include <my_dir.h>
+#include "query_response_time.h"
 #include "lock.h"                           // MYSQL_OPEN_IGNORE_FLUSH
 #include "debug_sync.h"
 #include "datadict.h"   // dd_frm_type()
@@ -7666,6 +7667,14 @@ ST_FIELD_INFO tablespaces_fields_info[]=
 
 */
 
+ST_FIELD_INFO query_response_time_fields_info[] =
+{
+    {"TIME",  QRT_TIME_STRING_LENGTH,      MYSQL_TYPE_STRING,  0, 0,            "Time", SKIP_OPEN_TABLE },
+    {"COUNT", MY_INT32_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONG, 0, MY_I_S_UNSIGNED, "Count", SKIP_OPEN_TABLE },
+    {"TOTAL",  QRT_TOTAL_STRING_LENGTH,     MYSQL_TYPE_STRING,  0, 0,            "Total", SKIP_OPEN_TABLE },
+    {0,       0,                           MYSQL_TYPE_STRING,  0, 0,             0, SKIP_OPEN_TABLE }
+};
+
 ST_SCHEMA_TABLE schema_tables[]=
 {
   {"CHARACTER_SETS", charsets_fields_info, create_schema_table, 
@@ -7716,6 +7725,13 @@ ST_SCHEMA_TABLE schema_tables[]=
    1, 9, 0, OPTIMIZE_I_S_TABLE|OPEN_TABLE_ONLY},
   {"ROUTINES", proc_fields_info, create_schema_table, 
    fill_schema_proc, make_proc_old_format, 0, -1, -1, 0, 0},
+#ifdef HAVE_RESPONSE_TIME_DISTRIBUTION
+  {"QUERY_RESPONSE_TIME", query_response_time_fields_info, create_schema_table, 
+  query_response_time_fill, make_old_format, 0, -1, -1, 0, 0},
+#else 
+  {"QUERY_RESPONSE_TIME", query_response_time_fields_info, create_schema_table, 
+  0, make_old_format, 0, -1, -1, 0, 0},
+#endif // HAVE_RESPONSE_TIME_DISTRIBUTION
   {"SCHEMATA", schema_fields_info, create_schema_table,
    fill_schema_schemata, make_schemata_old_format, 0, 1, -1, 0, 0},
   {"SCHEMA_PRIVILEGES", schema_privileges_fields_info, create_schema_table,
