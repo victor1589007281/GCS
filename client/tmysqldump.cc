@@ -192,7 +192,7 @@ int my_gzprintf(gzFile file, const char* format, ...) ;
 #define ZPUTS my_gzputs
 #define ZPRINTF my_gzprintf
 #else
-#define ZPUTC fputc-
+#define ZPUTC fputc
 #define ZPUTS fputs
 #define ZPRINTF fprintf
 #endif
