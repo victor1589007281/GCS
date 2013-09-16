@@ -125,7 +125,7 @@ static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0,
 		foreign_key_check= 0,
                 opt_include_master_host_port= 0,
                 opt_events= 0, opt_comments_used= 0,
-                opt_alltspcs=0, opt_notspcs= 0,opt_disable_compress_optimization = 0;
+                opt_alltspcs=0, opt_notspcs= 0,opt_enable_compress_optimization = 0;
 static my_bool insert_pat_inited= 0, debug_info_flag= 0, debug_check_flag= 0;
 static ulong opt_max_allowed_packet, opt_net_buffer_length;
 static MYSQL mysql_connection,*mysql=0;
@@ -216,7 +216,7 @@ static void z_dump_trigger_old(ZFILE sql_file, MYSQL_RES *show_triggers_rs,
 static void z_unescape(ZFILE file,char *pos,uint length);
 static void z_print_blob_as_hex(ZFILE output_file, const char *str, ulong len);
 static uint z_get_table_structure(char *table, char *db, char *table_type,
-                                char *ignore_flag);
+                                char *ignore_flag, my_bool *is_blob_compress_in_table);
 static uint z_dump_routines_for_db(char *db);
 static int z_restore_db_collation(ZFILE sql_file,
                                 const char *db_name,
@@ -380,9 +380,9 @@ static struct my_option my_long_options[] =
    "Delete logs on master after backup. This automatically enables --master-data.",
    &opt_delete_master_logs, &opt_delete_master_logs, 0,
    GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-  {"disable-compress-optimization", OPT_DISABLE_COMPRESS_OPTIMIZATION,
+  {"enable-compress-optimization", OPT_ENABLE_COMPRESS_OPTIMIZATION,
   "Use to forbid Importing and exporting Optimization for blob compressed data.",
-  &opt_disable_compress_optimization, &opt_disable_compress_optimization, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+  &opt_enable_compress_optimization, &opt_enable_compress_optimization, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"disable-keys", 'K',
    "'/*!40000 ALTER TABLE tb_name DISABLE KEYS */; and '/*!40000 ALTER "
    "TABLE tb_name ENABLE KEYS */; will be put in the output.", &opt_disable_keys,
@@ -2680,7 +2680,7 @@ static uint dump_routines_for_db(char *db)
 */
 
 static uint get_table_structure(char *table, char *db, char *table_type,
-                                char *ignore_flag)
+                                char *ignore_flag, my_bool *is_blob_compress_in_table)
 {
   my_bool    init=0, delayed, write_data, complete_insert;
   my_ulonglong num_fields;
@@ -2701,8 +2701,6 @@ static uint get_table_structure(char *table, char *db, char *table_type,
   int        len;
   MYSQL_RES  *result;
   MYSQL_ROW  row;
-  char       query_buff_show_create[QUERY_LENGTH];
-  my_bool    is_blob_compress_in_table =FALSE;
 
   DBUG_ENTER("get_table_structure");
   DBUG_PRINT("enter", ("db: %s  table: %s", db, table));
@@ -2749,18 +2747,6 @@ static uint get_table_structure(char *table, char *db, char *table_type,
   if (opt_order_by_primary)
     order_by= primary_key_fields(result_table);
 
-  my_snprintf(query_buff_show_create, sizeof(query_buff_show_create),"SHOW CREATE TABLE  %s.%s", db, table);
-
-  if (!mysql_query_with_error_report(mysql, &result, query_buff_show_create))
-  {
-	  row= mysql_fetch_row(result);
-	  
-	  if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
-	  {
-		  /* 如果表中存在有blob/text字段，有compressed属性 */
-		  is_blob_compress_in_table = TRUE;
-	  }
-  }
 
   if (!opt_xml && !mysql_query_with_error_report(mysql, 0, query_buff))
   {
@@ -2922,6 +2908,12 @@ static uint get_table_structure(char *table, char *db, char *table_type,
               "/*!40101 SET character_set_client = @saved_cs_client */;\n",
               row[1]);
 
+	  if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
+	  {
+		  /* 如果表中存在有blob/text字段，有compressed属性 */
+		  *is_blob_compress_in_table = TRUE;
+	  }
+
       check_io(sql_file);
       mysql_free_result(result);
     }
@@ -2946,7 +2938,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
         dynstr_append_checked(&insert_pat, "REPLACE ");
       else
 	  {
-		  if(!opt_disable_compress_optimization && is_blob_compress_in_table)
+		  if(opt_enable_compress_optimization && *is_blob_compress_in_table)
 			  dynstr_append_checked(&insert_pat, "INSERT SQL_COMPRESSED ");
 		  else
 			  dynstr_append_checked(&insert_pat, "INSERT ");
@@ -2986,6 +2978,13 @@ static uint get_table_structure(char *table, char *db, char *table_type,
   {
     verbose_msg("%s: Warning: Can't set SQL_QUOTE_SHOW_CREATE option (%s)\n",
                 my_progname, mysql_error(mysql));
+
+	if (opt_enable_compress_optimization)
+	{
+		opt_enable_compress_optimization = 0;
+		verbose_msg("disable compress optimization\n",
+			my_progname);
+	}
 
     my_snprintf(query_buff, sizeof(query_buff), show_fields_stmt, db, table);
 
@@ -3617,6 +3616,7 @@ static void dump_table(char *table, char *db)
   MYSQL_RES     *res;
   MYSQL_FIELD   *field;
   MYSQL_ROW     row;
+  my_bool    is_blob_compress_in_table =FALSE;
   DBUG_ENTER("dump_table");
 
   /*
@@ -3625,11 +3625,11 @@ static void dump_table(char *table, char *db)
   */
   if(gzpath)
   {
-    num_fields= z_get_table_structure(table, db, table_type, &ignore_flag);
+    num_fields= z_get_table_structure(table, db, table_type, &ignore_flag, &is_blob_compress_in_table);
   }
   else
   {
-    num_fields= get_table_structure(table, db, table_type, &ignore_flag);
+    num_fields= get_table_structure(table, db, table_type, &ignore_flag, &is_blob_compress_in_table);
   }
 
   /*
@@ -3706,7 +3706,7 @@ static void dump_table(char *table, char *db)
 
     /* now build the query string */
 
-    dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!91004 SQL_COMPRESSED */ * INTO OUTFILE '");
+    dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ * INTO OUTFILE '");
     dynstr_append_checked(&query_string, filename);
     dynstr_append_checked(&query_string, "'");
 
@@ -3764,8 +3764,10 @@ static void dump_table(char *table, char *db)
     z_print_comment(result_file, 0,
                   "\n--\n-- Dumping data for table %s\n--\n",
                   result_table);
-    
-    dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!91004 SQL_COMPRESSED */ * FROM ");
+    if(opt_enable_compress_optimization && is_blob_compress_in_table)
+		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
+	else
+		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
     dynstr_append_checked(&query_string, result_table);
 
     if (where)
@@ -4089,8 +4091,10 @@ static void dump_table(char *table, char *db)
     print_comment(md_result_file, 0,
                   "\n--\n-- Dumping data for table %s\n--\n",
                   result_table);
-    
-    dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!91004 SQL_COMPRESSED */ * FROM ");
+    if(opt_enable_compress_optimization && is_blob_compress_in_table)
+	    dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
+	else
+		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
     dynstr_append_checked(&query_string, result_table);
 
     if (where)
@@ -6172,9 +6176,27 @@ int main(int argc, char **argv)
     exit(exit_code);
   }
 
-  if(opt_replace_into && !opt_disable_compress_optimization)
+  if(opt_replace_into && opt_enable_compress_optimization)
   {
 	  fprintf(stderr, "opt_replace_into must be use with opt_disable_compress_optimization.\n");
+	  exit(1);
+  }
+
+  if(opt_xml && opt_enable_compress_optimization)
+  {
+	  fprintf(stderr, "opt_xml must be use with opt_disable_compress_optimization.\n");
+	  exit(1);
+  }
+
+  if(opt_no_create_info && opt_enable_compress_optimization)
+  {
+	  fprintf(stderr, "opt_no_create_info must be use with opt_disable_compress_optimization.\n");
+	  exit(1);
+  }
+
+  if(path && opt_enable_compress_optimization)
+  {
+	  fprintf(stderr, "path must be use with opt_disable_compress_optimization.\n");
 	  exit(1);
   }
 
@@ -6190,13 +6212,13 @@ int main(int argc, char **argv)
     sprintf(file_extend, ".BEGIN.sql.gz");
     if(!(dump_begin_file = my_open_zip(fn_format(filename, "DUMP", tmp_path, file_extend, 4))))
     {
-	fprintf(stderr, "Creat %s failed\n", filename);
+	fprintf(stderr, "Create %s failed\n", filename);
 	exit(1);
     }
     sprintf(meta_path, "%s/META", tmp_path);
     if(!(META = my_fopen(meta_path, O_WRONLY, MYF(MY_WME))))
     {
-	fprintf(stderr, "Creat META failed\n");
+	fprintf(stderr, "Create META failed\n");
 	exit(1);
     }
     global_buffer = (char*)malloc(sizeof(char)*GBUFF);
@@ -7189,7 +7211,7 @@ static uint z_dump_routines_for_db(char *db)/*{{{*/
 }/*}}}*/
 
 static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*/
-                                char *ignore_flag)
+                                char *ignore_flag, my_bool *is_blob_compress_in_table)
 {
   my_bool    init=0, delayed, write_data, complete_insert;
   my_ulonglong num_fields=0;
@@ -7264,7 +7286,7 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
       sql_file = open_sql_zip_file_for_table(db, table, "schema");
       if(sql_file == NULL)
       {
-        fprintf(stderr, "Creat schema file for %s.%s failed\n", db, table);
+        fprintf(stderr, "Create schema file for %s.%s failed\n", db, table);
         exit(1);
       }
       z_write_header(sql_file, db);
@@ -7410,6 +7432,12 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
               "/*!40101 SET character_set_client = @saved_cs_client */;\n",
               row[1]);
 
+	  if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
+	  {
+		  /* 如果表中存在有blob/text字段，有compressed属性 */
+		  *is_blob_compress_in_table = TRUE;
+	  }
+
 #ifndef __WIN__
       check_io(sql_file);
 #endif
@@ -7433,10 +7461,10 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
     */
     if (write_data)
     {
-      if (opt_replace_into)
-        dynstr_append_checked(&insert_pat, "REPLACE ");
-      else
-        dynstr_append_checked(&insert_pat, "INSERT ");
+	  if(opt_enable_compress_optimization && *is_blob_compress_in_table)
+		  dynstr_append_checked(&insert_pat, "INSERT SQL_COMPRESSED ");
+	  else
+		  dynstr_append_checked(&insert_pat, "INSERT ");
       dynstr_append_checked(&insert_pat, insert_option);
       dynstr_append_checked(&insert_pat, "INTO ");
       dynstr_append_checked(&insert_pat, opt_quoted_table);
@@ -7468,6 +7496,13 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
     num_fields= mysql_num_rows(result);
     mysql_free_result(result);
   }
+  else
+  {
+     verbose_msg("%s: Warning: Can't set SQL_QUOTE_SHOW_CREATE option (%s)\n",
+		  my_progname, mysql_error(mysql));
+     exit(1);
+  }
+  
   
   if (complete_insert)
   {
