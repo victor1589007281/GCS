@@ -11009,8 +11009,8 @@ ha_innobase::check_if_incompatible_data(
  
 	if (table_changes != IS_EQUAL_YES)
 		if (!inplace_alter ||
-			table_changes != (IS_EQUAL_YES|IS_EQUAL_WITH_MYSQL500_COLLATE) &&
-        	table_changes != IS_EQUAL_WITH_MYSQL500_COLLATE) 
+			(table_changes != (IS_EQUAL_YES|IS_EQUAL_WITH_MYSQL500_COLLATE) &&
+        	table_changes != IS_EQUAL_WITH_MYSQL500_COLLATE)) 
 			return(COMPATIBLE_DATA_NO);
 
 	/* Check that auto_increment value was not changed */

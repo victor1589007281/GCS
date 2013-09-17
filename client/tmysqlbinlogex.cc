@@ -3258,7 +3258,7 @@ int main(int argc, char** argv)
   if (write_to_file_only_flag)
   {
       if (!sql_files_output_dir)
-          sql_files_output_dir = "./";
+          sql_files_output_dir = (char*)"./";
       
       if(my_access(sql_files_output_dir, F_OK))
       {
@@ -5246,7 +5246,7 @@ binlogex_check_server_version(
     5.1.22以前的行级binlog
     5.6以上暂不支持
     */
-    if (ver < 50003 || ver > 50100 && ver < 50122 || ver > 50600)
+    if (ver < 50003 || (ver > 50100 && ver < 50122) || ver > 50600)
         return FALSE;
 
     return TRUE;

@@ -1578,7 +1578,7 @@ static void usage(int version)
 	if (version)
 		return;
 //	puts(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000, 2011"));
-	printf("Usage: %\n", my_progname);
+	printf("Usage: %s\n", my_progname);
 	my_print_help(my_long_options);
 //	print_defaults("my", load_default_groups);
 //	my_print_variables(my_long_options);
@@ -3760,7 +3760,7 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 				fputs("</error_msg>\n",xml_file);
 
 				fputs("\t\t\t<line>",xml_file);
-				fprintf(xml_file,"%d",(roa->ra)[i].pra.line_number);
+				fprintf(xml_file,"%u",(roa->ra)[i].pra.line_number);
 				fputs("</line>\n",xml_file);
 
 				fputs("\t\t</failed_info>\n",xml_file);

@@ -1059,6 +1059,7 @@ int ReplSemiSyncMaster::readSlaveReply(NET *net, uint32 server_id,
   struct timespec start_ts;
   ulong trc_level = trace_level_;
 
+  memset(&start_ts, sizeof(start_ts), 0);
   function_enter(kWho);
 
   assert((unsigned char)event_buf[1] == kPacketMagicNum);
