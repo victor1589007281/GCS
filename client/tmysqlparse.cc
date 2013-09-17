@@ -3760,7 +3760,7 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 				fputs("</error_msg>\n",xml_file);
 
 				fputs("\t\t\t<line>",xml_file);
-				fprintf(xml_file,"%u",(roa->ra)[i].pra.line_number);
+				fprintf(xml_file,"%u",(uint)(roa->ra)[i].pra.line_number);
 				fputs("</line>\n",xml_file);
 
 				fputs("\t\t</failed_info>\n",xml_file);

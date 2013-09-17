@@ -66,7 +66,7 @@ MYSQL_ADD_EXECUTABLE(mysqlbinlog mysqlbinlog.cc)
 TARGET_LINK_LIBRARIES(mysqlbinlog mysqlclient)
 
 IF(UNIX)
-  MYSQL_ADD_EXECUTABLE(tmysqlbinlogex tmysqlbinlogex.cc ../sqlparse/message_queue.cc DESTINATION ${INSTALL_BINDIR}/tmysqlbinlog)
+  MYSQL_ADD_EXECUTABLE(tmysqlbinlogex tmysqlbinlogex.cc ../sqlparse/message_queue.cc DESTINATION ${INSTALL_BINDIR}/tmysqlbinlogex)
 ELSE()
   MYSQL_ADD_EXECUTABLE(tmysqlbinlogex tmysqlbinlogex.cc ../sqlparse/message_queue.cc)
 ENDIF(UNIX)
