@@ -1275,10 +1275,10 @@ void THD::update_stats(bool ran_command)
         if (!sent_row_count_2)
           diff_empty_queries++;
       }
-      else if (!sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND)
+      else if (sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND) //show 
       {
         // 'SHOW ' commands become SQLCOM_SELECT.
-        diff_other_commands++;
+        diff_select_commands++;
         // 'SHOW ' commands shouldn't inflate total sent row count.
         diff_total_sent_rows-= sent_row_count_2;
       } else if (is_update_query(lex->sql_command)) {

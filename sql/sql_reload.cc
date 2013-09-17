@@ -323,6 +323,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long options,
 #ifdef HAVE_RESPONSE_TIME_DISTRIBUTION
  if (options & REFRESH_QUERY_RESPONSE_TIME)
  {
+   tmp_write_to_binlog = 0;
    query_response_time_flush();
  }
 #endif // HAVE_RESPONSE_TIME_DISTRIBUTION
@@ -330,6 +331,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long options,
     reset_mqh((LEX_USER *) NULL, 0);             /* purecov: inspected */
   if (options & REFRESH_TABLE_STATS)
   {
+    tmp_write_to_binlog = 0;
     mysql_mutex_lock(&LOCK_global_table_stats);
     free_global_table_stats();
     init_global_table_stats();
@@ -337,6 +339,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long options,
   }
   if (options & REFRESH_INDEX_STATS)
   {
+    tmp_write_to_binlog = 0;
     mysql_mutex_lock(&LOCK_global_index_stats);
     free_global_index_stats();
     init_global_index_stats();
@@ -344,6 +347,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long options,
   }
   if (options & (REFRESH_USER_STATS | REFRESH_CLIENT_STATS | REFRESH_THREAD_STATS))
   {
+    tmp_write_to_binlog = 0;
     mysql_mutex_lock(&LOCK_global_user_client_stats);
     if (options & REFRESH_USER_STATS)
     {

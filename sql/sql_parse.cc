@@ -4925,11 +4925,14 @@ check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
   */
   DBUG_PRINT("error",("Access denied"));
   if (!no_errors)
+  {
+    thd->diff_access_denied_errors++;
     my_error(ER_DBACCESS_DENIED_ERROR, MYF(0),
              sctx->priv_user, sctx->priv_host,
              (db ? db : (thd->db ?
                          thd->db :
                          "unknown")));
+  }
   DBUG_RETURN(TRUE);
 
 }
@@ -6068,6 +6071,7 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
         lex->sql_command != SQLCOM_CHECK &&
         lex->sql_command != SQLCOM_CHECKSUM)
     {
+      thd->diff_access_denied_errors++;
       my_error(ER_DBACCESS_DENIED_ERROR, MYF(0),
                thd->security_ctx->priv_user,
                thd->security_ctx->priv_host,

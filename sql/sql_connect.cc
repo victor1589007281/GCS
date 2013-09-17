@@ -304,6 +304,7 @@ void init_global_user_stats(void)
     sql_print_error("Initializing global_user_stats failed.");
     exit(1);
   }
+  sql_print_information("Initializing USER_STATISTICS");
 }
 
 void init_global_client_stats(void)
@@ -314,6 +315,7 @@ void init_global_client_stats(void)
     sql_print_error("Initializing global_client_stats failed.");
     exit(1);
   }
+  sql_print_information("Initializing CLIENT_STATISTICS");
 }
 
 void init_global_thread_stats(void)
@@ -325,6 +327,7 @@ void init_global_thread_stats(void)
     sql_print_error("Initializing global_client_stats failed.");
     exit(1);
   }
+  sql_print_information("Initializing THREAD_STATISTICS");
 }
 
 extern "C" uchar *get_key_table_stats(TABLE_STATS *table_stats, size_t *length,
@@ -347,6 +350,7 @@ void init_global_table_stats(void)
     sql_print_error("Initializing global_table_stats failed.");
     exit(1);
   }
+  sql_print_information("Initializing TABLE_STATISTICS");
 }
 
 extern "C" uchar *get_key_index_stats(INDEX_STATS *index_stats, size_t *length,
@@ -369,6 +373,7 @@ void init_global_index_stats(void)
     sql_print_error("Initializing global_index_stats failed.");
     exit(1);
   }
+  sql_print_information("Initializing INDEX_STATISTICS");
 }
 
 void free_global_user_stats(void)
