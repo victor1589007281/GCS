@@ -80,10 +80,12 @@ Database: information_schema
 |                Tables                 |
 +---------------------------------------+
 | CHARACTER_SETS                        |
+| CLIENT_STATISTICS                     |
 | COLLATIONS                            |
 | COLLATION_CHARACTER_SET_APPLICABILITY |
 | COLUMNS                               |
 | COLUMN_PRIVILEGES                     |
+| INDEX_STATISTICS                      |
 | ENGINES                               |
 | EVENTS                                |
 | FILES                                 |
@@ -97,6 +99,7 @@ Database: information_schema
 | PROFILING                             |
 | REFERENTIAL_CONSTRAINTS               |
 | ROUTINES                              |
+| QUERY_RESPONSE_TIME                   |
 | SCHEMATA                              |
 | SCHEMA_PRIVILEGES                     |
 | SESSION_STATUS                        |
@@ -106,26 +109,41 @@ Database: information_schema
 | TABLESPACES                           |
 | TABLE_CONSTRAINTS                     |
 | TABLE_PRIVILEGES                      |
+| TABLE_STATISTICS                      |
+| THREAD_STATISTICS                     |
 | TRIGGERS                              |
 | USER_PRIVILEGES                       |
+| USER_STATISTICS                       |
 | VIEWS                                 |
-| INNODB_CMP_RESET                      |
+| INNODB_TABLE_STATS                    |
 | INNODB_TRX                            |
-| INNODB_CMPMEM_RESET                   |
+| INNODB_SYS_FOREIGN                    |
 | INNODB_LOCK_WAITS                     |
-| INNODB_CMPMEM                         |
+| INNODB_SYS_TABLESTATS                 |
 | INNODB_CMP                            |
+| INNODB_INDEX_STATS                    |
+| INNODB_CMP_RESET                      |
+| INNODB_SYS_FOREIGN_COLS               |
 | INNODB_LOCKS                          |
+| INNODB_CMPMEM_RESET                   |
+| INNODB_CMPMEM                         |
+| INNODB_RSEG                           |
+| INNODB_SYS_TABLES                     |
+| INNODB_SYS_INDEXES                    |
+| INNODB_SYS_COLUMNS                    |
+| INNODB_SYS_FIELDS                     |
 +---------------------------------------+
 Database: INFORMATION_SCHEMA
 +---------------------------------------+
 |                Tables                 |
 +---------------------------------------+
 | CHARACTER_SETS                        |
+| CLIENT_STATISTICS                     |
 | COLLATIONS                            |
 | COLLATION_CHARACTER_SET_APPLICABILITY |
 | COLUMNS                               |
 | COLUMN_PRIVILEGES                     |
+| INDEX_STATISTICS                      |
 | ENGINES                               |
 | EVENTS                                |
 | FILES                                 |
@@ -139,6 +157,7 @@ Database: INFORMATION_SCHEMA
 | PROFILING                             |
 | REFERENTIAL_CONSTRAINTS               |
 | ROUTINES                              |
+| QUERY_RESPONSE_TIME                   |
 | SCHEMATA                              |
 | SCHEMA_PRIVILEGES                     |
 | SESSION_STATUS                        |
@@ -148,16 +167,29 @@ Database: INFORMATION_SCHEMA
 | TABLESPACES                           |
 | TABLE_CONSTRAINTS                     |
 | TABLE_PRIVILEGES                      |
+| TABLE_STATISTICS                      |
+| THREAD_STATISTICS                     |
 | TRIGGERS                              |
 | USER_PRIVILEGES                       |
+| USER_STATISTICS                       |
 | VIEWS                                 |
-| INNODB_CMP_RESET                      |
+| INNODB_TABLE_STATS                    |
 | INNODB_TRX                            |
-| INNODB_CMPMEM_RESET                   |
+| INNODB_SYS_FOREIGN                    |
 | INNODB_LOCK_WAITS                     |
-| INNODB_CMPMEM                         |
+| INNODB_SYS_TABLESTATS                 |
 | INNODB_CMP                            |
+| INNODB_INDEX_STATS                    |
+| INNODB_CMP_RESET                      |
+| INNODB_SYS_FOREIGN_COLS               |
 | INNODB_LOCKS                          |
+| INNODB_CMPMEM_RESET                   |
+| INNODB_CMPMEM                         |
+| INNODB_RSEG                           |
+| INNODB_SYS_TABLES                     |
+| INNODB_SYS_INDEXES                    |
+| INNODB_SYS_COLUMNS                    |
+| INNODB_SYS_FIELDS                     |
 +---------------------------------------+
 Wildcard: inf_rmation_schema
 +--------------------+
