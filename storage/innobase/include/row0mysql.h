@@ -868,7 +868,7 @@ struct row_prebuilt_struct {
 #define ROW_READ_TRY_SEMI_CONSISTENT	1
 #define ROW_READ_DID_SEMI_CONSISTENT	2
 
-#define MIN_BLOB_COMPRESS_LENGTH 200 
+#define MIN_BLOB_COMPRESS_LENGTH 256 
 
 #ifndef UNIV_NONINL
 #include "row0mysql.ic"
