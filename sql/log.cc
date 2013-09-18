@@ -5281,6 +5281,8 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
                              thd->first_successful_insert_id_in_prev_stmt_for_binlog);
           if (e.write(file))
             goto err;
+          if (file == &log_file)
+            thd->binlog_bytes_written+= e.data_written;
         }
         if (thd->auto_inc_intervals_in_cur_stmt_for_binlog.nb_elements() > 0)
         {
@@ -5292,12 +5294,16 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
                              minimum());
           if (e.write(file))
             goto err;
+          if (file == &log_file)
+            thd->binlog_bytes_written+= e.data_written;
         }
         if (thd->rand_used)
         {
           Rand_log_event e(thd,thd->rand_saved_seed1,thd->rand_saved_seed2);
           if (e.write(file))
             goto err;
+          if (file == &log_file)
+            thd->binlog_bytes_written+= e.data_written;
         }
         if (thd->user_var_events.elements)
         {
@@ -5320,6 +5326,8 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
                                  flags);
             if (e.write(file))
               goto err;
+            if (file == &log_file)
+              thd->binlog_bytes_written+= e.data_written;
           }
         }
       }
@@ -5331,6 +5339,8 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
     if (event_info->write(file) ||
         DBUG_EVALUATE_IF("injecting_fault_writing", 1, 0))
       goto err;
+    if (file == &log_file)
+      thd->binlog_bytes_written+= event_info->data_written;
 
     error= 0;
 err:
@@ -5573,7 +5583,7 @@ uint MYSQL_BIN_LOG::next_file_id()
     be reset as a READ_CACHE to be able to read the contents from it.
  */
 
-int MYSQL_BIN_LOG::write_cache(IO_CACHE *cache, bool lock_log, bool sync_log)
+int MYSQL_BIN_LOG::write_cache(THD* thd, IO_CACHE *cache, bool lock_log, bool sync_log)
 {
   Mutex_sentry sentry(lock_log ? &LOCK_log : NULL);
 
@@ -5620,6 +5630,7 @@ int MYSQL_BIN_LOG::write_cache(IO_CACHE *cache, bool lock_log, bool sync_log)
       /* write the first half of the split header */
       if (my_b_write(&log_file, header, carry))
         return ER_ERROR_ON_WRITE;
+      thd->binlog_bytes_written+= carry;
 
       /*
         copy fixed second half of header to cache so the correct
@@ -5688,6 +5699,7 @@ int MYSQL_BIN_LOG::write_cache(IO_CACHE *cache, bool lock_log, bool sync_log)
     /* Write data to the binary log file */
     if (my_b_write(&log_file, cache->read_pos, length))
       return ER_ERROR_ON_WRITE;
+    thd->binlog_bytes_written+= length;
     cache->read_pos=cache->read_end;		// Mark buffer used up
   } while ((length= my_b_fill(cache)));
 
@@ -5813,14 +5825,14 @@ bool MYSQL_BIN_LOG::write(THD *thd, IO_CACHE *cache, Log_event *commit_event,
         goto err;
       DBUG_EXECUTE_IF("crash_before_writing_xid",
                       {
-                        if ((write_error= write_cache(cache, false, true)))
+                        if ((write_error= write_cache(thd, cache, false, true)))
                           DBUG_PRINT("info", ("error writing binlog cache: %d",
                                                write_error));
                         DBUG_PRINT("info", ("crashing before writing xid"));
                         DBUG_SUICIDE();
                       });
 
-      if ((write_error= write_cache(cache, false, false)))
+      if ((write_error= write_cache(thd, cache, false, false)))
         goto err;
 
       if (commit_event && commit_event->write(&log_file))

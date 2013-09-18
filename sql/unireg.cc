@@ -145,7 +145,7 @@ bool mysql_create_frm(THD *thd, const char *file_name,
 	  uint		idx = 0;
 	  my_bool is_create_table = TRUE;
 
-	  while(tmp_create_field = it++)
+	  while(!!(tmp_create_field = it++))
 	  {
 		  /* 当所有的field都为NULL时,表明是建表操作 */
 		  if(tmp_create_field->field)
@@ -203,7 +203,7 @@ bool mysql_create_frm(THD *thd, const char *file_name,
 	  List_iterator<Create_field> it_field(create_fields);
 	  my_bool is_compressed;
 	  Create_field *cur_field = NULL;
-	  while(cur_field = it_field++)
+	  while(!!(cur_field = it_field++))
 	  {
 		  // cur_field->field->is_compressed();
 		  is_compressed = (cur_field->unireg_check == Field::COMPRESSED_BLOB_FIELD);
@@ -217,7 +217,7 @@ bool mysql_create_frm(THD *thd, const char *file_name,
   }
 
   /* 限制在blob compressed字段上不能加索引*/
-  for (int key_i = 0; key_i < keys; key_i++)
+  for (uint key_i = 0; key_i < keys; key_i++)
   {
 	  uint key_parts_i = 0;
 	  uint key_parts = key_info[key_i].key_parts;
@@ -230,7 +230,7 @@ bool mysql_create_frm(THD *thd, const char *file_name,
 		  List_iterator<Create_field> it_field(create_fields);
 		  Create_field *cur_field = NULL;
 
-		  while(cur_field = it_field++)
+		  while(!!(cur_field = it_field++))
 		  {
 			  if(field_i == field_num)
 			  {

@@ -51,6 +51,7 @@
 
 TYPELIB bool_typelib={ array_elements(bool_values)-1, "", bool_values, 0 };
 
+#include "query_response_time.h" 
 /*
   This forward declaration is needed because including sql_base.h
   causes further includes.  [TODO] Eliminate this forward declaration
@@ -1679,6 +1680,17 @@ static Sys_var_mybool Sys_readonly(
        NO_MUTEX_GUARD, NOT_IN_BINLOG,
        ON_CHECK(check_read_only), ON_UPDATE(fix_read_only));
 
+static Sys_var_mybool Sys_userstat(
+       "userstat",
+       "Control USER_STATISTICS, CLIENT_STATISTICS, THREAD_STATISTICS, "
+       "INDEX_STATISTICS and TABLE_STATISTICS running",
+       GLOBAL_VAR(opt_userstat), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+static Sys_var_mybool Sys_thread_statistics(
+       "thread_statistics",
+       "Control TABLE_STATISTICS running, when userstat is enabled",
+       GLOBAL_VAR(opt_thread_statistics), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
 // Small lower limit to be able to test MRR
 static Sys_var_ulong Sys_read_rnd_buff_size(
        "read_rnd_buffer_size",
@@ -1911,6 +1923,26 @@ static Sys_var_mybool Sys_query_cache_wlock_invalidate(
        SESSION_VAR(query_cache_wlock_invalidate), CMD_LINE(OPT_ARG),
        DEFAULT(FALSE));
 #endif /* HAVE_QUERY_CACHE */
+
+
+static Sys_var_have Sys_have_response_time_distribution(
+       "have_response_time_distribution", "have_response_time_distribution",
+       READ_ONLY GLOBAL_VAR(have_response_time_distribution), NO_CMD_LINE);
+
+#ifdef HAVE_RESPONSE_TIME_DISTRIBUTION
+static Sys_var_mybool Sys_query_response_time_stats(
+       "query_response_time_stats", "Enable or disable query response time statisics collecting",
+       GLOBAL_VAR(opt_query_response_time_stats), CMD_LINE(OPT_ARG),
+       DEFAULT(FALSE));
+
+static Sys_var_ulong Sys_query_response_time_range_base(
+       "query_response_time_range_base",
+       "Select base of log for query_response_time ranges. WARNING: variable change affect only after flush",
+       GLOBAL_VAR(opt_query_response_time_range_base),
+       CMD_LINE(REQUIRED_ARG), VALID_RANGE(2, QRT_MAXIMUM_BASE),
+       DEFAULT(QRT_DEFAULT_BASE),
+       BLOCK_SIZE(1));
+#endif // HAVE_RESPONSE_TIME_DISTRIBUTION
 
 static Sys_var_mybool Sys_secure_auth(
        "secure_auth",

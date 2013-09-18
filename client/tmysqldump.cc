@@ -141,7 +141,7 @@ static char  *opt_password=0,*current_user=0,
 static char **defaults_argv= 0;
 static char compatible_mode_normal_str[255];
 /* Server supports character_set_results session variable? */
-static my_bool server_supports_switching_charsets= TRUE ,interrupted_query = 0;
+static my_bool server_supports_switching_charsets= TRUE ,is_before_50000 = 0;
 static ulong opt_compatible_mode= 0;
 #define MYSQL_OPT_MASTER_DATA_EFFECTIVE_SQL 1
 #define MYSQL_OPT_MASTER_DATA_COMMENTED_SQL 2
@@ -1273,23 +1273,13 @@ sig_handler handle_sig_timeout(int sig)
     goto err;
   }
 
-  /* terminate if no query being executed, or we already tried interrupting */
-  if (interrupted_query == 2)
-  {
-      fprintf(stderr, "no query being executed, or we already tried interrupting -- exit!\n");
-      fflush(stderr);
-      goto err;
-  }
-
-  interrupted_query++;
-
   /* mysqld < 5 does not understand KILL QUERY, skip to KILL CONNECTION */
-  if ((interrupted_query == 1) && (mysql_get_server_version(&mysql_connection) < 50000))
-    interrupted_query= 2;
+  if (mysql_get_server_version(&mysql_connection) < 50000)
+    is_before_50000 = 1;
 
   /* kill_buffer is always big enough because max length of %lu is 15 */
   sprintf(kill_buffer, "KILL %s%lu",
-          (interrupted_query == 1) ? "QUERY " : "",
+          (is_before_50000 == 0) ? "QUERY " : "",
           mysql_thread_id(&mysql_connection));
   fprintf(stderr, "kill query -- sending \"%s\" to server ...\n", kill_buffer);
   ret=mysql_real_query(kill_mysql, kill_buffer, (uint) strlen(kill_buffer));

@@ -5307,6 +5307,10 @@ no_commit:
 
 	error = row_insert_for_mysql((byte*) record, prebuilt);
 
+#ifdef EXTENDED_FOR_USERSTAT
+	if (error == DB_SUCCESS) rows_changed++;
+#endif
+
 	/* Handle duplicate key errors */
 	if (auto_inc_used) {
 		ulint		err;
@@ -5668,6 +5672,10 @@ ha_innobase::update_row(
 		}
 	}
 
+#ifdef EXTENDED_FOR_USERSTAT
+	if (error == DB_SUCCESS) rows_changed++;
+#endif
+
 	innodb_srv_conc_exit_innodb(trx);
 
 	error = convert_error_code_to_mysql(error,
@@ -5720,6 +5728,10 @@ ha_innobase::delete_row(
 	innodb_srv_conc_enter_innodb(trx);
 
 	error = row_update_for_mysql((byte*) record, prebuilt);
+
+#ifdef EXTENDED_FOR_USERSTAT
+	if (error == DB_SUCCESS) rows_changed++;
+#endif
 
 	innodb_srv_conc_exit_innodb(trx);
 
@@ -6042,6 +6054,11 @@ ha_innobase::index_read(
 	case DB_SUCCESS:
 		error = 0;
 		table->status = 0;
+#ifdef EXTENDED_FOR_USERSTAT
+		rows_read++;
+		if (active_index < MAX_KEY)
+			index_rows_read[active_index]++;
+#endif
 		break;
 	case DB_RECORD_NOT_FOUND:
 		error = HA_ERR_KEY_NOT_FOUND;
@@ -6273,6 +6290,11 @@ ha_innobase::general_fetch(
 	case DB_SUCCESS:
 		error = 0;
 		table->status = 0;
+#ifdef EXTENDED_FOR_USERSTAT
+		rows_read++;
+		if (active_index < MAX_KEY)
+			index_rows_read[active_index]++;
+#endif
 		break;
 	case DB_RECORD_NOT_FOUND:
 		error = HA_ERR_END_OF_FILE;
@@ -10987,8 +11009,8 @@ ha_innobase::check_if_incompatible_data(
  
 	if (table_changes != IS_EQUAL_YES)
 		if (!inplace_alter ||
-			table_changes != (IS_EQUAL_YES|IS_EQUAL_WITH_MYSQL500_COLLATE) &&
-        	table_changes != IS_EQUAL_WITH_MYSQL500_COLLATE) 
+			(table_changes != (IS_EQUAL_YES|IS_EQUAL_WITH_MYSQL500_COLLATE) &&
+        	table_changes != IS_EQUAL_WITH_MYSQL500_COLLATE)) 
 			return(COMPATIBLE_DATA_NO);
 
 	/* Check that auto_increment value was not changed */
@@ -12101,7 +12123,22 @@ i_s_innodb_lock_waits,
 i_s_innodb_cmp,
 i_s_innodb_cmp_reset,
 i_s_innodb_cmpmem,
-i_s_innodb_cmpmem_reset
+i_s_innodb_cmpmem_reset,
+i_s_innodb_sys_tables,      /* add from percona */
+i_s_innodb_sys_tablestats,
+i_s_innodb_sys_indexes,
+i_s_innodb_sys_columns,
+i_s_innodb_sys_fields,
+i_s_innodb_sys_foreign,
+i_s_innodb_sys_foreign_cols,
+//i_s_innodb_sys_stats,
+i_s_innodb_rseg,
+i_s_innodb_table_stats,
+i_s_innodb_index_stats
+//i_s_innodb_buffer_pool_pages,
+//i_s_innodb_buffer_pool_pages_index,
+//i_s_innodb_buffer_pool_pages_blob,
+//i_s_innodb_admin_command
 mysql_declare_plugin_end;
 
 /** @brief Initialize the default value of innodb_commit_concurrency.

@@ -2833,7 +2833,7 @@ blob_uncompress:
 					(!is_sql_compressed_flag || !dict_col_is_binary_blob(&prebuilt->table->cols[pos_in_mysql])))
 				{
 					//blob字段有压缩属性，处理压缩数据
-					byte* org_data = data;
+					byte* org_data = (byte*)data;
 					ulint org_len = len;
 						
 					data = row_blob_uncompress(data, len, &len, prebuilt);

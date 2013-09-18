@@ -24,7 +24,7 @@
 
 int my_write_dynstr(DYNAMIC_STRING *dynstr, const uchar *Buffer, size_t Count)
 {
-    if (dynstr_append_mem(dynstr, Buffer, Count))
+    if (dynstr_append_mem(dynstr, (const char*)Buffer, Count))
         return -1;
 
     return 0;
