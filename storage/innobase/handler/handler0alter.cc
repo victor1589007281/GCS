@@ -2898,17 +2898,19 @@ err_exit:
 @param table		the TABLE
 @param dict_table   the dict_table_t struct
 @param trx		data dictionary transaction
+@param commit_flag  if true commit, else rollback
 @retval true			Failure
 @retval DB_SUCCESS		Success */
 static __attribute__((nonnull, warn_unused_result))
 ulint
 innobase_rename_columns(
-	mem_heap_t*         heap,  // temporary heap
+	mem_heap_t*         heap,	// temporary heap
 	Alter_inplace_info*	ha_alter_info,
-	const TABLE*	table,
-	const TABLE*    tmp_table, // tmp table
+	const TABLE*	table,		// origin table
+	const TABLE*    tmp_table,	// new table
 	dict_table_t*	dict_table,
-	trx_t*			trx
+	trx_t*			trx,       
+	bool commit_flag			// if true we commit, else rollback
 	)
 {
 	Alter_info* alter_info = static_cast<Alter_info*>(ha_alter_info->alter_info);
@@ -2928,12 +2930,24 @@ innobase_rename_columns(
 		cf_it.rewind();
 		while (Create_field* cf = cf_it++) {
 			if (cf->field == *fp) {
-				if (innobase_rename_column(dict_table, trx,
-					    i,
-					    cf->field->field_name,
-					    cf->field_name
-					    )) {
-					return(true);
+				if(commit_flag) {		// commit, from old_name to new_name
+					if (innobase_rename_column(dict_table, trx,
+							i,
+							cf->field->field_name,	// old column name
+							cf->field_name			// new column name
+							)) {
+						return(true);
+					}
+				}
+				else					// rollback, from new_name to old_name
+				{		
+					if(innobase_rename_column(dict_table, trx,
+						i,
+						cf->field_name,				//  new column name
+						cf->field->field_name		//  old column name
+						)) {
+							return(true);
+					}
 				}
 				goto processed_field;
 			}
@@ -2945,8 +2959,14 @@ processed_field:
 	}
 
 	/* 更新内存中的数据字典 */ 
-	if( innobase_rename_columns_cache(heap, ha_alter_info, tmp_table, dict_table, trx) ) {
-		goto err_exit;
+	if(commit_flag) {	// 提交，将新表tmp_table的列信息更新到数据字典内存
+		if( innobase_rename_columns_cache(heap, ha_alter_info, tmp_table, dict_table, trx) ) {
+			goto err_exit;
+		}
+	}else{				// 回滚，做逆操作，将原表table的列信息更新回数据字典内存
+		if( innobase_rename_columns_cache(heap, ha_alter_info, table, dict_table, trx) ) {
+			goto err_exit;
+		}
 	}
 
 	return(DB_SUCCESS);
@@ -3224,7 +3244,7 @@ ha_innobase::inplace_alter_table(
 	/* 增加修改列名的支持 */
 	else if(ha_alter_info->handler_flags == (Alter_inplace_info::ALTER_COLUMN_CHANGE | Alter_inplace_info::ALTER_COLUMN_NAME_FLAG))
 	{
-		err = innobase_rename_columns(heap, ha_alter_info, table, tmp_table, dict_table, trx);
+		err = innobase_rename_columns(heap, ha_alter_info, table, tmp_table, dict_table, trx, true);
 	}
 	else if(ha_alter_info->handler_flags == Alter_inplace_info::CHANGE_CREATE_OPTION_FLAG)
 	{
@@ -3404,6 +3424,11 @@ ha_innobase::final_inplace_alter_table(
            {
                err = innobase_drop_columns_simple(heap, trx, dict_table,altered_table, tmp_table, ha_alter_info);
            }
+		   /* 回滚已经修改的列名信息 */
+		   else if(ha_alter_info->handler_flags == (Alter_inplace_info::ALTER_COLUMN_CHANGE | Alter_inplace_info::ALTER_COLUMN_NAME_FLAG))
+		   {
+			   err = innobase_rename_columns(heap, ha_alter_info, table, tmp_table, dict_table, trx, false);
+		   }
            else if(ha_alter_info->handler_flags == Alter_inplace_info::CHANGE_CREATE_OPTION_FLAG)
            {
                //fast alter table row format! 
