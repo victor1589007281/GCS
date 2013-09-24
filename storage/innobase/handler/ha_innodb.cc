@@ -11025,7 +11025,12 @@ ha_innobase::check_if_incompatible_data(
 	system metadata change. To avoid system metadata inconsistency,
 	currently we can just request a table rebuild/copy by returning
 	COMPATIBLE_DATA_NO */
-	if (check_column_being_renamed(table, NULL)) {
+
+	/* 
+		增加修改列名的支持，后续会修改innodb数据字典及相关的内存镜像 
+		参见handler0alter.cc的innobase_rename_columns函数
+	*/
+	if (!inplace_alter && check_column_being_renamed(table, NULL)) {
 		return COMPATIBLE_DATA_NO;
 	}
 

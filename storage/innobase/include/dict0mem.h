@@ -802,6 +802,13 @@ dict_mem_realloc_index_fields(
     ulint           field_num    /*<! in: fields number need to allocate memmory(include the 3 system columns) */
 );
 
+void dict_mem_table_cols_rename_low(
+	dict_table_t*	table,	/*!< in/out: table */
+	char* col_names,		/* !<in: all table column names, excluded DB_ROW_ID、DB_TRX_ID、DB_ROLL_PTR */
+	ulint n_col_names_len	/* !<in: all table col names len, excluded DB_ROW_ID、DB_TRX_ID、DB_ROLL_PTR */
+);
+
+
 
 #ifndef UNIV_NONINL
 #include "dict0mem.ic"

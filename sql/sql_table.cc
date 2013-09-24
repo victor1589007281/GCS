@@ -5403,7 +5403,7 @@ bool fill_alter_inplace_info(
                     Alter_inplace_info::ALTER_COLUMN_NULLABLE_FLAG;
             }
 
-            if (new_field->charset != field->charset())
+            if (new_field->charset && new_field->charset != field->charset())
                 ha_alter_info->handler_flags|=
                     Alter_inplace_info::ALTER_COLUMN_CHANGE_COLLATION;
 

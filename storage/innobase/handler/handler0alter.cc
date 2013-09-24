@@ -2667,8 +2667,7 @@ err_exit:
 }
 
 /** Rename a column.
-@param table_share	the TABLE_SHARE
-@param prebuilt		the prebuilt struct
+@param dict_table		the dict_table_t struct
 @param trx		data dictionary transaction
 @param nth_col		0-based index of the column
 @param from		old column name
@@ -2679,8 +2678,7 @@ static __attribute__((nonnull, warn_unused_result))
 bool
 innobase_rename_column(
 /*===================*/
-	const TABLE_SHARE*	table_share,
-	row_prebuilt_t*		prebuilt,
+	dict_table_t*	dict_table,
 	trx_t*			trx,
 	ulint			nth_col,
 	const char*		from,
@@ -2700,7 +2698,7 @@ innobase_rename_column(
 
 	info = pars_info_create();
 
-	pars_info_add_ull_literal(info, "tableid", prebuilt->table->id);
+	pars_info_add_ull_literal(info, "tableid", dict_table->id);
 	pars_info_add_int4_literal(info, "nth", nth_col);
 	pars_info_add_str_literal(info, "old", from);
 	pars_info_add_str_literal(info, "new", to);
@@ -2722,7 +2720,7 @@ innobase_rename_column(
 
 	if (error != DB_SUCCESS) {
 err_exit:
-		//my_error_innodb(error, table_share->table_name.str, 0);
+		//my_error_innodb(error, dict_table->name, 0);
 		trx->error_state = DB_SUCCESS;
 		trx->op_info = "";
 		DBUG_RETURN(true);
@@ -2730,7 +2728,7 @@ err_exit:
 
 	trx->op_info = "renaming column in SYS_FIELDS";
 
-	for (dict_index_t* index = dict_table_get_first_index(prebuilt->table);
+	for (dict_index_t* index = dict_table_get_first_index(dict_table);
 	     index != NULL;
 	     index = dict_table_get_next_index(index)) {
 
@@ -2775,7 +2773,7 @@ err_exit:
 	trx->op_info = "renaming column in SYS_FOREIGN_COLS";
 
 	for (dict_foreign_t* foreign = UT_LIST_GET_FIRST(
-		     prebuilt->table->foreign_list);
+		     dict_table->foreign_list);
 	     foreign != NULL;
 	     foreign = UT_LIST_GET_NEXT(foreign_list, foreign)) {
 		for (unsigned i = 0; i < foreign->n_fields; i++) {
@@ -2808,7 +2806,7 @@ err_exit:
 	}
 
 	for (dict_foreign_t* foreign = UT_LIST_GET_FIRST(
-		     prebuilt->table->referenced_list);
+		     dict_table->referenced_list);
 	     foreign != NULL;
 	     foreign = UT_LIST_GET_NEXT(referenced_list, foreign)) {
 		for (unsigned i = 0; i < foreign->n_fields; i++) {
@@ -2841,9 +2839,120 @@ err_exit:
 	}
 
 	trx->op_info = "";
-	/* Rename the column in the data dictionary cache. */
-	//dict_mem_table_col_rename(prebuilt->table, nth_col, from, to);
 	DBUG_RETURN(false);
+}
+
+/*	return false,	SUCC
+	return true,	FAIL
+*/
+static __attribute__((nonnull))
+bool innobase_rename_columns_cache(
+   /*==========================*/
+   mem_heap_t*			heap,			// temporary heap
+   Alter_inplace_info*	ha_alter_info,	
+   const TABLE*			tmp_table,		// table after rename
+   dict_table_t*		table,
+   trx_t*				trx)
+{
+	char* col_names = NULL;
+	char* col_name  = NULL;
+	ulint n_col_names_len =0;
+
+	col_names = (char*)mem_heap_zalloc(heap, tmp_table->s->fields * 200); /* 每个字段长度必小于200 */
+	col_name  = col_names;
+
+	if (col_names == NULL)
+	{
+		push_warning_printf(
+			(THD*) trx->mysql_thd,
+			MYSQL_ERROR::WARN_LEVEL_WARN,
+			ER_CANT_CREATE_TABLE,
+			"mem_heap_alloc error %s %d", __FILE__, __LINE__);
+
+		goto err_exit;
+	}
+
+	table->n_def = 0;
+	if (tmp_table->field)
+	{
+		for (Field **ptr=tmp_table->field ; *ptr ; ptr++)
+		{
+			strcpy(col_name, (*ptr)->field_name);
+			col_name += strlen((*ptr)->field_name) + 1;
+			n_col_names_len += strlen((*ptr)->field_name) + 1;
+			table->n_def++;
+		}
+	}
+
+	dict_mem_table_cols_rename_low(table, col_names, n_col_names_len);
+
+	return (false);
+
+err_exit:
+	return (true);
+}
+
+
+/** Rename columns in the data dictionary tables.
+@param ha_alter_info	Data used during in-place alter.
+@param table		the TABLE
+@param dict_table   the dict_table_t struct
+@param trx		data dictionary transaction
+@retval true			Failure
+@retval DB_SUCCESS		Success */
+static __attribute__((nonnull, warn_unused_result))
+ulint
+innobase_rename_columns(
+	mem_heap_t*         heap,  // temporary heap
+	Alter_inplace_info*	ha_alter_info,
+	const TABLE*	table,
+	const TABLE*    tmp_table, // tmp table
+	dict_table_t*	dict_table,
+	trx_t*			trx
+	)
+{
+	Alter_info* alter_info = static_cast<Alter_info*>(ha_alter_info->alter_info);
+
+	List_iterator_fast<Create_field> cf_it(
+		alter_info->create_list);
+	uint i = 0;
+
+	DBUG_ASSERT(ha_alter_info->handler_flags
+		& (Alter_inplace_info::ALTER_COLUMN_CHANGE | Alter_inplace_info::ALTER_COLUMN_NAME_FLAG));
+
+	for (Field** fp = table->field; *fp; fp++, i++) {
+		if (!((*fp)->flags & FIELD_IS_RENAMED)) {
+			continue;
+		}
+
+		cf_it.rewind();
+		while (Create_field* cf = cf_it++) {
+			if (cf->field == *fp) {
+				if (innobase_rename_column(dict_table, trx,
+					    i,
+					    cf->field->field_name,
+					    cf->field_name
+					    )) {
+					return(true);
+				}
+				goto processed_field;
+			}
+		}
+
+		ut_error;
+processed_field:
+		continue;
+	}
+
+	/* 更新内存中的数据字典 */ 
+	if( innobase_rename_columns_cache(heap, ha_alter_info, tmp_table, dict_table, trx) ) {
+		goto err_exit;
+	}
+
+	return(DB_SUCCESS);
+
+err_exit:
+	return (true);
 }
 
 /*
@@ -2917,6 +3026,24 @@ ha_innobase::check_if_supported_inplace_alter(
         }
         /* 由mysql_compare_table进一步判断 */
         DBUG_RETURN(true);
+
+		break;
+
+	case (Alter_inplace_info::ALTER_COLUMN_CHANGE | Alter_inplace_info::ALTER_COLUMN_NAME_FLAG):
+		if (mysql_version < 50048)
+			DBUG_RETURN(false);
+        /* 
+            如果行格式不是GCS,或者创建的行格式与底层的行格式不一样,则不能直接快速alter 
+        */
+		if( ROW_TYPE_GCS != tb_innodb_row_type || 
+			( (create_info->used_fields & HA_CREATE_USED_ROW_FORMAT) &&
+			create_info->row_type != tb_innodb_row_type )){
+				DBUG_RETURN(false);
+		}
+		/* 由mysql_compare_table进一步判断 */
+		DBUG_RETURN(true);
+
+		break;
 
     /* 修改字符集，for upgrade */
     case (Alter_inplace_info::ALTER_COLUMN_CHANGE | Alter_inplace_info::ALTER_COLUMN_CHANGE_COLLATION):
@@ -3094,6 +3221,11 @@ ha_innobase::inplace_alter_table(
         }
         err = innobase_add_columns_simple(heap, trx, dict_table, tmp_table, ha_alter_info);
     }
+	/* 增加修改列名的支持 */
+	else if(ha_alter_info->handler_flags == (Alter_inplace_info::ALTER_COLUMN_CHANGE | Alter_inplace_info::ALTER_COLUMN_NAME_FLAG))
+	{
+		err = innobase_rename_columns(heap, ha_alter_info, table, tmp_table, dict_table, trx);
+	}
 	else if(ha_alter_info->handler_flags == Alter_inplace_info::CHANGE_CREATE_OPTION_FLAG)
 	{
         if(ha_alter_info->alter_info_bak->row_format_before_alter_table == ROW_TYPE_NOT_USED)
