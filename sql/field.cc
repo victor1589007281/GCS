@@ -7912,6 +7912,10 @@ uint Field_blob::is_equal(Create_field *new_field)
   if (field_flags_are_binary() != new_field->field_flags_are_binary())
     return 0;
 
+  /* 压缩标记需一样 */
+  if (is_compressed() != new_field->is_compressed())
+    return 0;
+
   if ((new_field->sql_type == get_blob_type_from_length(max_data_length()))
           && is_def_value_equal(new_field) &&
           new_field->pack_length == pack_length())
@@ -9515,7 +9519,7 @@ bool Create_field::init(THD *thd, char *fld_name, enum_field_types fld_type,
       }
       def= 0;
     }
-    flags|= BLOB_FLAG;
+    flags|= BLOB_FLAG | BINARY_FLAG;  // 对于blob字段，必行是binary。这改动为了修正Field_blob::field_flags_are_binary
     break;
   case MYSQL_TYPE_YEAR:
     if (!fld_length || length != 2)

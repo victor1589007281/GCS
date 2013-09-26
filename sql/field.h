@@ -2207,6 +2207,9 @@ public:
   {
     return (flags & (BINCMP_FLAG | BINARY_FLAG)) != 0;
   }
+
+  bool is_compressed() { return unireg_check == Field::COMPRESSED_BLOB_FIELD; }
+
 private:
   const String empty_set_string;
 };
