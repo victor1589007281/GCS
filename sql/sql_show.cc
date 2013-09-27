@@ -1964,7 +1964,8 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
   TABLE *table= tables->table;
   CHARSET_INFO *cs= system_charset_info;
   char *user;
-  time_t now= my_time(0);
+  time_t now;
+  ulonglong now_utime= my_micro_time_and_time(&now);
   DBUG_ENTER("fill_process_list");
 
   user= thd->security_ctx->master_access & PROCESS_ACL ?
@@ -2023,8 +2024,17 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
         table->field[4]->store(command_name[tmp->command].str,
                                command_name[tmp->command].length, cs);
       /* MYSQL_TIME */
-      table->field[5]->store((longlong)(tmp->start_time ?
-                                      now - tmp->start_time : 0), FALSE);
+      longlong value_in_time_column= 0;
+      if(tmp->start_time)
+      {
+        value_in_time_column = (now - tmp->start_time);
+        if(value_in_time_column > now)
+        {
+          value_in_time_column= 0;
+        }
+      }
+      table->field[5]->store(value_in_time_column, FALSE);
+
       /* STATE */
       if ((val= thread_state_info(tmp)))
       {
@@ -2046,6 +2056,21 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
                                    tmp->query_length()), cs);
         table->field[7]->set_notnull();
       }
+      mysql_mutex_unlock(&tmp->LOCK_thd_data);
+
+      /* TIME_MS */
+      table->field[8]->store(((tmp->start_utime ?
+                               now_utime - tmp->start_utime : 0)/ 1000));
+
+      mysql_mutex_lock(&tmp->LOCK_thd_data);
+      /* ROWS_SENT */
+      table->field[9]->store((ulonglong) tmp->sent_row_count);
+      /* ROWS_EXAMINED */
+      table->field[10]->store((ulonglong) tmp->examined_row_count);
+      /* ROWS_READ */
+      table->field[11]->store((ulonglong) tmp->warning_info->current_row_for_warning());
+	  /* OS_THREAD_ID */
+      table->field[12]->store((ulonglong) tmp->real_id);
       mysql_mutex_unlock(&tmp->LOCK_thd_data);
 
       if (schema_table_store_record(thd, table))
@@ -7923,6 +7948,16 @@ ST_FIELD_INFO processlist_fields_info[]=
   {"STATE", 64, MYSQL_TYPE_STRING, 0, 1, "State", SKIP_OPEN_TABLE},
   {"INFO", PROCESS_LIST_INFO_WIDTH, MYSQL_TYPE_STRING, 0, 1, "Info",
    SKIP_OPEN_TABLE},
+  {"TIME_MS", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG,
+   0, 0, "Time_ms", SKIP_OPEN_TABLE},
+  {"ROWS_SENT", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
+   MY_I_S_UNSIGNED, "Rows_sent", SKIP_OPEN_TABLE},
+  {"ROWS_EXAMINED", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
+   MY_I_S_UNSIGNED, "Rows_examined", SKIP_OPEN_TABLE},
+  {"ROWS_READ", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
+   MY_I_S_UNSIGNED, "Rows_read", SKIP_OPEN_TABLE},
+  {"OS_THREAD_ID", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
+   MY_I_S_UNSIGNED, "Os_thread_id", SKIP_OPEN_TABLE},
   {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
 };
 
