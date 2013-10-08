@@ -712,7 +712,7 @@ static void print_version(void)
 {
   printf("%s  Ver %s Distrib %s, for %s (%s)\n",my_progname,DUMP_VERSION,
          MYSQL_SERVER_VERSION,SYSTEM_TYPE,MACHINE_TYPE);
-  printf("%s %s Ver %s\n", my_progname, "with GZTAB support", "2.0.2");
+  printf("%s %s Ver %s\n", my_progname, "with GZTAB support", "2.0.3");
 } /* print_version */
 
 
