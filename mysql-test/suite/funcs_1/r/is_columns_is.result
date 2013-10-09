@@ -207,8 +207,13 @@ def	information_schema	PROCESSLIST	DB	4	NULL	YES	varchar	64	192	NULL	NULL	utf8	u
 def	information_schema	PROCESSLIST	HOST	3		NO	varchar	64	192	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select	
 def	information_schema	PROCESSLIST	ID	1	0	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(4)			select	
 def	information_schema	PROCESSLIST	INFO	8	NULL	YES	longtext	4294967295	4294967295	NULL	NULL	utf8	utf8_general_ci	longtext			select	
+def	information_schema	PROCESSLIST	OS_THREAD_ID	13	0	NO	bigint	NULL	NULL	20	0	NULL	NULL	bigint(21) unsigned			select	
+def	information_schema	PROCESSLIST	ROWS_EXAMINED	11	0	NO	bigint	NULL	NULL	20	0	NULL	NULL	bigint(21) unsigned			select	
+def	information_schema	PROCESSLIST	ROWS_READ	12	0	NO	bigint	NULL	NULL	20	0	NULL	NULL	bigint(21) unsigned			select	
+def	information_schema	PROCESSLIST	ROWS_SENT	10	0	NO	bigint	NULL	NULL	20	0	NULL	NULL	bigint(21) unsigned			select	
 def	information_schema	PROCESSLIST	STATE	7	NULL	YES	varchar	64	192	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select	
 def	information_schema	PROCESSLIST	TIME	6	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(7)			select	
+def	information_schema	PROCESSLIST	TIME_MS	9	0	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21)			select	
 def	information_schema	PROCESSLIST	USER	2		NO	varchar	16	48	NULL	NULL	utf8	utf8_general_ci	varchar(16)			select	
 def	information_schema	QUERY_RESPONSE_TIME	COUNT	2	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11) unsigned			select	
 def	information_schema	QUERY_RESPONSE_TIME	TIME	1		NO	varchar	14	42	NULL	NULL	utf8	utf8_general_ci	varchar(14)			select	
@@ -676,6 +681,11 @@ NULL	information_schema	PROCESSLIST	ID	bigint	NULL	NULL	NULL	NULL	bigint(4)
 NULL	information_schema	PROCESSLIST	TIME	int	NULL	NULL	NULL	NULL	int(7)
 3.0000	information_schema	PROCESSLIST	STATE	varchar	64	192	utf8	utf8_general_ci	varchar(64)
 1.0000	information_schema	PROCESSLIST	INFO	longtext	4294967295	4294967295	utf8	utf8_general_ci	longtext
+NULL	information_schema	PROCESSLIST	TIME_MS	bigint	NULL	NULL	NULL	NULL	bigint(21)
+NULL	information_schema	PROCESSLIST	ROWS_SENT	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	PROCESSLIST	ROWS_EXAMINED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	PROCESSLIST	ROWS_READ	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	PROCESSLIST	OS_THREAD_ID	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
 3.0000	information_schema	QUERY_RESPONSE_TIME	TIME	varchar	14	42	utf8	utf8_general_ci	varchar(14)
 NULL	information_schema	QUERY_RESPONSE_TIME	COUNT	int	NULL	NULL	NULL	NULL	int(11) unsigned
 3.0000	information_schema	QUERY_RESPONSE_TIME	TOTAL	varchar	100	300	utf8	utf8_general_ci	varchar(100)

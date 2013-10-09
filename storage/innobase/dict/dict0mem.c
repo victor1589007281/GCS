@@ -538,7 +538,7 @@ void dict_mem_table_cols_rename_low(
 	char* col_names,		/* !<in: all table column names, excluded DB_ROW_ID、DB_TRX_ID、DB_ROLL_PTR */
 	ulint n_col_names_len)	/* !<in: all table col names len, excluded DB_ROW_ID、DB_TRX_ID、DB_ROLL_PTR */
 {
-	int i, j;
+	ulint i ;
 	dict_field_t* fields;
 	dict_index_t* index;
 
