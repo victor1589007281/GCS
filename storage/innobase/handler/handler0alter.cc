@@ -2857,6 +2857,7 @@ bool innobase_rename_columns_cache(
 	char* col_names = NULL;
 	char* col_name  = NULL;
 	ulint n_col_names_len =0;
+    ulint n_def_org;
 
 	col_names = (char*)mem_heap_zalloc(heap, tmp_table->s->fields * 200); /* 每个字段长度必小于200 */
 	col_name  = col_names;
@@ -2872,11 +2873,20 @@ bool innobase_rename_columns_cache(
 		goto err_exit;
 	}
 
+    n_def_org = table->n_def;
 	table->n_def = 0;
 	if (tmp_table->field)
 	{
 		for (Field **ptr=tmp_table->field ; *ptr ; ptr++)
 		{
+            if (dict_col_name_is_reserved((*ptr)->field_name))
+            {
+                my_error(ER_WRONG_COLUMN_NAME, MYF(0),
+                    (*ptr)->field_name);
+
+                table->n_def = n_def_org;
+                goto err_exit;
+            }
 			strcpy(col_name, (*ptr)->field_name);
 			col_name += strlen((*ptr)->field_name) + 1;
 			n_col_names_len += strlen((*ptr)->field_name) + 1;
