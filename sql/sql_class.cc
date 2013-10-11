@@ -1702,6 +1702,7 @@ bool THD::store_globals()
   */
   mysys_var->id= thread_id;
   real_id= pthread_self();                      // For debugging
+  os_thread_id= my_pthread_get_tid();
 
   /*
     We have to call thr_lock_info_init() again here as THD may have been

@@ -2070,7 +2070,7 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
       /* ROWS_READ */
       table->field[11]->store((ulonglong) tmp->warning_info->current_row_for_warning());
 	  /* OS_THREAD_ID */
-      table->field[12]->store((ulonglong) tmp->real_id);
+      table->field[12]->store((ulonglong) tmp->os_thread_id);
       mysql_mutex_unlock(&tmp->LOCK_thd_data);
 
       if (schema_table_store_record(thd, table))

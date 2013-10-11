@@ -1986,6 +1986,7 @@ public:
   ulong      statement_id_counter;
   ulong	     rand_saved_seed1, rand_saved_seed2;
   pthread_t  real_id;                           /* For debugging */
+  pid_t      os_thread_id;
   my_thread_id  thread_id;
   uint	     tmp_table;
   uint	     server_status,open_options;
