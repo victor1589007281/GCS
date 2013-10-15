@@ -487,7 +487,7 @@ static int increment_count_by_id(my_thread_id id,
     }
   }
   thread_stats->total_connections++;
-  if (thd->net.vio->type == VIO_TYPE_SSL)
+  if (thd->net.vio && thd->net.vio->type == VIO_TYPE_SSL)
     thread_stats->total_ssl_connections++;
   return 0;
 }
