@@ -104,18 +104,23 @@ PARTITION p0 VALUES LESS THAN (6),
 PARTITION p1 VALUES LESS THAN (11)
 );
 Got one of the listed errors
-DROP TABLE t1,t2;
+DROP TABLE t1,t2,t3;
 create table t1(c1 blob, c2 text)ENGINE=InnoDB;
 insert into t1 values('a', repeat('a',1000));
+insert into t1 values('','x');
 select c1,length(c2) from t1;
 c1	length(c2)
 a	1000
+	1
 alter table t1 change c1 c1 blob compressed, change c2 c2 text compressed;
 insert into t1 values('b', repeat('b',10000));
+insert into t1 values('','x');
 select c1,length(c2) from t1;
 c1	length(c2)
 a	1000
+	1
 b	10000
+	1
 drop table t1;
 create table t1(c1 int,c2 blob compressed)ENGINE=InnoDB;
 insert into t1 values(1,repeat('a',1000));
@@ -127,4 +132,11 @@ c1	length(c2)
 SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ c1,length(c2) FROM t2;
 c1	length(c2)
 1	20
-drop table t1,t2;
+set @default_storage_engine_old = @@default_storage_engine;
+set default_storage_engine = innodb;
+create table t3 select * from t2;
+select c1,length(c2) from t3;
+c1	length(c2)
+1	1000
+set default_storage_engine = @default_storage_engine_old;
+drop table t1,t2,t3;

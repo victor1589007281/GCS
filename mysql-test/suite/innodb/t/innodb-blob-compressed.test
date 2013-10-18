@@ -87,7 +87,7 @@ PARTITION BY RANGE (name) (
     PARTITION p1 VALUES LESS THAN (11)
 );
 
-DROP TABLE t1,t2;
+DROP TABLE t1,t2,t3;
 
 create table t1(c1 blob, c2 text)ENGINE=InnoDB;
 insert into t1 values('a', repeat('a',1000));
@@ -104,12 +104,12 @@ insert into t1 values(1,repeat('a',1000));
 create table t2 like t1;
 insert into t2 (select * from t1);
 select c1,length(c2) from t2;
-SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM t2;
+SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ c1,length(c2) FROM t2;
 
 set @default_storage_engine_old = @@default_storage_engine;
 set default_storage_engine = innodb;
 create table t3 select * from t2;
-select * from t3;
+select c1,length(c2) from t3;
 
 set default_storage_engine = @default_storage_engine_old;
 
