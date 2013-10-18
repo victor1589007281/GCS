@@ -182,6 +182,7 @@ int thd_sql_command(const void* thd);
 const char *thd_proc_info(void* thd, const char *info);
 void **thd_ha_data(const void* thd, const struct handlerton *hton);
 int thd_get_sql_compressed_flag(const void* thd);
+int thd_get_blob_compressed_alloc_flag(const void* thd);
 void thd_storage_lock_wait(void* thd, long long value);
 int thd_tx_isolation(const void* thd);
 char *thd_security_context(void* thd, char *buffer, unsigned int length,

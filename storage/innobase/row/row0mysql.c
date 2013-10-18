@@ -4488,13 +4488,14 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 )
 {
 	byte *compbuf;
+	int is_blob_compressed_alloc_flag = innobase_get_current_blob_compressed_alloc_flag();/* 如alter table情况*/
 
 	ut_a(len <= 0xFFFFFFFF);
 	ut_a(MIN_BLOB_COMPRESS_LENGTH > 0);
 
 	if (len < MIN_BLOB_COMPRESS_LENGTH)
-	{ 
-		if (packet)
+	{ 	
+		if (packet && !is_blob_compressed_alloc_flag)
 		{
 			//长度小于MIN_BLOB_COMPRESS_LENGTH，则不压缩：
 			//对于不压缩的字段，同样要增加头部分
@@ -4503,7 +4504,7 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 		}
 		else
 		{
-			ut_a(len == 0);
+			//ut_a(len == 0);  // because is_blob_compressed_alloc_flag, remove the assert 
 			compbuf = mem_heap_alloc(prebuilt->blob_heap_for_compress, len + 1);
 			if(!compbuf)
 			{
@@ -4513,6 +4514,7 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 
 				return NULL;//malloc failed
 			}
+			memcpy(compbuf + 1, packet, len);
 		}
 
 		//增加头部分，记录数据是否被压缩

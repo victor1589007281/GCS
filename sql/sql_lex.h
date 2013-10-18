@@ -2529,6 +2529,7 @@ struct LEX: public Query_tables_list
   };
 
   bool is_sql_compressed; /* used for do not uncompress blob compressed data when select*/
+  bool is_blob_compressed_alloc; /* used for allloc memory for blob compressed opt*/
 
   /**
     During name resolution search only in the table list given by 

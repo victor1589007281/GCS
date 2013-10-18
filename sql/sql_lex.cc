@@ -421,6 +421,7 @@ void lex_start(THD *thd)
   lex->expr_allows_subselect= TRUE;
   lex->use_only_table_context= FALSE;
   lex->is_sql_compressed= FALSE;
+  lex->is_blob_compressed_alloc = FALSE;
   lex->name.str= 0;
   lex->name.length= 0;
   lex->event_parse_data= NULL;

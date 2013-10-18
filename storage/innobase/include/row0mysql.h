@@ -466,6 +466,10 @@ innobase_get_current_sql_compressed_flag();
 
 UNIV_INTERN
 int
+innobase_get_current_blob_compressed_alloc_flag();
+
+UNIV_INTERN
+int
 row_truncate_table_for_mysql(
 /*=========================*/
 	dict_table_t*	table,	/*!< in: table handle */

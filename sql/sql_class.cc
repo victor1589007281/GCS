@@ -566,6 +566,15 @@ int thd_get_sql_compressed_flag(const THD *thd)
 }
 
 extern "C"
+int thd_get_blob_compressed_alloc_flag(const THD *thd)
+{
+	if (!thd->lex)
+		return 0;
+
+	return thd->lex->is_blob_compressed_alloc;
+}
+
+extern "C"
 void thd_storage_lock_wait(THD *thd, long long value)
 {
   thd->utime_after_lock+= value;

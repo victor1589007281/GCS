@@ -1105,6 +1105,21 @@ innobase_get_current_sql_compressed_flag()
 	return thd_get_sql_compressed_flag(thd);
 }
 
+extern "C" UNIV_INTERN
+int
+innobase_get_current_blob_compressed_alloc_flag()
+{
+	THD* thd;
+
+	thd = current_thd;
+
+	if (!thd)
+		return 0;
+
+	return thd_get_blob_compressed_alloc_flag(thd);
+}
+
+
 /******************************************************************//**
 Get the variable length bounds of the given character set. */
 extern "C" UNIV_INTERN
