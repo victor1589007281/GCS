@@ -7602,8 +7602,6 @@ copy_data_between_tables(TABLE *from,TABLE *to,
   ulonglong prev_insert_id;
   DBUG_ENTER("copy_data_between_tables");
 
-  thd->lex->is_blob_compressed_alloc = TRUE;  /* innodb –Ë∑÷≈‰ø’º‰ */
-
   if (mysql_trans_prepare_alter_copy_data(thd))
     DBUG_RETURN(-1);
   

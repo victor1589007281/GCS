@@ -4495,7 +4495,7 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 
 	if (len < MIN_BLOB_COMPRESS_LENGTH)
 	{ 	
-		if (packet && !is_blob_compressed_alloc_flag)
+		if (packet && is_blob_compressed_alloc_flag)
 		{
 			//长度小于MIN_BLOB_COMPRESS_LENGTH，则不压缩：
 			//对于不压缩的字段，同样要增加头部分

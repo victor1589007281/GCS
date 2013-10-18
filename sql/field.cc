@@ -7487,9 +7487,15 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
   ptr_ex = (char*)value.ptr(); 
   if(is_compressed())
   {
+	  THD* thd;
 	  /* magic number */
 	  *ptr_ex = 0x7B;
 	  ptr_ex +=1;
+	  
+	  /* ·ÖÅäÓÅ»¯ */
+	  thd = current_thd;
+	  if (thd && thd->lex)
+		  thd->lex->is_blob_compressed_alloc = true;
   }
 
   if (f_is_hex_escape(flags))
