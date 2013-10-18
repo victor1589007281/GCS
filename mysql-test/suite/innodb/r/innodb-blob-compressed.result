@@ -105,3 +105,26 @@ PARTITION p1 VALUES LESS THAN (11)
 );
 Got one of the listed errors
 DROP TABLE t1,t2;
+create table t1(c1 blob, c2 text)ENGINE=InnoDB;
+insert into t1 values('a', repeat('a',1000));
+select c1,length(c2) from t1;
+c1	length(c2)
+a	1000
+alter table t1 change c1 c1 blob compressed, change c2 c2 text compressed;
+insert into t1 values('b', repeat('b',10000));
+select c1,length(c2) from t1;
+c1	length(c2)
+a	1000
+b	10000
+drop table t1;
+create table t1(c1 int,c2 blob compressed)ENGINE=InnoDB;
+insert into t1 values(1,repeat('a',1000));
+create table t2 like t1;
+insert into t2 (select * from t1);
+select c1,length(c2) from t2;
+c1	length(c2)
+1	1000
+SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ c1,length(c2) FROM t2;
+c1	length(c2)
+1	20
+drop table t1,t2;
