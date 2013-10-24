@@ -3814,6 +3814,12 @@ static int init_server_components()
   buffered_logs.cleanup();
 #endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
 
+  init_global_table_stats();
+  init_global_index_stats();
+  init_global_user_stats();
+  init_global_client_stats();
+  init_global_thread_stats();
+
   if (xid_cache_init())
   {
     sql_print_error("Out of memory");
@@ -3981,8 +3987,7 @@ a file name for --log-bin-index option", opt_binlog_index_name);
 
   /* We have to initialize the storage engines before CSV logging */
 
-  init_global_table_stats();
-  init_global_index_stats();
+
 
   if (ha_init())
   {
@@ -4120,9 +4125,7 @@ a file name for --log-bin-index option", opt_binlog_index_name);
 
   init_max_user_conn();
   init_update_queries();
-  init_global_user_stats();
-  init_global_client_stats();
-  init_global_thread_stats();
+
   DBUG_RETURN(0);
 }
 
