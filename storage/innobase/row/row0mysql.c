@@ -4488,10 +4488,14 @@ row_blob_compress_alloc(/*函数返回压缩后的结果*/
 )
 {
 	byte *compbuf;
-	int is_blob_compressed_alloc_flag = innobase_get_current_blob_compressed_alloc_flag();/* 如alter table情况*/
+	int is_blob_compressed_alloc_flag;
+	//int is_blob_compressed_alloc_flag = innobase_get_current_blob_compressed_alloc_flag();/* 如alter table情况*/
 
 	ut_a(len <= 0xFFFFFFFF);
 	ut_a(MIN_BLOB_COMPRESS_LENGTH > 0);
+
+    /* 暂时取消1字节优化，以后再详细定位！2013-10-28 */
+    is_blob_compressed_alloc_flag = FALSE;
 
 	if (len < MIN_BLOB_COMPRESS_LENGTH)
 	{ 	
