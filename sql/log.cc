@@ -6418,9 +6418,9 @@ int TC_LOG_MMAP::open(const char *opt_name)
     pg->state=PS_POOL;
     mysql_mutex_init(key_PAGE_lock, &pg->lock, MY_MUTEX_INIT_FAST);
     mysql_cond_init(key_PAGE_cond, &pg->cond, 0);
-    pg->start=(my_xid *)(data + i*tc_log_page_size);
-    pg->end=(my_xid *)(pg->start + tc_log_page_size);
+    pg->ptr=pg->start=(my_xid *)(data + i*tc_log_page_size);
     pg->size=pg->free=tc_log_page_size/sizeof(my_xid);
+    pg->end=pg->start + pg->size;
   }
   pages[0].size=pages[0].free=
                 (tc_log_page_size-TC_LOG_HEADER_SIZE)/sizeof(my_xid);
@@ -6653,7 +6653,15 @@ int TC_LOG_MMAP::sync()
   /* marking 'syncing' slot free */
   mysql_mutex_lock(&LOCK_sync);
   syncing=0;
-  mysql_cond_signal(&active->cond);        // wake up a new syncer
+  /*
+    we check the "active" pointer without LOCK_active. Still, it's safe -
+    "active" can change from NULL to not NULL any time, but it
+    will take LOCK_sync before waiting on active->cond. That is, it can never
+    miss a signal.
+    And "active" can change to NULL only after LOCK_sync, so this is safe too.
+  */
+  if (active)
+    mysql_cond_signal(&active->cond);      // wake up a new syncer
   mysql_mutex_unlock(&LOCK_sync);
   return err;
 }
