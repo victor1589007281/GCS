@@ -50,3 +50,10 @@ IF(ORACLE_INCLUDE_DIR AND ORACLE_OCI_LIBRARY)
   SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DHAVE_ORACLE_OCI -DLINUX -D_GNU_SOURCE -D_REENTRANT")
   TARGET_LINK_LIBRARIES (spider ${ORACLE_OCI_LIBRARY})
 ENDIF()
+
+IF(MSVC)
+	 ADD_CUSTOM_COMMAND(TARGET spider
+                     POST_BUILD 
+                     COMMAND if not exist ..\\..\\sql\\lib mkdir ..\\..\\sql\\lib\\plugin
+                     COMMAND copy Debug\\ha_spider.dll ..\\..\\sql\\lib\\plugin\\ha_spider.dll)
+ENDIF()
