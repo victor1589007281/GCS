@@ -1574,7 +1574,7 @@ static struct my_option my_long_options[] =
 
 static void usage(int version)
 {
-	printf("tmysqlparse Ver 1.0\n");
+	printf("tmysqlparse Ver 1.1\n");
 	if (version)
 		return;
 //	puts(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000, 2011"));
@@ -3775,12 +3775,12 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 		{
 			if((roa->ra)[i].pra.result_type == 1)
 			{
-				int tmp_type = roa->ra[i].pra.query_type;
+				int tmp_type = roa->ra[i].pra.warning_type;
 
 				fputs("\t\t<warning_info>\n",xml_file);
 
 				fputs("\t\t\t<type>",xml_file);
-				fprintf(xml_file,"%s",get_stmt_type_str(tmp_type));
+				fprintf(xml_file,"%s",get_warnings_type_str(tmp_type));
 				fputs("</type>\n",xml_file);
 
 				fputs("\t\t\t<name>",xml_file);
@@ -3832,7 +3832,6 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 
 	fputs("</result>\n",xml_file);
 }
-
 
 static void print_quoted_xml(FILE *xml_file, const char *str, ulong len)
 {
