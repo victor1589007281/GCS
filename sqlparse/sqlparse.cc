@@ -5,6 +5,7 @@
 #include "sql_db.h"           // mysql_change_db, mysql_create_db,
 #include "sqlparse.h"
 #include "sp_head.h"
+#include "mysql_com.h"
 
 extern int parse_export;
 #define PARSE_RESULT_N_TABLE_ARR_INITED 5
@@ -810,6 +811,7 @@ query_parse_audit_tsqlparse(
 					pra->result_type = 1;
 					pra->warning_type = CREATE_TABLE_NOT_INNODB;
 				}
+				break;
 			}
 
 			/* 建表不带主键告警 */
@@ -824,11 +826,12 @@ query_parse_audit_tsqlparse(
 			{
 				/* 建表不带主键 */
 				pra->result_type = 1;
-				pra->table_without_primarykey = 1;
+				pra->warning_type = CREATE_TABLE_NO_INDEX;
 				if(key->type == Key::PRIMARY)
 				{
 					pra->result_type = 0;
 					pra->warning_type = WARNINGS_DEFAULT;
+					break;
 				}
 				key = key_iterator++;
 			}
@@ -857,6 +860,7 @@ query_parse_audit_tsqlparse(
 					pra->result_type = 1;
 					pra->warning_type = CREATE_TABLE_WITH_MUCH_BLOB;
 					pra->blob_text_count = blob_text_count;
+					break;
 				}
 			}
 			{ // 处理字段中的字符集问题，每个字段的字符集类型，须与表的字符集一致
@@ -914,6 +918,7 @@ query_parse_audit_tsqlparse(
 					pra->result_type = 1;
 					pra->warning_type = CREATE_TABLE_WITH_MUCH_BLOB;
 					pra->blob_text_count = blob_text_count;
+					break;
 				}
 			}
 
@@ -925,19 +930,19 @@ query_parse_audit_tsqlparse(
 				{// 使用after来增加字段，则不能使用快速加字段功能，告警
 					pra->result = 1;
 					pra->warning_type = ALTER_TABLE_WITH_AFTER;
+					break;
 				}
 
 				// 使用alter来增加字段，在指定了default值而未指定NOT NULL选项告警
 				it_field.rewind();
 				while(!!(cur_field = it_field++))
 				{
-					if(cur_field->def && !(cur_field->flags & 1))
+					if(cur_field->def && !(cur_field->flags & NOT_NULL_FLAG))
 					{// 表示有默认值, flags用于标识该字段的一些属性，其中1对应NOT_NULL_FLAG，
 						pra->result_type = 1;
 						pra->warning_type = ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL;
 					}
 				}
-				
 			}
 		}
 		break;
