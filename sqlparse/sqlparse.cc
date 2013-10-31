@@ -14,7 +14,7 @@ extern int parse_export;
 static int ignore_error_code[] = {ER_UNKNOWN_SYSTEM_VARIABLE,0};//0 means the end
 
 
-static int version_pos[] = {0, 6, 13};
+static int version_pos[] = {0, 6, 13, 13, 13, 13, 13, 13};
 static  char word_segmentation[] = {' ' , '\t', '\n', '\r', ',', '.', '(', ')', '<', '>', '=', '!', '\0'};
 
 
@@ -470,6 +470,31 @@ const char* parse_result_get_stmt_type_str(parse_result_t* pr)
 	return get_stmt_type_str(pr->query_type);
 }
 
+const char* get_warnings_type_str(int type)
+{//  返回告警类型对应的字符串，用于输出
+	switch(type)
+	{
+	case WARNINGS_DEFAULT: return "WARNINGS_DEFAULT";
+	case DROP_DB: return "DROP_DB";
+	case DROP_TABLE: return "DROP_TABLE";
+	case DROP_VIEW: return "DROP_VIEW";
+	case TRUNCETE: return "TRUNCETE";
+	case DELETE_WITHOUT_WHERE: return "DELETE_WITHOUT_WHERE";
+	case UPDATE_WITHOUT_WHERE: return "UPDATE_WITHOUT_WHERE";
+	case CREATE_TABLE_WITH_MUCH_BLOB: return "CREATE_TABLE_WITH_MUCH_BLOB";
+	case ALTER_TABLE_ADD_MUCH_BLOB: return "ALTER_TABLE_ADD_MUCH_BLOB";
+	case CREATE_TABLE_NOT_INNODB: return "CREATE_TABLE_NOT_INNODB";
+	case CREATE_TABLE_NO_INDEX: return "CREATE_TABLE_NO_INDEX";
+	case ALTER_TABLE_WITH_AFTER: return "ALTER_TABLE_WITH_AFTER";
+	case ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL: return "ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL";
+	case CREATE_TABLE_WITH_OTHER_CHARACTER: return "CREATE_TABLE_WITH_OTHER_CHARACTER";
+	default:
+		break;
+	}
+	return "WARNINGS_DEFAULT";
+
+}
+
 const char* get_stmt_type_str(int type)
 {
 	switch(type)
@@ -727,24 +752,28 @@ query_parse_audit_tsqlparse(
 			strcpy(pra->dbname,(lex->name).str);
 			pra->tbdb = 1;
 			pra->result_type = 1;
+			pra->warning_type = DROP_DB;
 			break;
 		}
 	case SQLCOM_DROP_TABLE:
 		{
 			pra->tbdb = 0;
 			pra->result_type = 1;
+			pra->warning_type = DROP_TABLE;
 			break;
 		}		
 	case SQLCOM_DROP_VIEW:
 		{
 			pra->tbdb = 0;
 			pra->result_type = 1;
+			pra->warning_type = DROP_VIEW;
 			break;
 		}
 	case SQLCOM_TRUNCATE:
 		{
 			pra->tbdb = 0;
 			pra->result_type = 1;
+			pra->warning_type = TRUNCETE;
 			break;
 		}
 	case SQLCOM_DELETE:
@@ -753,6 +782,7 @@ query_parse_audit_tsqlparse(
 			{
 				pra->tbdb = 0;
 				pra->result_type = 1;
+				pra->warning_type = DELETE_WITHOUT_WHERE;
 			}
 			break;
 		}
@@ -762,11 +792,11 @@ query_parse_audit_tsqlparse(
 			{
 				pra->tbdb = 0;
 				pra->result_type = 1;
+				pra->warning_type = UPDATE_WITHOUT_WHERE;
 			}
 			break;
 		}
 	case SQLCOM_CREATE_TABLE:
-	case SQLCOM_ALTER_TABLE:
 		{
 			List_iterator<Key> key_iterator(lex->alter_info.key_list);
 			Key *key;
@@ -778,18 +808,17 @@ query_parse_audit_tsqlparse(
 				if(lex->create_info.db_type->db_type != DB_TYPE_INNODB)
 				{
 					pra->result_type = 1;
-					pra->create_table_not_innodb = 1;
+					pra->warning_type = CREATE_TABLE_NOT_INNODB;
 				}
 			}
-
 
 			/* 建表不带主键告警 */
 			key = key_iterator++;
 			if(key == NULL)
 			{
 				/* 没有索引，显然没有主键*/
-				pra->result_type = 0;
-				pra->table_without_primarykey = 0;
+				pra->result_type = 1;
+				pra->warning_type = CREATE_TABLE_NO_INDEX;
 			}
 			while (key)
 			{
@@ -799,7 +828,7 @@ query_parse_audit_tsqlparse(
 				if(key->type == Key::PRIMARY)
 				{
 					pra->result_type = 0;
-					pra->table_without_primarykey = 0;
+					pra->warning_type = WARNINGS_DEFAULT;
 				}
 				key = key_iterator++;
 			}
@@ -826,8 +855,89 @@ query_parse_audit_tsqlparse(
 				if(blob_text_count >= 10)
 				{//have more than 10 blob/text field
 					pra->result_type = 1;
+					pra->warning_type = CREATE_TABLE_WITH_MUCH_BLOB;
 					pra->blob_text_count = blob_text_count;
 				}
+			}
+			{ // 处理字段中的字符集问题，每个字段的字符集类型，须与表的字符集一致
+			  // 由于表的字符集的默认值暂时无法取得， 故凡是建表时指定charset set 的字段
+			  // 就告警
+				
+				it_field.rewind();
+				while(!!(cur_field = it_field++))
+				{
+					switch(cur_field->sql_type)
+					{
+					case MYSQL_TYPE_BLOB:
+					case MYSQL_TYPE_TINY_BLOB:
+					case MYSQL_TYPE_MEDIUM_BLOB:
+					case MYSQL_TYPE_LONG_BLOB:
+					case MYSQL_TYPE_VARCHAR:
+					case MYSQL_TYPE_VAR_STRING:
+					case MYSQL_TYPE_STRING:
+						if(cur_field->charset)
+						{
+							pra->result_type = 1;
+							pra->warning_type = CREATE_TABLE_WITH_OTHER_CHARACTER;
+						}
+						break;
+					default:
+						break;
+					}
+
+				}
+			}
+		}
+		break;
+	case SQLCOM_ALTER_TABLE:
+		{
+			/* 建表中，blob字段过多的告警 */
+			if(list_field.elements >= 10)
+			{
+				blob_text_count = 0;
+				while(!!(cur_field = it_field++))
+				{
+					switch(cur_field->sql_type)
+					{
+					case MYSQL_TYPE_BLOB:
+					case MYSQL_TYPE_TINY_BLOB:
+					case MYSQL_TYPE_MEDIUM_BLOB:
+					case MYSQL_TYPE_LONG_BLOB:
+						blob_text_count++;
+						break;
+					default:
+						break;
+					}
+				}
+				if(blob_text_count >= 10)
+				{//have more than 10 blob/text field
+					pra->result_type = 1;
+					pra->warning_type = CREATE_TABLE_WITH_MUCH_BLOB;
+					pra->blob_text_count = blob_text_count;
+				}
+			}
+
+
+			if(pra->mysql_version > VERSION_5_5)
+			{// tmysql 下，才考虑特定加字段告警
+
+				if(lex->alter_info.flags & ALTER_COLUMN_ORDER)
+				{// 使用after来增加字段，则不能使用快速加字段功能，告警
+					pra->result = 1;
+					pra->warning_type = ALTER_TABLE_WITH_AFTER;
+				}
+
+				// 使用alter来增加字段，在指定了default值而未指定NOT NULL选项告警
+				it_field.rewind();
+				while(!!(cur_field = it_field++))
+				{
+					if(cur_field->def && !(cur_field->flags & 1))
+					{// 表示有默认值, flags用于标识该字段的一些属性，其中1对应NOT_NULL_FLAG，
+						pra->result_type = 1;
+						pra->warning_type = ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL;
+					}
+				}
+				
 			}
 		}
 		break;
@@ -1112,6 +1222,16 @@ static int set_current_version(char *version, enum_versio *current_version)
 			*current_version = VERSION_5_1;
 		else if(0 == strcmp(version, "5.5"))
 			*current_version = VERSION_5_5;
+		else if(0 == strcmp(version, "tmysql-1.0"))
+			*current_version = VERSION_TMYSQL_1_0;
+		else if(0 == strcmp(version, "tmysql-1.1"))
+			*current_version = VERSION_TMYSQL_1_1;
+		else if(0 == strcmp(version, "tmysql-1.2"))
+			*current_version = VERSION_TMYSQL_1_2;
+		else if(0 == strcmp(version, "tmysql-1.3"))
+			*current_version = VERSION_TMYSQL_1_3;
+		else if(0 == strcmp(version, "tmysql-1.4"))
+			*current_version = VERSION_TMYSQL_1_4;
 		else
 			return -1;
 	}
