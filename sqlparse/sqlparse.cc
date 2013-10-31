@@ -14,7 +14,7 @@ extern int parse_export;
 static int ignore_error_code[] = {ER_UNKNOWN_SYSTEM_VARIABLE,0};//0 means the end
 
 
-static int version_pos[] = {0, 6, 13};
+static int version_pos[] = {0, 6, 13, 13, 13, 13, 13, 13};
 static  char word_segmentation[] = {' ' , '\t', '\n', '\r', ',', '.', '(', ')', '<', '>', '=', '!', '\0'};
 
 
@@ -486,6 +486,7 @@ const char* get_warnings_type_str(int type)
 	case CREATE_TABLE_NOT_INNODB: return "CREATE_TABLE_NOT_INNODB";
 	case CREATE_TABLE_NO_INDEX: return "CREATE_TABLE_NO_INDEX";
 	case ALTER_TABLE_WITH_AFTER: return "ALTER_TABLE_WITH_AFTER";
+	case ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL: return "ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL";
 	case CREATE_TABLE_WITH_OTHER_CHARACTER: return "CREATE_TABLE_WITH_OTHER_CHARACTER";
 	default:
 		break;
@@ -917,10 +918,26 @@ query_parse_audit_tsqlparse(
 			}
 
 
-			if(lex->alter_info.flags & ALTER_COLUMN_ORDER)
-			{// 使用after来增加字段，则不能使用快速加字段功能，告警
-				pra->result = 1;
-				pra->warning_type = ALTER_TABLE_WITH_AFTER;
+			if(pra->mysql_version > VERSION_5_5)
+			{// tmysql 下，才考虑特定加字段告警
+
+				if(lex->alter_info.flags & ALTER_COLUMN_ORDER)
+				{// 使用after来增加字段，则不能使用快速加字段功能，告警
+					pra->result = 1;
+					pra->warning_type = ALTER_TABLE_WITH_AFTER;
+				}
+
+				// 使用alter来增加字段，在指定了default值而未指定NOT NULL选项告警
+				it_field.rewind();
+				while(!!(cur_field = it_field++))
+				{
+					if(cur_field->def && !(cur_field->flags & 1))
+					{// 表示有默认值, flags用于标识该字段的一些属性，其中1对应NOT_NULL_FLAG，
+						pra->result_type = 1;
+						pra->warning_type = ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL;
+					}
+				}
+				
 			}
 		}
 		break;
@@ -1205,6 +1222,16 @@ static int set_current_version(char *version, enum_versio *current_version)
 			*current_version = VERSION_5_1;
 		else if(0 == strcmp(version, "5.5"))
 			*current_version = VERSION_5_5;
+		else if(0 == strcmp(version, "tmysql-1.0"))
+			*current_version = VERSION_TMYSQL_1_0;
+		else if(0 == strcmp(version, "tmysql-1.1"))
+			*current_version = VERSION_TMYSQL_1_1;
+		else if(0 == strcmp(version, "tmysql-1.2"))
+			*current_version = VERSION_TMYSQL_1_2;
+		else if(0 == strcmp(version, "tmysql-1.3"))
+			*current_version = VERSION_TMYSQL_1_3;
+		else if(0 == strcmp(version, "tmysql-1.4"))
+			*current_version = VERSION_TMYSQL_1_4;
 		else
 			return -1;
 	}
