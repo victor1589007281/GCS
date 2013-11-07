@@ -489,7 +489,7 @@ const char* get_warnings_type_str(int type)
 	case ALTER_TABLE_WITH_AFTER: return "ALTER_TABLE_WITH_AFTER";
 	case ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL: return "ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL";
 	case CREATE_TABLE_WITH_OTHER_CHARACTER: return "CREATE_TABLE_WITH_OTHER_CHARACTER";
-	case CREATE_OR_DROP_PROCEDURE: return "CREATE_OR_DROP_PROCEDURE";
+	case CREATE_PROCEDURE_WITH_DEFINER: return "CREATE_PROCEDURE_WITH_DEFINER";
 	default:
 		break;
 	}
@@ -969,16 +969,19 @@ query_parse_audit_tsqlparse(
 		}
 		break;
 	case SQLCOM_CREATE_PROCEDURE:
-	case SQLCOM_CREATE_SPFUNCTION:
 	case SQLCOM_CREATE_FUNCTION:
-	case SQLCOM_DROP_FUNCTION:
-	case SQLCOM_DROP_PROCEDURE:
-	case SQLCOM_CREATE_EVENT:
-	case SQLCOM_DROP_EVENT:
 	case SQLCOM_ALTER_PROCEDURE:
 	case SQLCOM_ALTER_FUNCTION:
-		pra->result_type = 1;
-		pra->warning_type = CREATE_OR_DROP_PROCEDURE;
+	case SQLCOM_CREATE_SPFUNCTION:
+		if(lex->definer && &(lex->definer->user) && &(lex->definer->host))
+		{// Ê¹ÓÃÁËdefiner
+			if(strcmp(lex->definer->user.str, "ADMIN")==0 && strcmp(lex->definer->host.str, "localhost")==0)
+			{
+				pra->result_type = 1;
+				pra->warning_type = CREATE_PROCEDURE_WITH_DEFINER;
+			}
+		}
+
 		break;
 	case SQLCOM_DROP_INDEX:
 	case SQLCOM_DROP_USER:
