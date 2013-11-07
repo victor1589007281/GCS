@@ -40,8 +40,8 @@ void my_init_for_sqlparse();
 void my_end_for_sqlparse();
 static my_pthread_once_t sqlparse_global_inited = MY_PTHREAD_ONCE_INIT;
 static int process_msg_error(int err_code, char *err_msg);
-static int set_current_version(char *version, enum_versio *current_version);
-static const char* has_reserve_in_errmsg(enum_versio mysql_version, char *err_msg);
+static int set_current_version(char *version, enum_version *current_version);
+static const char* has_reserve_in_errmsg(enum_version mysql_version, char *err_msg);
 static int isprefix_word(const char *s, const char *t, int first_pos);
 static int is_word_segmentation(char ch);
 static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len,const char *reserve);
@@ -479,7 +479,7 @@ const char* get_warnings_type_str(int type)
 	case DROP_DB: return "DROP_DB";
 	case DROP_TABLE: return "DROP_TABLE";
 	case DROP_VIEW: return "DROP_VIEW";
-	case TRUNCETE: return "TRUNCETE";
+	case TRUNCATE_TABLE: return "TRUNCATE";
 	case DELETE_WITHOUT_WHERE: return "DELETE_WITHOUT_WHERE";
 	case UPDATE_WITHOUT_WHERE: return "UPDATE_WITHOUT_WHERE";
 	case CREATE_TABLE_WITH_MUCH_BLOB: return "CREATE_TABLE_WITH_MUCH_BLOB";
@@ -489,6 +489,7 @@ const char* get_warnings_type_str(int type)
 	case ALTER_TABLE_WITH_AFTER: return "ALTER_TABLE_WITH_AFTER";
 	case ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL: return "ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL";
 	case CREATE_TABLE_WITH_OTHER_CHARACTER: return "CREATE_TABLE_WITH_OTHER_CHARACTER";
+	case CREATE_OR_DROP_PROCEDURE: return "CREATE_OR_DROP_PROCEDURE";
 	default:
 		break;
 	}
@@ -643,10 +644,10 @@ const char* get_stmt_type_str(int type)
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
-int parse_result_audit_init(parse_result_audit* pra, char *version)
+int parse_result_audit_init(parse_result_audit* pra, char *version, char *charset)
 {
     THD* thd;
-	enum_versio current_version;
+	enum_version current_version;
 	if(-1 == set_current_version(version, &current_version))
 	{
 		fprintf(stderr, "the input version is wrong.\n");
@@ -681,6 +682,15 @@ int parse_result_audit_init(parse_result_audit* pra, char *version)
 	pra->info.non_ascii = 0;
 	pra->table_arr = (parse_table_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_table_t));
 	pra->mysql_version = current_version;
+
+	if(charset)
+	{
+		int charset_len = strlen(charset);
+		pra->db_charset = (char*)calloc(charset_len+1, sizeof(char));
+		memcpy(pra->db_charset, charset, charset_len+1);
+	}
+	else
+		pra->db_charset = charset;
     return 0;
 }
 
@@ -774,7 +784,7 @@ query_parse_audit_tsqlparse(
 		{
 			pra->tbdb = 0;
 			pra->result_type = 1;
-			pra->warning_type = TRUNCETE;
+			pra->warning_type = TRUNCATE_TABLE;
 			break;
 		}
 	case SQLCOM_DELETE:
@@ -863,13 +873,21 @@ query_parse_audit_tsqlparse(
 					break;
 				}
 			}
-			{ // 处理字段中的字符集问题，每个字段的字符集类型，须与表的字符集一致
-			  // 由于表的字符集的默认值暂时无法取得， 故凡是建表时指定charset set 的字段
-			  // 就告警
+			{ // 处理字段中的字符集问题，表及每个字段的字符集类型，须与库的字符集一致
+			  // 由于库的字符集的通过参数pra->db_charset传进来， 
+				if(lex->create_info.default_table_charset && lex->create_info.default_table_charset->csname)
+				{
+					if(strcmp(lex->create_info.default_table_charset->csname, pra->db_charset))
+					{// 建表指定的字符集与DB字符集不同，告警
+						pra->result_type = 1;
+						pra->warning_type = CREATE_TABLE_WITH_OTHER_CHARACTER;
+						break;
+					}
+				}
 				
 				it_field.rewind();
 				while(!!(cur_field = it_field++))
-				{
+				{// 看字段中有没有指定其它类型的字符集，有则告警
 					switch(cur_field->sql_type)
 					{
 					case MYSQL_TYPE_BLOB:
@@ -879,10 +897,14 @@ query_parse_audit_tsqlparse(
 					case MYSQL_TYPE_VARCHAR:
 					case MYSQL_TYPE_VAR_STRING:
 					case MYSQL_TYPE_STRING:
-						if(cur_field->charset)
+
+						if(cur_field->charset && cur_field->charset->csname)
 						{
-							pra->result_type = 1;
-							pra->warning_type = CREATE_TABLE_WITH_OTHER_CHARACTER;
+							if(strcmp(cur_field->charset->csname, pra->db_charset))
+							{// 字段中指定了与db不同的字符集，告警
+								pra->result_type = 1;
+								pra->warning_type = CREATE_TABLE_WITH_OTHER_CHARACTER;
+							}
 						}
 						break;
 					default:
@@ -946,13 +968,22 @@ query_parse_audit_tsqlparse(
 			}
 		}
 		break;
-	case SQLCOM_DROP_INDEX:
+	case SQLCOM_CREATE_PROCEDURE:
+	case SQLCOM_CREATE_SPFUNCTION:
+	case SQLCOM_CREATE_FUNCTION:
 	case SQLCOM_DROP_FUNCTION:
-	case SQLCOM_DROP_USER:
 	case SQLCOM_DROP_PROCEDURE:
+	case SQLCOM_CREATE_EVENT:
+	case SQLCOM_DROP_EVENT:
+	case SQLCOM_ALTER_PROCEDURE:
+	case SQLCOM_ALTER_FUNCTION:
+		pra->result_type = 1;
+		pra->warning_type = CREATE_OR_DROP_PROCEDURE;
+		break;
+	case SQLCOM_DROP_INDEX:
+	case SQLCOM_DROP_USER:
 	case SQLCOM_DROP_TRIGGER:
 	case SQLCOM_DROP_SERVER:
-	case SQLCOM_DROP_EVENT:
 	case SQLCOM_DELETE_MULTI:
 	case SQLCOM_UPDATE_MULTI:
     default:
@@ -1190,6 +1221,7 @@ parse_result_audit_destroy(parse_result_audit* pra)
         delete thd;
         pra->thd_org = NULL;
     }
+	free(pra->db_charset);
     return 0;
 }
 
@@ -1214,7 +1246,7 @@ static int process_msg_error(int err_code, char *err_msg)
 	return result_type;
 }
 
-static int set_current_version(char *version, enum_versio *current_version)
+static int set_current_version(char *version, enum_version *current_version)
 {
 	*current_version = VERSION_5_5;
 	if(version == NULL)
@@ -1244,7 +1276,7 @@ static int set_current_version(char *version, enum_versio *current_version)
 }
 
 
-static const char* has_reserve_in_errmsg(enum_versio mysql_version, char *err_msg)
+static const char* has_reserve_in_errmsg(enum_version mysql_version, char *err_msg)
 {//return the reserve word
 	char *start;
 	char tmp[100]={0};
