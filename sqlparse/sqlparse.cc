@@ -875,7 +875,7 @@ query_parse_audit_tsqlparse(
 			}
 			{ // 处理字段中的字符集问题，表及每个字段的字符集类型，须与库的字符集一致
 			  // 由于库的字符集的通过参数pra->db_charset传进来， 
-				if(lex->create_info.default_table_charset && lex->create_info.default_table_charset->csname)
+				if(lex->create_info.default_table_charset && lex->create_info.default_table_charset->csname && pra->db_charset)
 				{
 					if(strcmp(lex->create_info.default_table_charset->csname, pra->db_charset))
 					{// 建表指定的字符集与DB字符集不同，告警
