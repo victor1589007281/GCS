@@ -188,7 +188,7 @@ void spider_free_conn_from_trx(
       (
         (
           conn->server_lost ||
-          spider_param_conn_recycle_mode(trx->thd) != 2
+          spider_param_conn_recycle_mode(trx->thd) != 2         /* 从会话连接池中取出 */
         ) &&
         !conn->opened_handlers
       )
@@ -229,7 +229,7 @@ void spider_free_conn_from_trx(
         !trx_free &&
         !conn->server_lost &&
         !conn->queued_connect &&
-        spider_param_conn_recycle_mode(trx->thd) == 1
+        spider_param_conn_recycle_mode(trx->thd) == 1                   /* 加入全局连接对象 */
       ) {
         /* conn_recycle_mode == 1 */
         *conn->conn_key = '0';
@@ -261,7 +261,7 @@ void spider_free_conn_from_trx(
             pthread_mutex_unlock(&spider_conn_mutex);
           }
         }
-      } else {
+      } else {                                                      /* 释放 */
         /* conn_recycle_mode == 0 */
         spider_free_conn(conn);
       }
@@ -686,9 +686,9 @@ SPIDER_CONN *spider_get_conn(
   int link_idx,
   char *conn_key,
   SPIDER_TRX *trx,
-  ha_spider *spider,
-  bool another,
-  bool thd_chg,
+  ha_spider *spider,                /* 若非NULL，主要用于active-standby */
+  bool another,                     /* 标记操作trx的连接池对象 */
+  bool thd_chg,                     /* unused */
   uint conn_kind,
   int *error_num
 ) {
@@ -782,14 +782,14 @@ SPIDER_CONN *spider_get_conn(
 #endif
   )
 #endif
-  {
+  { /* 1.1 trx->trx_another_conn_hash或trx->trx_conn_hash（本会话）不包含相应的conn对象，关注another的值 */
     if (
       !trx->thd ||
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       (conn_kind == SPIDER_CONN_KIND_MYSQL &&
 #endif
         (
-          (spider_param_conn_recycle_mode(trx->thd) & 1) ||
+          (spider_param_conn_recycle_mode(trx->thd) & 1) ||     /* 2.1 可重用其他会话的连接 */
           spider_param_conn_recycle_strict(trx->thd)
         )
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -817,7 +817,7 @@ SPIDER_CONN *spider_get_conn(
         if (!(conn = (SPIDER_CONN*) my_hash_search_using_hash_value(
           &spider_open_connections, share->conn_keys_hash_value[link_idx],
           (uchar*) share->conn_keys[link_idx],
-          share->conn_keys_lengths[link_idx])))
+          share->conn_keys_lengths[link_idx])))                 
 #else
         if (!(conn = (SPIDER_CONN*) my_hash_search(&spider_open_connections,
           (uchar*) share->conn_keys[link_idx],
@@ -827,7 +827,7 @@ SPIDER_CONN *spider_get_conn(
           pthread_mutex_unlock(&spider_conn_mutex);
           DBUG_PRINT("info",("spider create new conn"));
           if (!(conn = spider_create_conn(share, spider, link_idx,
-            base_link_idx, conn_kind, error_num)))
+            base_link_idx, conn_kind, error_num)))                          /* 3.1 不存在可重用资源，则新建 */
             goto error;
           *conn->conn_key = *conn_key;
           if (spider)
@@ -841,7 +841,7 @@ SPIDER_CONN *spider_get_conn(
           my_hash_delete_with_hash_value(&spider_open_connections,
             conn->conn_key_hash_value, (uchar*) conn);
 #else
-          my_hash_delete(&spider_open_connections, (uchar*) conn);
+          my_hash_delete(&spider_open_connections, (uchar*) conn);          /* 3.2 如存在，重用该资源 */
 #endif
           pthread_mutex_unlock(&spider_conn_mutex);
           DBUG_PRINT("info",("spider get global conn"));
@@ -849,7 +849,7 @@ SPIDER_CONN *spider_get_conn(
           {
             spider->conns[base_link_idx] = conn;
             if (spider_bit_is_set(spider->conn_can_fo, base_link_idx))
-              conn->use_for_active_standby = TRUE;
+              conn->use_for_active_standby = TRUE;  
           }
         }
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -940,7 +940,7 @@ SPIDER_CONN *spider_get_conn(
         }
       }
 #endif
-    } else {
+    } else {                                                /* 2.2 不可重用其他连接资源，新建 */
       DBUG_PRINT("info",("spider create new conn"));
       /* conn_recycle_strict = 0 and conn_recycle_mode = 0 or 2 */
       if (!(conn = spider_create_conn(share, spider, link_idx, base_link_idx,
@@ -969,6 +969,7 @@ SPIDER_CONN *spider_get_conn(
     conn->thd = trx->thd;
     conn->priority = share->priority;
 
+    /* 2.3 连接对象插入hash表trx->trx_another_conn_hash或trx->trx_conn_hash，视乎another */
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     if (conn_kind == SPIDER_CONN_KIND_MYSQL)
     {
@@ -1063,7 +1064,7 @@ SPIDER_CONN *spider_get_conn(
       }
     }
 #endif
-  } else if (spider)
+  } else if (spider)            /* 1.2 本会话包含可用连接对象 */
   {
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     if (conn_kind == SPIDER_CONN_KIND_MYSQL)
@@ -2148,7 +2149,7 @@ void *spider_bg_conn_action(
     pthread_mutex_lock(&conn->bg_conn_sync_mutex);
     pthread_cond_signal(&conn->bg_conn_sync_cond);
     pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
     my_thread_end();
@@ -2208,7 +2209,7 @@ void *spider_bg_conn_action(
       pthread_cond_signal(&conn->bg_conn_sync_cond);
       pthread_mutex_unlock(&conn->bg_conn_mutex);
       pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
       my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
       my_thread_end();
@@ -2647,7 +2648,7 @@ void *spider_bg_sts_action(
     share->bg_sts_kill = FALSE;
     share->bg_sts_init = FALSE;
     pthread_mutex_unlock(&share->sts_mutex);
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
     my_thread_end();
@@ -2715,7 +2716,7 @@ void *spider_bg_sts_action(
     share->bg_sts_kill = FALSE;
     share->bg_sts_init = FALSE;
     pthread_mutex_unlock(&share->sts_mutex);
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
     my_thread_end();
@@ -2749,7 +2750,7 @@ void *spider_bg_sts_action(
 #endif
       pthread_cond_signal(&share->bg_sts_sync_cond);
       pthread_mutex_unlock(&share->sts_mutex);
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
       my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
       my_thread_end();
@@ -3025,7 +3026,7 @@ void *spider_bg_crd_action(
     share->bg_crd_kill = FALSE;
     share->bg_crd_init = FALSE;
     pthread_mutex_unlock(&share->crd_mutex);
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
     my_thread_end();
@@ -3097,7 +3098,7 @@ void *spider_bg_crd_action(
     share->bg_crd_kill = FALSE;
     share->bg_crd_init = FALSE;
     pthread_mutex_unlock(&share->crd_mutex);
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
     my_thread_end();
@@ -3131,7 +3132,7 @@ void *spider_bg_crd_action(
 #endif
       pthread_cond_signal(&share->bg_crd_sync_cond);
       pthread_mutex_unlock(&share->crd_mutex);
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
       my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
       my_thread_end();
@@ -3473,7 +3474,7 @@ void *spider_bg_mon_action(
     share->bg_mon_init = FALSE;
     pthread_cond_signal(&share->bg_mon_conds[link_idx]);
     pthread_mutex_unlock(&share->bg_mon_mutexes[link_idx]);
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
     my_thread_end();
@@ -3502,7 +3503,7 @@ void *spider_bg_mon_action(
 #if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
       set_current_thd(NULL);
 #endif
-#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
+#if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32) || defined(_MSC_VER)
       my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
       my_thread_end();
