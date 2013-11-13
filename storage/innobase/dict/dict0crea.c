@@ -220,7 +220,7 @@ dict_create_sys_columns_tuple(
 	dfield = dtuple_get_nth_field(entry, 4/*PRTYPE*/);
 
 	ptr = mem_heap_alloc(heap, 4);
-	mach_write_to_4(ptr, column->prtype);
+	mach_write_to_4(ptr, (ulint)column->prtype);
 
 	dfield_set_data(dfield, ptr, 4);
 	/* 7: LEN ----------------------------*/

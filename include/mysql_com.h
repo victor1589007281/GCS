@@ -31,6 +31,7 @@
 
 #define SERVER_VERSION_LENGTH 60
 #define SQLSTATE_LENGTH 5
+#define LIST_PROCESS_HOST_LEN 64
 
 /*
   Maximum length of comments
@@ -119,6 +120,8 @@ enum enum_server_command
 #define FIELD_FLAGS_COLUMN_FORMAT 24    /* Field column format, bit 24-25,
                                            reserved by MySQL Cluster */
 
+#define COMPRESSED_BLOB_FLAG (1 << 31)    /** field is blob and set compressed, bit 31**/
+
 #define REFRESH_GRANT		1	/* Refresh grant tables */
 #define REFRESH_LOG		2	/* Start on new log file */
 #define REFRESH_TABLES		4	/* close all tables */
@@ -145,6 +148,12 @@ enum enum_server_command
 #define REFRESH_QUERY_CACHE_FREE 0x20000L /* pack query cache */
 #define REFRESH_DES_KEY_FILE	0x40000L
 #define REFRESH_USER_RESOURCES	0x80000L
+#define REFRESH_QUERY_RESPONSE_TIME 0x100000L /* response time distibution */ /* add from percona */
+#define REFRESH_TABLE_STATS    0x200000L /* Refresh table stats my_hash table */
+#define REFRESH_INDEX_STATS    0x400000L /* Refresh index stats my_hash table */
+#define REFRESH_USER_STATS     0x800000L /* Refresh user stats my_hash table */
+#define REFRESH_CLIENT_STATS   0x1000000L /* Refresh client stats my_hash table */
+#define REFRESH_THREAD_STATS   0x2000000L /* Refresh thread stats my_hash table */
 
 #define CLIENT_LONG_PASSWORD	1	/* new more secure passwords */
 #define CLIENT_FOUND_ROWS	2	/* Found instead of affected rows */
@@ -286,7 +295,7 @@ typedef struct st_vio Vio;
 #define MAX_BIGINT_WIDTH        20      /* Max width for a LONGLONG */
 #define MAX_CHAR_WIDTH		255	/* Max length for a CHAR colum */
 #define MAX_BLOB_WIDTH		16777216	/* Default width for blob */
-#define MAX_CLIENT_PROGRAM_NAME    1024		/* max client program name */
+#define MAX_CLIENT_PROGRAM_NAME    512  /* max client program name */
 
 typedef struct st_net {
 #if !defined(CHECK_EMBEDDED_DIFFERENCES) || !defined(EMBEDDED_LIBRARY)

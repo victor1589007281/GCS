@@ -118,7 +118,7 @@ public:
   {
     return memcmp(ref1, ref2, sizeof(HEAP_PTR));
   }
-  bool check_if_incompatible_data(HA_CREATE_INFO *info, uint table_changes);
+  bool check_if_incompatible_data(HA_CREATE_INFO *info, Alter_inplace_info* inplace_alter, uint table_changes);
 private:
   void update_key_stats();
 };

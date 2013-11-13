@@ -52,6 +52,9 @@ LEX_STRING GENERAL_LOG_NAME= {C_STRING_WITH_LEN("general_log")};
 /* SLOW_LOG name */
 LEX_STRING SLOW_LOG_NAME= {C_STRING_WITH_LEN("slow_log")};
 
+/* ALTER_LOG name */
+LEX_STRING ALTER_LOG_NAME= {C_STRING_WITH_LEN("alter_log")};
+
 	/* Functions defined in this file */
 
 void open_table_error(TABLE_SHARE *share, int error, int db_errno,
@@ -260,6 +263,12 @@ TABLE_CATEGORY get_table_category(const LEX_STRING *db, const LEX_STRING *name)
         (my_strcasecmp(system_charset_info,
                        SLOW_LOG_NAME.str,
                        name->str) == 0))
+      return TABLE_CATEGORY_LOG;
+
+    if ((name->length == ALTER_LOG_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+        ALTER_LOG_NAME.str,
+        name->str) == 0))
       return TABLE_CATEGORY_LOG;
   }
 

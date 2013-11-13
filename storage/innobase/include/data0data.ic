@@ -79,6 +79,24 @@ dfield_get_data(
 }
 #endif /* UNIV_DEBUG */
 
+
+//#ifdef UNIV_DEBUG
+/*********************************************************************//**
+Gets pointer to the org_data in a field when compressed.
+@return	pointer to org_data */
+//UNIV_INLINE
+//void*
+//dfield_get_org_data(
+/*============*/
+//	const dfield_t* field)	/*!< in: field */
+//{
+//	ut_ad(field);
+//	ut_ad((field->org_len == UNIV_SQL_NULL)
+//	      || (field->org_data != &data_error));
+//	return((void*) field->org_data);
+//}
+//#endif /* UNIV_DEBUG */
+
 /*********************************************************************//**
 Gets length of field data.
 @return	length of data; UNIV_SQL_NULL if SQL null data */
@@ -94,6 +112,23 @@ dfield_get_len(
 
 	return(field->len);
 }
+
+/*********************************************************************//**
+Gets length of field org_data.
+@return	length of org_data; UNIV_SQL_NULL if SQL null data */
+//UNIV_INLINE
+//ulint
+//dfield_get_org_len(
+/*===========*/
+//	const dfield_t*	field)	/*!< in: field */
+//{
+//	ut_ad(field);
+//	ut_ad((field->org_len == UNIV_SQL_NULL)
+//	      || (field->org_data != &data_error));
+
+//	return(field->org_len);
+//}
+
 
 /*********************************************************************//**
 Sets length in a field. */
@@ -175,6 +210,25 @@ dfield_set_data(
 }
 
 /*********************************************************************//**
+Sets pointer to the ori_data and ori_length in a field. */
+//UNIV_INLINE
+//void
+//dfield_set_org_data(
+/*============*/
+//	dfield_t*	field,	/*!< in: field */
+//	const void*	org_data,	/*!< in: ori_data */
+//	ulint		org_len)	/*!< in: ori_length or UNIV_SQL_NULL */
+//{
+//	ut_ad(field);
+
+//#ifdef UNIV_VALGRIND_DEBUG
+//	if (len != UNIV_SQL_NULL) UNIV_MEM_ASSERT_RW(org_data, len);
+//#endif /* UNIV_VALGRIND_DEBUG */
+//	field->org_data = (void*) org_data;
+//	field->org_len = org_len;
+//}
+
+/*********************************************************************//**
 Sets a data field to SQL NULL. */
 UNIV_INLINE
 void
@@ -183,6 +237,7 @@ dfield_set_null(
 	dfield_t*	field)	/*!< in/out: field */
 {
 	dfield_set_data(field, NULL, UNIV_SQL_NULL);
+//	dfield_set_org_data(field, NULL, UNIV_SQL_NULL);
 }
 
 /*********************************************************************//**

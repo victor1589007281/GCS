@@ -1527,6 +1527,7 @@ bool mysql_change_db(THD *thd, const LEX_STRING *new_db_name, bool force_switch)
       !(db_access & DB_ACLS) &&
       check_grant_db(thd, new_db_file_name.str))
   {
+    thd->diff_access_denied_errors++;
     my_error(ER_DBACCESS_DENIED_ERROR, MYF(0),
              sctx->priv_user,
              sctx->priv_host,
@@ -1540,7 +1541,7 @@ bool mysql_change_db(THD *thd, const LEX_STRING *new_db_name, bool force_switch)
 
   DEBUG_SYNC(thd, "before_db_dir_check");
 
-  if (check_db_dir_existence(new_db_file_name.str))
+  if (!parse_export && check_db_dir_existence(new_db_file_name.str))
   {
     if (force_switch)
     {

@@ -1624,7 +1624,7 @@ void ha_myisammrg::append_create_info(String *packet)
 }
 
 
-bool ha_myisammrg::check_if_incompatible_data(HA_CREATE_INFO *info,
+bool ha_myisammrg::check_if_incompatible_data(HA_CREATE_INFO *info, Alter_inplace_info* inplace_alter,
 					      uint table_changes)
 {
   /*

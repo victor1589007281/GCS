@@ -71,6 +71,7 @@ alter table t_part engine=innodb;
 select TABLE_SCHEMA,TABLE_NAME,ENGINE,ROW_FORMAT,TABLE_ROWS,CREATE_OPTIONS from information_schema.tables where TABLE_SCHEMA = 'test' and table_name= 't_part';
 TABLE_SCHEMA	TABLE_NAME	ENGINE	ROW_FORMAT	TABLE_ROWS	CREATE_OPTIONS
 test	t_part	InnoDB	Gcs	4	partitioned
+drop table t_part;
 SET @@global.innodb_default_row_format = @start_global_value;
 SELECT @@global.innodb_default_row_format;
 @@global.innodb_default_row_format

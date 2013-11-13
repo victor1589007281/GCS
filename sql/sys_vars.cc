@@ -51,6 +51,7 @@
 
 TYPELIB bool_typelib={ array_elements(bool_values)-1, "", bool_values, 0 };
 
+#include "query_response_time.h" 
 /*
   This forward declaration is needed because including sql_base.h
   causes further includes.  [TODO] Eliminate this forward declaration
@@ -1686,6 +1687,17 @@ static Sys_var_mybool Sys_readonly(
        NO_MUTEX_GUARD, NOT_IN_BINLOG,
        ON_CHECK(check_read_only), ON_UPDATE(fix_read_only));
 
+static Sys_var_mybool Sys_userstat(
+       "userstat",
+       "Control USER_STATISTICS, CLIENT_STATISTICS, THREAD_STATISTICS, "
+       "INDEX_STATISTICS and TABLE_STATISTICS running",
+       GLOBAL_VAR(opt_userstat), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+static Sys_var_mybool Sys_thread_statistics(
+       "thread_statistics",
+       "Control TABLE_STATISTICS running, when userstat is enabled",
+       GLOBAL_VAR(opt_thread_statistics), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
 // Small lower limit to be able to test MRR
 static Sys_var_ulong Sys_read_rnd_buff_size(
        "read_rnd_buffer_size",
@@ -1918,6 +1930,26 @@ static Sys_var_mybool Sys_query_cache_wlock_invalidate(
        SESSION_VAR(query_cache_wlock_invalidate), CMD_LINE(OPT_ARG),
        DEFAULT(FALSE));
 #endif /* HAVE_QUERY_CACHE */
+
+
+static Sys_var_have Sys_have_response_time_distribution(
+       "have_response_time_distribution", "have_response_time_distribution",
+       READ_ONLY GLOBAL_VAR(have_response_time_distribution), NO_CMD_LINE);
+
+#ifdef HAVE_RESPONSE_TIME_DISTRIBUTION
+static Sys_var_mybool Sys_query_response_time_stats(
+       "query_response_time_stats", "Enable or disable query response time statisics collecting",
+       GLOBAL_VAR(opt_query_response_time_stats), CMD_LINE(OPT_ARG),
+       DEFAULT(FALSE));
+
+static Sys_var_ulong Sys_query_response_time_range_base(
+       "query_response_time_range_base",
+       "Select base of log for query_response_time ranges. WARNING: variable change affect only after flush",
+       GLOBAL_VAR(opt_query_response_time_range_base),
+       CMD_LINE(REQUIRED_ARG), VALID_RANGE(2, QRT_MAXIMUM_BASE),
+       DEFAULT(QRT_DEFAULT_BASE),
+       BLOCK_SIZE(1));
+#endif // HAVE_RESPONSE_TIME_DISTRIBUTION
 
 static Sys_var_mybool Sys_secure_auth(
        "secure_auth",
@@ -2406,6 +2438,10 @@ static Sys_var_mybool Sys_big_tables(
        "big_tables", "Allow big result sets by saving all "
        "temporary sets on file (Solves most 'table full' errors)",
        SESSION_VAR(big_tables), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+//static Sys_var_mybool Sys_blob_compressed(
+//	   "blob_compressed", "Set all blob/text field can be compressed when create table. ",
+//	   READ_ONLY SESSION_VAR(blob_compressed), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 #ifndef TO_BE_DELETED   /* Alias for big_tables */
 static Sys_var_mybool Sys_sql_big_tables(
@@ -2980,6 +3016,13 @@ static Sys_var_mybool Sys_log_slow(
        DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(fix_log_state), DEPRECATED(70000, "'@@slow_query_log'"));
 
+static Sys_var_mybool Sys_alter_query_log(
+    "alter_query_log",
+    "Log alter queries to a table mysql.alter_log. ",
+    GLOBAL_VAR(opt_alter_log), CMD_LINE(OPT_ARG),
+    DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+    ON_UPDATE(fix_log_state));
+
 static bool fix_log_state(sys_var *self, THD *thd, enum_var_type type)
 {
   bool res;
@@ -2997,6 +3040,12 @@ static bool fix_log_state(sys_var *self, THD *thd, enum_var_type type)
     newvalptr= &opt_slow_log;
     oldval=    logger.get_slow_log_file_handler()->is_open();
     log_type=  QUERY_LOG_SLOW;
+  }
+  else if (self == &Sys_alter_query_log)
+  {
+    newvalptr= &opt_alter_log;
+    oldval = !(*newvalptr);         /* how to get oldval? but it's ok! */
+    log_type= QUERY_LOG_ALTER;
   }
   else
     DBUG_ASSERT(FALSE);

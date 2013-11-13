@@ -366,4 +366,15 @@ struct tm *localtime_r(const time_t *timep,struct tm *tmp)
   }
   return tmp;
 }
+
+int gettimeofday(struct timeval *tp, void *tzp)
+{
+    unsigned int ticks;
+    ticks= GetTickCount();
+    tp->tv_usec= ticks*1000;
+    tp->tv_sec= ticks/1000;
+
+    return 0;
+}
+
 #endif /* __WIN__ */

@@ -21,6 +21,11 @@
 #define MYSQL_COMPILATION_COMMENT	"@COMPILATION_COMMENT@"
 #define IDEA_KEY   "@IDEA_KEY@"
 
+/* TMySQL start version,Should never change it! */
+#define TMYSQL_VERSION_START_ID	99000
+/* current TMySQL version, may change with TMySQL version: 5 numbers start from 99000 */
+#define TMYSQL_VERSION_ID  99104
+
 /* mysqld compile time options */
 #endif /* _CUSTOMCONFIG_ */
 

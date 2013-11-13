@@ -118,9 +118,10 @@ public:
     See also comment for Field_timestamp::Field_timestamp().
   */
   enum utype  { NONE,DATE,SHIELD,NOEMPTY,CASEUP,PNR,BGNR,PGNR,YES,NO,REL,
-		CHECK,EMPTY,UNKNOWN_FIELD,CASEDN,NEXT_NUMBER,INTERVAL_FIELD,
+				CHECK,EMPTY,UNKNOWN_FIELD,CASEDN,NEXT_NUMBER,INTERVAL_FIELD,
                 BIT_FIELD, TIMESTAMP_OLD_FIELD, CAPITALIZE, BLOB_FIELD,
-                TIMESTAMP_DN_FIELD, TIMESTAMP_UN_FIELD, TIMESTAMP_DNUN_FIELD};
+                TIMESTAMP_DN_FIELD, TIMESTAMP_UN_FIELD, TIMESTAMP_DNUN_FIELD,
+				COMPRESSED_BLOB_FIELD=60};
   enum geometry_type
   {
     GEOM_GEOMETRY = 0, GEOM_POINT = 1, GEOM_LINESTRING = 2, GEOM_POLYGON = 3,
@@ -148,6 +149,9 @@ public:
   Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
         uchar null_bit_arg, utype unireg_check_arg,
         const char *field_name_arg);
+  /* return true if is part of index key, include prefix index */
+  inline bool is_part_key() { return (flags & PART_KEY_FLAG) ;}
+  inline ulong get_mysql_version() { return table ? table->s->mysql_version : MYSQL_VERSION_ID;}
   virtual ~Field() {}
   /* Store functions returns 1 on overflow and -1 on fatal error */
   virtual int  store(const char *to, uint length,CHARSET_INFO *cs)=0;
@@ -272,6 +276,7 @@ public:
   */
   virtual void sql_type(String &str) const =0;
   virtual uint size_of() const =0;		// For new field
+  virtual bool is_compressed() { return false;}
   inline bool is_null(my_ptrdiff_t row_offset= 0)
   { return null_ptr ? (null_ptr[row_offset] & null_bit ? 1 : 0) : table->null_row; }
   inline bool is_real_null(my_ptrdiff_t row_offset= 0)
@@ -498,6 +503,7 @@ public:
     determine if data needs to be copied over (table data change).
   */
   virtual uint is_equal(Create_field *new_field);
+  bool is_def_value_equal(Create_field *new_field);
   /* convert decimal to longlong with overflow check */
   longlong convert_decimal2longlong(const my_decimal *val, bool unsigned_flag,
                                     int *err);
@@ -780,6 +786,7 @@ public:
   my_decimal *val_decimal(my_decimal *);
   virtual bool str_needs_quotes() { return TRUE; }
   uint is_equal(Create_field *new_field);
+  uint is_charset_equal(Create_field *new_field);
 };
 
 
@@ -1724,6 +1731,7 @@ public:
   Field_blob(uchar *ptr_arg, uchar *null_ptr_arg, uchar null_bit_arg,
 	     enum utype unireg_check_arg, const char *field_name_arg,
 	     TABLE_SHARE *share, uint blob_pack_length, CHARSET_INFO *cs);
+  /* Field_geom */
   Field_blob(uint32 len_arg,bool maybe_null_arg, const char *field_name_arg,
              CHARSET_INFO *cs)
     :Field_longstr((uchar*) 0, len_arg, maybe_null_arg ? (uchar*) "": 0, 0,
@@ -1772,6 +1780,7 @@ public:
   void sort_string(uchar *buff,uint length);
   uint32 pack_length() const
   { return (uint32) (packlength+table->s->blob_ptr_size); }
+  virtual bool is_compressed() { return unireg_check == COMPRESSED_BLOB_FIELD; }
 
   /**
      Return the packed length without the pointer size added. 
@@ -2198,6 +2207,9 @@ public:
   {
     return (flags & (BINCMP_FLAG | BINARY_FLAG)) != 0;
   }
+
+  bool is_compressed() { return unireg_check == Field::COMPRESSED_BLOB_FIELD; }
+
 private:
   const String empty_set_string;
 };

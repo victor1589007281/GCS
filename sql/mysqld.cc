@@ -69,6 +69,8 @@
 #include "debug_sync.h"
 #include "sql_callback.h"
 
+#include "query_response_time.h"
+
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
 #include "../storage/perfschema/pfs_server.h"
 #endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
@@ -356,6 +358,7 @@ static mysql_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 bool opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log;
+my_bool opt_alter_log;
 ulonglong log_output_options;
 my_bool opt_log_queries_not_using_indexes= 0;
 bool opt_error_log= IF_WIN(1,0);
@@ -434,6 +437,8 @@ uint   opt_large_page_size= 0;
 MYSQL_PLUGIN_IMPORT uint    opt_debug_sync_timeout= 0;
 #endif /* defined(ENABLED_DEBUG_SYNC) */
 my_bool opt_old_style_user_limits= 0, trust_function_creators= 0;
+my_bool opt_userstat= 0, opt_thread_statistics= 0;
+
 /*
   True if there is at least one per-hour limit for some user, so we should
   check them before each query (and possibly reset counters when hour is
@@ -578,6 +583,12 @@ char server_version[SERVER_VERSION_LENGTH];
 char *mysqld_unix_port, *opt_mysql_tmpdir;
 ulong thread_handling;
 
+/************************************************************************/
+/* parse_export == 1 means only do parsing by sqlparse                                                                      */
+/************************************************************************/
+int parse_export;
+
+
 /** name of reference on left expression in rewritten IN subquery */
 const char *in_left_expr_name= "<left expr>";
 /** name of additional condition */
@@ -615,7 +626,7 @@ CHARSET_INFO *error_message_charset_info;
 MY_LOCALE *my_default_lc_messages;
 MY_LOCALE *my_default_lc_time_names;
 
-SHOW_COMP_OPTION have_ssl, have_symlink, have_dlopen, have_query_cache;
+SHOW_COMP_OPTION have_ssl, have_symlink, have_dlopen, have_query_cache, have_response_time_distribution;
 SHOW_COMP_OPTION have_geometry, have_rtree_keys;
 SHOW_COMP_OPTION have_crypt, have_compress;
 SHOW_COMP_OPTION have_profiling;
@@ -631,7 +642,9 @@ mysql_mutex_t
   LOCK_crypt,
   LOCK_global_system_variables,
   LOCK_user_conn, LOCK_slave_list, LOCK_active_mi,
-  LOCK_connection_count, LOCK_error_messages;
+  LOCK_connection_count, LOCK_error_messages,
+  LOCK_stats, LOCK_global_user_client_stats,
+  LOCK_global_table_stats, LOCK_global_index_stats;
 /**
   The below lock protects access to two global server variables:
   max_prepared_stmt_count and prepared_stmt_count. These variables
@@ -916,6 +929,11 @@ char *shared_memory_base_name= default_shared_memory_base_name;
 my_bool opt_enable_shared_memory;
 HANDLE smem_event_connect_request= 0;
 #endif
+
+#ifdef HAVE_RESPONSE_TIME_DISTRIBUTION
+ulong   opt_query_response_time_range_base  = QRT_DEFAULT_BASE;
+my_bool opt_query_response_time_stats= 0;
+#endif // HAVE_RESPONSE_TIME_DISTRIBUTION
 
 my_bool opt_use_ssl  = 0;
 char *opt_ssl_ca= NULL, *opt_ssl_capath= NULL, *opt_ssl_cert= NULL,
@@ -1487,6 +1505,14 @@ void clean_up(bool print_message)
   my_free(opt_bin_logname);
   bitmap_free(&temp_pool);
   free_max_user_conn();
+#ifdef HAVE_RESPONSE_TIME_DISTRIBUTION
+  query_response_time_free();
+#endif // HAVE_RESPONSE_TIME_DISTRIBUTION
+  free_global_user_stats();
+  free_global_client_stats();
+  free_global_thread_stats();
+  free_global_table_stats();
+  free_global_index_stats();
 #ifdef HAVE_REPLICATION
   end_slave_list();
 #endif
@@ -1590,6 +1616,10 @@ static void clean_up_mutexes()
   mysql_cond_destroy(&COND_thread_cache);
   mysql_cond_destroy(&COND_flush_thread_cache);
   mysql_cond_destroy(&COND_manager);
+  mysql_mutex_destroy(&LOCK_stats);
+  mysql_mutex_destroy(&LOCK_global_user_client_stats);
+  mysql_mutex_destroy(&LOCK_global_table_stats);
+  mysql_mutex_destroy(&LOCK_global_index_stats);
 }
 #endif /*EMBEDDED_LIBRARY*/
 
@@ -2852,7 +2882,7 @@ const char *load_default_groups[]= {
 #ifdef WITH_NDBCLUSTER_STORAGE_ENGINE
 "mysql_cluster",
 #endif
-"mysqld","server", MYSQL_BASE_VERSION, 0, 0};
+"mysqld","server", MYSQL_BASE_VERSION, "tmysqld", 0, 0};
 
 #if defined(__WIN__) && !defined(EMBEDDED_LIBRARY)
 static const int load_default_groups_sz=
@@ -2987,6 +3017,7 @@ SHOW_VAR com_status_vars[]= {
   {"show_binlog_events",   (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOG_EVENTS]), SHOW_LONG_STATUS},
   {"show_binlogs",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOGS]), SHOW_LONG_STATUS},
   {"show_charsets",        (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CHARSETS]), SHOW_LONG_STATUS},
+  {"show_client_statistics",(char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CLIENT_STATS]), SHOW_LONG_STATUS},
   {"show_collations",      (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_COLLATIONS]), SHOW_LONG_STATUS},
   {"show_contributors",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CONTRIBUTORS]), SHOW_LONG_STATUS},
   {"show_create_db",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CREATE_DB]), SHOW_LONG_STATUS},
@@ -3007,6 +3038,7 @@ SHOW_VAR com_status_vars[]= {
 #endif
   {"show_function_status", (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_STATUS_FUNC]), SHOW_LONG_STATUS},
   {"show_grants",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_GRANTS]), SHOW_LONG_STATUS},
+  {"show_index_statistics",(char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_INDEX_STATS]), SHOW_LONG_STATUS},
   {"show_keys",            (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_KEYS]), SHOW_LONG_STATUS},
   {"show_master_status",   (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_MASTER_STAT]), SHOW_LONG_STATUS},
   {"show_open_tables",     (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_OPEN_TABLES]), SHOW_LONG_STATUS},
@@ -3024,9 +3056,12 @@ SHOW_VAR com_status_vars[]= {
   {"show_slave_status",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_SLAVE_STAT]), SHOW_LONG_STATUS},
   {"show_status",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_STATUS]), SHOW_LONG_STATUS},
   {"show_storage_engines", (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_STORAGE_ENGINES]), SHOW_LONG_STATUS},
+  {"show_table_statistics",(char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_TABLE_STATS]), SHOW_LONG_STATUS},
   {"show_table_status",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_TABLE_STATUS]), SHOW_LONG_STATUS},
   {"show_tables",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_TABLES]), SHOW_LONG_STATUS},
+  {"show_thread_statistics",(char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_THREAD_STATS]), SHOW_LONG_STATUS},
   {"show_triggers",        (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_TRIGGERS]), SHOW_LONG_STATUS},
+  {"show_user_statistics", (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_USER_STATS]), SHOW_LONG_STATUS},
   {"show_variables",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_VARIABLES]), SHOW_LONG_STATUS},
   {"show_warnings",        (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_WARNS]), SHOW_LONG_STATUS},
   {"slave_start",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SLAVE_START]), SHOW_LONG_STATUS},
@@ -3564,6 +3599,13 @@ static int init_thread_environment()
   mysql_mutex_init(key_LOCK_server_started,
                    &LOCK_server_started, MY_MUTEX_INIT_FAST);
   mysql_cond_init(key_COND_server_started, &COND_server_started, NULL);
+  mysql_mutex_init(key_LOCK_stats, &LOCK_stats, MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(key_LOCK_global_user_client_stats,
+    &LOCK_global_user_client_stats, MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(key_LOCK_global_table_stats,
+    &LOCK_global_table_stats, MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(key_LOCK_global_index_stats,
+    &LOCK_global_index_stats, MY_MUTEX_INIT_FAST);
   sp_cache_init();
 #ifdef HAVE_EVENT_SCHEDULER
   Events::init_mutexes();
@@ -3772,6 +3814,12 @@ static int init_server_components()
   buffered_logs.cleanup();
 #endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
 
+  init_global_table_stats();
+  init_global_index_stats();
+  init_global_user_stats();
+  init_global_client_stats();
+  init_global_thread_stats();
+
   if (xid_cache_init())
   {
     sql_print_error("Out of memory");
@@ -3933,7 +3981,14 @@ a file name for --log-bin-index option", opt_binlog_index_name);
   if (!DEFAULT_ERRMSGS[0][0])
     unireg_abort(1);  
 
+#ifdef HAVE_RESPONSE_TIME_DISTRIBUTION
+  query_response_time_init();
+#endif // HAVE_RESPONSE_TIME_DISTRIBUTION
+
   /* We have to initialize the storage engines before CSV logging */
+
+
+
   if (ha_init())
   {
     sql_print_error("Can't init databases");
@@ -4070,6 +4125,7 @@ a file name for --log-bin-index option", opt_binlog_index_name);
 
   init_max_user_conn();
   init_update_queries();
+
   DBUG_RETURN(0);
 }
 
@@ -4195,9 +4251,12 @@ static void test_lc_time_sz()
     {
       DBUG_PRINT("Wrong max day name(or month name) length for locale:",
                  ("%s", (*loc)->name));
-      //DBUG_ASSERT(0);
+#ifdef __WIN__
       (*loc)->max_month_name_length = max_month_len;
-      (*loc)->max_day_name_length = max_day_len;   
+      (*loc)->max_day_name_length = max_day_len; 
+#else
+        DBUG_ASSERT(0);
+#endif // WIN32
     }
   }
   DBUG_VOID_RETURN;
@@ -6719,7 +6778,7 @@ static int mysql_init_variables(void)
   opt_skip_slave_start= opt_reckless_slave = 0;
   mysql_home[0]= pidfile_name[0]= log_error_file[0]= 0;
   myisam_test_invalid_symlink= test_if_data_home_dir;
-  opt_log= opt_slow_log= 0;
+  opt_log= opt_slow_log= opt_alter_log = 0;
   opt_bin_log= 0;
   opt_disable_networking= opt_skip_show_db=0;
   opt_skip_name_resolve= 0;
@@ -6840,6 +6899,11 @@ static int mysql_init_variables(void)
 #else
   have_query_cache=SHOW_OPTION_NO;
 #endif
+#ifdef HAVE_RESPONSE_TIME_DISTRIBUTION
+  have_response_time_distribution= SHOW_OPTION_YES;
+#else // HAVE_RESPONSE_TIME_DISTRIBUTION
+  have_response_time_distribution= SHOW_OPTION_NO;
+#endif // HAVE_RESPONSE_TIME_DISTRIBUTION
 #ifdef HAVE_SPATIAL
   have_geometry=SHOW_OPTION_YES;
 #else
@@ -7735,6 +7799,8 @@ PSI_mutex_key key_BINLOG_LOCK_index, key_BINLOG_LOCK_prep_xids,
   key_delayed_insert_mutex, key_hash_filo_lock, key_LOCK_active_mi,
   key_LOCK_connection_count, key_LOCK_crypt, key_LOCK_delayed_create,
   key_LOCK_delayed_insert, key_LOCK_delayed_status, key_LOCK_error_log,
+  key_LOCK_stats, key_LOCK_global_user_client_stats,
+  key_LOCK_global_table_stats, key_LOCK_global_index_stats,
   key_LOCK_gdl, key_LOCK_global_system_variables,
   key_LOCK_manager,
   key_LOCK_prepared_stmt_count,
@@ -7776,6 +7842,13 @@ static PSI_mutex_info all_server_mutexes[]=
   { &key_LOCK_delayed_insert, "LOCK_delayed_insert", PSI_FLAG_GLOBAL},
   { &key_LOCK_delayed_status, "LOCK_delayed_status", PSI_FLAG_GLOBAL},
   { &key_LOCK_error_log, "LOCK_error_log", PSI_FLAG_GLOBAL},
+  { &key_LOCK_stats, "LOCK_stats", PSI_FLAG_GLOBAL},
+  { &key_LOCK_global_user_client_stats,
+    "LOCK_global_user_client_stats", PSI_FLAG_GLOBAL},
+  { &key_LOCK_global_table_stats,
+     "LOCK_global_table_stats", PSI_FLAG_GLOBAL},
+  { &key_LOCK_global_index_stats,
+    "LOCK_global_index_stats", PSI_FLAG_GLOBAL},
   { &key_LOCK_gdl, "LOCK_gdl", PSI_FLAG_GLOBAL},
   { &key_LOCK_global_system_variables, "LOCK_global_system_variables", PSI_FLAG_GLOBAL},
   { &key_LOCK_manager, "LOCK_manager", PSI_FLAG_GLOBAL},
@@ -7984,4 +8057,133 @@ void init_server_psi_keys(void)
 }
 
 #endif /* HAVE_PSI_INTERFACE */
+
+/* only use for sqlparse */
+extern mysql_mutex_t LOCK_plugin;
+
+void
+my_init_for_sqlparse()
+{
+    /* use for THD */
+    parse_export = 1;
+    my_progname = "parse_test";
+
+    if (init_thread_environment() ||
+        mysql_init_variables() ) {
+
+        fprintf(stderr, "init_thread_environment or mysql_init_variables error \n");
+        return ;
+    }
+
+    //mysql_mutex_init(key_LOCK_plugin, &LOCK_plugin, MY_MUTEX_INIT_FAST);
+    //mysql_mutex_init(NULL, &LOCK_plugin, MY_MUTEX_INIT_FAST);
+    /*if (plugin_init(&peuso_argc, NULL, 0))
+    {
+        sql_print_error("Failed to initialize plugins.");
+        unireg_abort(1);
+    }*/
+    //plugins_are_initialized= TRUE;  /* Don't separate from init function */
+
+    my_thread_global_init();
+    my_thread_init();
+
+    /* need in THD() */
+    randominit(&sql_rand,(ulong) 1234,(ulong) 1234/2);
+
+    // TODO: set the errmsgs, but without errmsg.sys, set the messages alone. 
+    unireg_init(opt_specialflag); /* Set up extern variabels */
+    my_default_lc_messages= my_locale_by_name(lc_messages);
+    if (!my_default_lc_messages->errmsgs->errmsgs) 
+    {
+        //my_default_lc_messages->errmsgs->errmsgs = (const char **)calloc(sizeof(char*), ER_ERROR_LAST - ER_ERROR_FIRST + 1);
+
+        //my_default_lc_messages->errmsgs->errmsgs[ER_SYNTAX_ERROR - ER_ERROR_FIRST] = "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use";
+        //my_default_lc_messages->errmsgs->errmsgs[ER_PARSE_ERROR - ER_ERROR_FIRST] = "%s near '%-.80s' at line %d";
+
+        // from check_locale
+        /*read_texts(ERRMSG_FILE, my_default_lc_messages->errmsgs->language,
+        &my_default_lc_messages->errmsgs->errmsgs,
+        ER_ERROR_LAST - ER_ERROR_FIRST + 1);
+        */
+
+#if defined(__WIN__)
+        /* convert mysql_home to directory sql */
+        convert_dirname(mysql_home,mysql_home,NullS);
+        int home_len = strlen(mysql_home);
+        if (mysql_home[home_len - 1] == FN_LIBCHAR)
+        {
+            mysql_home[home_len - 1] = '\0';
+            home_len--;
+        }
+        int i;
+        for (i = home_len - 1; i >= 0; i--)
+        {
+            if (mysql_home[i] == FN_LIBCHAR)
+                break;
+        }
+        mysql_home[i + 1] = '\0';
+        strxnmov(mysql_home,sizeof(mysql_home)-1,mysql_home,"sql", NullS);
+#endif
+
+        fix_paths();
+        global_system_variables.lc_messages= my_default_lc_messages;
+        if (init_errmessage())	/* Read error messages from file */
+        {
+            fprintf(stderr, "init_errmessage() error\n");
+        }
+    }
+
+    sys_var_init();
+	/* 添加内部函数初始化 */
+	if (item_create_init())
+		DBUG_ASSERT(0);
+
+    // init charset
+    get_charset_number("utf8", MY_CS_PRIMARY);
+    global_system_variables.time_zone= my_tz_SYSTEM;
+    global_system_variables.lc_messages= my_default_lc_messages;
+    global_system_variables.collation_server=	 default_charset_info;
+    global_system_variables.collation_database=	 default_charset_info;
+    global_system_variables.collation_connection=  default_charset_info;
+    global_system_variables.character_set_results= default_charset_info;
+    global_system_variables.character_set_client=  default_charset_info;
+    global_system_variables.character_set_filesystem= character_set_filesystem;
+    global_system_variables.lc_time_names= my_default_lc_time_names;
+
+    int tmp_var = 1;
+    const char* proc_name = "parsesql";
+    plugin_init(&tmp_var, (char**)&proc_name, PLUGIN_INIT_SKIP_PLUGIN_TABLE | PLUGIN_INIT_SKIP_DYNAMIC_LOADING);
+    //mysql_mutex_init(-1, &LOCK_plugin, MY_MUTEX_INIT_FAST);
+
+    error_handler_hook= my_message_sql;
+}
+
+void
+my_end_for_sqlparse()
+{
+    //mysql_mutex_destroy(&LOCK_plugin);
+
+    plugin_shutdown();
+
+    key_caches.delete_elements((void (*)(const char*, uchar*)) free_key_cache);
+    multi_keycache_free();
+    free_charsets();
+
+    my_thread_end();
+    my_thread_global_end();
+//    clean_up_mutexes();
+    cleanup_errmsgs();
+	// charset ect.
+    my_once_free();
+
+    item_create_cleanup();
+
+    sys_var_end();
+
+    // set cleanup()
+    free_tmpdir(&mysql_tmpdir_list);
+    (void) my_error_unregister(ER_ERROR_FIRST, ER_ERROR_LAST); // finish server errs
+
+}
+
 

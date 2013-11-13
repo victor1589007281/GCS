@@ -3,65 +3,85 @@
 #include "unireg.h"                    // REQUIRED: for other includes
 #include "sql_parse.h"        // sql_kill, *_precheck, *_prepare
 #include "sql_db.h"           // mysql_change_db, mysql_create_db,
-
 #include "sqlparse.h"
+#include "sp_head.h"
+#include "mysql_com.h"
 
 extern int parse_export;
 #define PARSE_RESULT_N_TABLE_ARR_INITED 5
+#define PARSE_RESULT_N_ROUTINE_ARR_INITED PARSE_RESULT_N_TABLE_ARR_INITED
+#define PARSE_RESULT_DEFAULT_DB_NAME "<unknow_db>"
 
-int init_thread_environment();
-int mysql_init_variables();
+static int ignore_error_code[] = {ER_UNKNOWN_SYSTEM_VARIABLE,0};//0 means the end
 
-extern mysql_mutex_t LOCK_plugin;
-extern Time_zone * my_tz_SYSTEM;
+
+static int version_pos[] = {0, 6, 13, 13, 13, 13, 13, 13};
+static  char word_segmentation[] = {' ' , '\t', '\n', '\r', ',', '.', '(', ')', '<', '>', '=', '!', '\0'};
+
+
+static const char *reserve_words[] =
+{
+	"ACCESSIBLE",
+	"LINEAR",
+	"MASTER_SSL_VERIFY_SERVER_CERT",
+	"RANGE",
+	"READ_ONLY",
+	"READ_WRITE",  /* 5.1 reserved words */
+	"GENERAL",
+	"IGNORE_SERVER_IDS",
+	"MASTER_HEARTBEAT_PERIOD",
+	"MAXVALUE",
+	"RESIGNAL",
+	"SIGNAL",
+	"SLOW"			/* 5.5 reserved words */
+};
+
+void my_init_for_sqlparse();
+void my_end_for_sqlparse();
+static my_pthread_once_t sqlparse_global_inited = MY_PTHREAD_ONCE_INIT;
+static int process_msg_error(int err_code, char *err_msg);
+static int set_current_version(char *version, enum_version *current_version);
+static const char* has_reserve_in_errmsg(enum_version mysql_version, char *err_msg);
+static int isprefix_word(const char *s, const char *t, int first_pos);
+static int is_word_segmentation(char ch);
+static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len,const char *reserve);
+//static int find_reserve_pos(char *reserve);
+
+
+void parse_global_init()
+{
+    my_pthread_once(&sqlparse_global_inited, my_init_for_sqlparse);
+}
+
+void parse_global_destroy()
+{
+    my_end_for_sqlparse();
+    sqlparse_global_inited = MY_PTHREAD_ONCE_INIT;
+
+#if defined(__WIN__) && defined(_MSC_VER)
+    _CrtSetReportMode( _CRT_WARN, _CRTDBG_MODE_FILE );
+    _CrtSetReportFile( _CRT_WARN, _CRTDBG_FILE_STDERR );
+    _CrtSetReportMode( _CRT_ERROR, _CRTDBG_MODE_FILE );
+    _CrtSetReportFile( _CRT_ERROR, _CRTDBG_FILE_STDERR );
+    _CrtSetReportMode( _CRT_ASSERT, _CRTDBG_MODE_FILE );
+    _CrtSetReportFile( _CRT_ASSERT, _CRTDBG_FILE_STDERR );
+    _CrtCheckMemory();
+    _CrtDumpMemoryLeaks();
+#endif
+}
 
 int
 parse_result_init(parse_result_t* pr)
 {
     THD* thd;
-    int i;
-    int peuso_argc = 0;
 
-    memset(pr, sizeof(parse_result_t), 0);
+    //_CrtSetBreakAlloc(135);
+    //_CrtSetBreakAlloc(136);
+    //_CrtSetBreakAlloc(110);
 
-    /* set global parse export */
-    parse_export = 1;
-    my_progname = "test";
+    //for safe 
+    parse_global_init();
 
-    if (init_thread_environment() ||
-        mysql_init_variables() )
-        return -1;
-
-    //mysql_mutex_init(key_LOCK_plugin, &LOCK_plugin, MY_MUTEX_INIT_FAST);
-    //mysql_mutex_init(NULL, &LOCK_plugin, MY_MUTEX_INIT_FAST);
-    /*if (plugin_init(&peuso_argc, NULL, 0))
-    {
-        sql_print_error("Failed to initialize plugins.");
-        unireg_abort(1);
-    }*/
-    //plugins_are_initialized= TRUE;  /* Don't separate from init function */
-
-    my_thread_global_init();
-    my_thread_init();
-
-    /* need in THD() */
-    randominit(&sql_rand,(ulong) 1234,(ulong) 1234/2);
-
-    get_charset_number("utf8", MY_CS_PRIMARY);
-
-    mysql_mutex_init(NULL, &LOCK_plugin, MY_MUTEX_INIT_FAST);
-
-    global_system_variables.time_zone= my_tz_SYSTEM;
-    global_system_variables.lc_messages= my_default_lc_messages;
-    global_system_variables.collation_server=	 default_charset_info;
-    global_system_variables.collation_database=	 default_charset_info;
-    global_system_variables.collation_connection=  default_charset_info;
-    global_system_variables.character_set_results= default_charset_info;
-    global_system_variables.character_set_client=  default_charset_info;
-    global_system_variables.character_set_filesystem= character_set_filesystem;
-    global_system_variables.lc_time_names= my_default_lc_time_names;
-
-    error_handler_hook= my_message_sql;
     thd= new THD;
 
     thd->thread_id = 0xFFFFFFFF;
@@ -77,18 +97,21 @@ parse_result_init(parse_result_t* pr)
         delete thd;    
         return -1;
     }
-
     thd->security_ctx->skip_grants();
+    thd->set_db(PARSE_RESULT_DEFAULT_DB_NAME, strlen(PARSE_RESULT_DEFAULT_DB_NAME));
+
+    /* init parse_result */
+    memset(pr, 0, sizeof(parse_result_t));
     pr->thd_org = thd;
 
     /* allocate the table name buffer */
     pr->n_tables_alloced = PARSE_RESULT_N_TABLE_ARR_INITED;
     pr->n_tables = 0;
-    pr->table_arr = (char**)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(char*));
-    for(i = 0; i < pr->n_tables_alloced; ++i)
-    {
-        pr->table_arr[i]=(char*)calloc(NAME_LEN*2 + 2, sizeof(char));
-    }
+    pr->table_arr = (parse_table_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_table_t));
+
+    pr->n_routines_alloced = PARSE_RESULT_N_TABLE_ARR_INITED;
+    pr->n_routines = 0;
+    pr->routine_arr = (parse_routine_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_routine_t));
 
     return 0;
 }
@@ -97,17 +120,20 @@ int
 parse_result_destroy(parse_result_t* pr)
 {
     THD* thd;
-    int i; 
 
     /* free table name buffer array */
-    if (!pr->table_arr) {
-
-        for(i = 0; i < pr->n_tables_alloced; ++i)
-            free(pr->table_arr[i]);
+    if (pr->table_arr) {
 
         free(pr->table_arr);
         pr->table_arr = NULL;
         pr->n_tables_alloced = pr->n_tables = 0;
+    }
+
+    if (pr->routine_arr)
+    {
+        free(pr->routine_arr);
+        pr->routine_arr = NULL;
+        pr->n_routines_alloced = pr->n_routines = 0;
     }
 
     thd = (THD*)pr->thd_org;
@@ -121,19 +147,16 @@ parse_result_destroy(parse_result_t* pr)
         */
         thd->catalog= 0;
         thd->reset_query();
+
+        if (thd->db)
+            my_free(thd->db);
         thd->reset_db(NULL, 0);
 
         //close_connection(thd);
-
         delete thd;
 
         pr->thd_org = NULL;
     }
-
-    //clean_up_mutexes();
-    
-    my_thread_end();
-    my_thread_global_end();
 
     return 0;
 }
@@ -145,32 +168,84 @@ parse_result_add_table(
     char*           table_name
 )
 {
+    int i;
     DBUG_ASSERT(db_name && table_name);
     DBUG_ASSERT(pr->n_tables <= pr->n_tables_alloced);
 
-    if (strlen(db_name) > NAME_LEN || strlen(table_name) > NAME_LEN)
+    if (strlen(db_name) > NAME_LEN - 1 || strlen(table_name) > NAME_LEN - 1)
+    {
+        sprintf(pr->err_msg, "%s", "too long db_name or table_name");
         return -1;
-
+    }
+    for (i = 0; i < pr->n_tables; i++)
+    {
+        if (!strcmp(pr->table_arr[i].dbname, db_name) && !strcmp(pr->table_arr[i].tablename, table_name))
+            return 0;
+    }
     //buffer is not enough
     if (pr->n_tables >= pr->n_tables_alloced)
     {
-        char** new_table_arr;
-        int i;
+        parse_table_t* new_table_arr;
 
-        new_table_arr = (char**)calloc(pr->n_tables_alloced * 2, sizeof(char*));
+        new_table_arr = (parse_table_t*)calloc(pr->n_tables_alloced * 2, sizeof(parse_table_t));
 
-        for (i = 0; i < pr->n_tables_alloced; ++i)
-            new_table_arr[i] = pr->table_arr[i]; 
-
-        for (; i < pr->n_tables_alloced * 2; ++i)
-            new_table_arr[i] = (char*)calloc(NAME_LEN*2 + 2, sizeof(char)) ; 
-
+        memcpy(new_table_arr, pr->table_arr, sizeof(parse_table_t) * pr->n_tables_alloced);
         free(pr->table_arr);
+
         pr->table_arr = new_table_arr;
         pr->n_tables_alloced *= 2;
     }
 
-    sprintf(pr->table_arr[pr->n_tables++],"%s.%s", db_name, table_name);
+    strcpy(pr->table_arr[pr->n_tables].dbname, db_name);
+    strcpy(pr->table_arr[pr->n_tables++].tablename, table_name);
+
+    return 0;
+}
+
+int
+parse_result_add_routine(
+    parse_result_t* pr, 
+    char*           db_name,
+    char*           routine_name,
+    bool            is_proc
+)
+{
+    int i;
+    DBUG_ASSERT(db_name && routine_name);
+    DBUG_ASSERT(pr->n_routines <= pr->n_routines_alloced);
+    int routine_type;
+
+    routine_type = is_proc ? ROUTINE_TYPE_PROC : ROUTINE_TYPE_FUNC;
+
+    if (strlen(db_name) > NAME_LEN - 1 || strlen(routine_name) > NAME_LEN - 1)
+    {
+        sprintf(pr->err_msg, "%s", "too long db_name or routine_name");
+        return -1;
+    }
+    for (i = 0; i < pr->n_routines; i++)
+    {
+        /* 已存在同名存储过程或函数 */
+        if (!strcmp(pr->routine_arr[i].dbname, db_name) && !strcmp(pr->routine_arr[i].routinename, routine_name) &&
+            pr->routine_arr[i].routine_type == routine_type)
+            return 0;
+    }
+    //buffer is not enough
+    if (pr->n_routines >= pr->n_routines_alloced)
+    {
+        parse_routine_t* new_routine_arr;
+
+        new_routine_arr = (parse_routine_t*)calloc(pr->n_routines_alloced * 2, sizeof(parse_routine_t));
+
+        memcpy(new_routine_arr, pr->routine_arr, sizeof(parse_routine_t) * pr->n_routines_alloced);
+        free(pr->routine_arr);
+
+        pr->routine_arr = new_routine_arr;
+        pr->n_routines_alloced *= 2;
+    }
+
+    strcpy(pr->routine_arr[pr->n_routines].dbname, db_name);
+    strcpy(pr->routine_arr[pr->n_routines].routinename, routine_name);
+    pr->routine_arr[pr->n_routines++].routine_type = routine_type;
 
     return 0;
 }
@@ -183,24 +258,54 @@ query_parse(char* query, parse_result_t* pr)
     Parser_state parser_state;
     TABLE_LIST* all_tables;
     TABLE_LIST* table;
+    ROUTINE_LIST* routine;
     SELECT_LEX *select_lex;
+	int exit_code = 0;
+	bool err;
+	SELECT_LEX *sl;
+	sp_head* sp;
 
     thd = (THD*)pr->thd_org;
     DBUG_ASSERT(pr->n_tables_alloced > 0 && thd);
 
-    if (alloc_query(thd, query, strlen(query)))
-        return -1;
+    pr->n_tables = 0;
+    pr->n_routines = 0;
+    pr->err_msg[0] = 0;
+    pr->query_flags = 0;
+    pr->dbname[0] = 0;
+    pr->objname[0] = 0;
+
+    if (strlen(query) == 0)
+    {
+        sprintf(pr->err_msg, "%s", "empty string");
+		exit_code = -1;
+        return exit_code;
+    }
+
+    if (alloc_query(thd, query, strlen(query))) 
+    {
+        sprintf(pr->err_msg, "%s", "alloc_query error");
+		exit_code = -1;
+		return exit_code;
+    }
     
     if (parser_state.init(thd, thd->query(), thd->query_length()))
-        return -1;
+    {
+        sprintf(pr->err_msg, "%s", "parser_state.init error");
+		exit_code = -1;
+		return exit_code;
+    }
 
     lex_start(thd);
     mysql_reset_thd_for_next_command(thd);
 
-    bool err= parse_sql(thd, &parser_state, NULL);
+    err= parse_sql(thd, &parser_state, NULL);
     if (err)
-        return -1;
-
+    {
+        strmake(pr->err_msg, thd->get_error(), sizeof(pr->err_msg) - 1);
+		exit_code = -1;
+		goto exit_pos;
+    }
     lex = thd->lex;
     /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
     select_lex= &lex->select_lex;
@@ -226,52 +331,1092 @@ query_parse(char* query, parse_result_t* pr)
     /* set context for commands which do not use setup_tables */
     select_lex->context.resolve_in_table_list_only(select_lex->
                                        table_list.first);
-
-
     pr->query_type = lex->sql_command;
-    pr->n_tables = 0;
-
     switch (lex->sql_command)
     {
     case SQLCOM_CHANGE_DB:
         {
-            LEX_STRING db_str= { (char *) select_lex->db, strlen(select_lex->db) };
+            LEX_STRING db_str = { (char *) select_lex->db, strlen(select_lex->db) };
 
             if (!mysql_change_db(thd, &db_str, FALSE))
                 my_ok(thd);
-
             break;
         }
+    case SQLCOM_CREATE_TABLE:
+        {
+            strncpy(pr->dbname, all_tables->db, sizeof(pr->dbname));
+            strncpy(pr->objname, all_tables->table_name, sizeof(pr->objname));
+
+            if (lex->create_info.options & HA_LEX_CREATE_TMP_TABLE)
+                pr->query_flags |= QUERY_FLAGS_CREATE_TEMPORARY_TABLE;
+
+            if (lex->alter_info.flags & ALTER_FOREIGN_KEY)
+                pr->query_flags |= QUERY_FLAGS_CREATE_FOREIGN_KEY; 
+        }
+        break;
+    case SQLCOM_CREATE_SPFUNCTION:
+        {
+            uint namelen;
+            char* name;
+            strncpy(pr->dbname, lex->sphead->m_db.str, min(lex->sphead->m_db.length, sizeof(pr->dbname)));
+            name= lex->sphead->name(&namelen);
+            strncpy(pr->objname, name, min(namelen, sizeof(pr->dbname)));
+        }
+        break;
+
+    case SQLCOM_CREATE_INDEX:
+    case SQLCOM_ALTER_TABLE:
+        {
+            strncpy(pr->dbname, all_tables->db, sizeof(pr->dbname));
+            strncpy(pr->objname, all_tables->table_name, sizeof(pr->objname));
+
+            if (lex->alter_info.flags | ALTER_FOREIGN_KEY)
+                pr->query_flags |= QUERY_FLAGS_CREATE_FOREIGN_KEY; 
+        }
+        break;
+
     default:
-        
         break;
     }
-    
 
+    /* add table */
     for (table= all_tables; table; table= table->next_global)
     {
         if (parse_result_add_table(pr, table->db, table->table_name))
         {
-            return -2;
+			exit_code = -1;
+			goto exit_pos;
         }
 
     }
+    sl= lex->all_selects_list;
+    for (; sl; sl= sl->next_select_in_list())
+    {
+        for (table = sl->table_list.first; table; table= table->next_global)
+        {
+            if (parse_result_add_table(pr, table->db, table->table_name))
+            {
+				exit_code = -1;
+                goto exit_pos;
+            }
+        }
+    }
+    sp = thd->lex->sphead;
+    if (sp)
+    {
+        TABLE_LIST* sp_tl = NULL;
+        TABLE_LIST** sp_tl_ptr = &sp_tl;
+        sp->add_used_tables_to_table_list(thd, &sp_tl_ptr, NULL);
 
-    return 0;
+        for (table= sp_tl; table; table= table->next_global)
+        {
+            if (parse_result_add_table(pr, table->db, table->table_name))
+            {
+				exit_code = -1;
+                goto exit_pos;
+            }
+        }
+    }
+
+    /* add procedure and function */
+    for (routine= lex->select_lex.routine_list.first; routine; routine= routine->next_local)
+    {
+        if (parse_result_add_routine(pr, routine->dbname, routine->routine_name, routine->item == NULL))
+        {
+            exit_code = -1;
+            goto exit_pos;
+        }
+    }       
+    sl= lex->all_selects_list;
+    for (; sl; sl= sl->next_select_in_list())
+    {
+        for (routine= sl->routine_list.first; routine; routine= routine->next_local)
+        {
+            if (parse_result_add_routine(pr, routine->dbname, routine->routine_name, routine->item == NULL))
+            {
+                exit_code = -1;
+                goto exit_pos;
+            }
+        }
+    }
+    sp = thd->lex->sphead;
+    if (sp)
+    {
+        for (routine= sp->m_routine_list.first; routine; routine= routine->next_local)
+        {
+            if (parse_result_add_routine(pr, routine->dbname, routine->routine_name, routine->item == NULL))
+            {
+                exit_code = -1;
+                goto exit_pos;
+            }
+        }
+    }
+
+exit_pos:
+
+    thd->end_statement();
+    thd->cleanup_after_query();
+	free_root(thd->mem_root,MYF(MY_KEEP_PREALLOC));
+    return exit_code;
 }
 
-int maini(int argc, char **argv)
+void parse_result_init_db(parse_result_t* pr, char* db)
 {
-    parse_result_t pr;
-    char* query = "select * from t1";
-    char* query1 = "use db";
+    THD* thd = (THD*)pr->thd_org;
+    thd->set_db(db, strlen(db));
+}
 
-    parse_result_init(&pr);
+const char* parse_result_get_stmt_type_str(parse_result_t* pr)
+{  
+	return get_stmt_type_str(pr->query_type);
+}
 
-    query_parse(query1, &pr);
-    query_parse(query, &pr);
+const char* get_warnings_type_str(int type)
+{//  返回告警类型对应的字符串，用于输出
+	switch(type)
+	{
+	case WARNINGS_DEFAULT: return "WARNINGS_DEFAULT";
+	case DROP_DB: return "DROP_DB";
+	case DROP_TABLE: return "DROP_TABLE";
+	case DROP_VIEW: return "DROP_VIEW";
+	case TRUNCATE_TABLE: return "TRUNCATE";
+	case DELETE_WITHOUT_WHERE: return "DELETE_WITHOUT_WHERE";
+	case UPDATE_WITHOUT_WHERE: return "UPDATE_WITHOUT_WHERE";
+	case CREATE_TABLE_WITH_MUCH_BLOB: return "CREATE_TABLE_WITH_MUCH_BLOB";
+	case ALTER_TABLE_ADD_MUCH_BLOB: return "ALTER_TABLE_ADD_MUCH_BLOB";
+	case CREATE_TABLE_NOT_INNODB: return "CREATE_TABLE_NOT_INNODB";
+	case CREATE_TABLE_NO_INDEX: return "CREATE_TABLE_NO_INDEX";
+	case ALTER_TABLE_WITH_AFTER: return "ALTER_TABLE_WITH_AFTER";
+	case ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL: return "ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL";
+	case CREATE_TABLE_WITH_OTHER_CHARACTER: return "CREATE_TABLE_WITH_OTHER_CHARACTER";
+	case CREATE_PROCEDURE_WITH_DEFINER: return "CREATE_PROCEDURE_WITH_DEFINER";
+	default:
+		break;
+	}
+	return "WARNINGS_DEFAULT";
 
-    parse_result_destroy(&pr);
+}
 
+const char* get_stmt_type_str(int type)
+{
+	switch(type)
+	{
+	case SQLCOM_SELECT: return "STMT_SELECT";
+	case SQLCOM_CREATE_TABLE: return "STMT_CREATE_TABLE";
+	case SQLCOM_CREATE_INDEX: return "STMT_CREATE_INDEX";
+	case SQLCOM_ALTER_TABLE: return "STMT_ALTER_TABLE";
+	case SQLCOM_UPDATE: return "STMT_UPDATE";
+	case SQLCOM_INSERT: return "STMT_INSERT";
+	case SQLCOM_INSERT_SELECT: return "STMT_INSERT_SELECT";
+	case SQLCOM_DELETE: return "STMT_DELETE";
+	case SQLCOM_TRUNCATE: return "STMT_TRUNCATE";
+	case SQLCOM_DROP_TABLE: return "STMT_DROP_TABLE";
+	case SQLCOM_DROP_INDEX: return "STMT_DROP_INDEX";
+	case SQLCOM_SHOW_DATABASES: return "STMT_SHOW_DATABASES";
+	case SQLCOM_SHOW_TABLES: return "STMT_SHOW_TABLES";
+	case SQLCOM_SHOW_FIELDS: return "STMT_SHOW_FIELDS";
+	case SQLCOM_SHOW_KEYS: return "STMT_SHOW_KEYS";
+	case SQLCOM_SHOW_VARIABLES: return "STMT_SHOW_VARIABLES";
+	case SQLCOM_SHOW_STATUS: return "STMT_SHOW_STATUS";
+	case SQLCOM_SHOW_ENGINE_LOGS: return "STMT_SHOW_ENGINE_LOGS";
+	case SQLCOM_SHOW_ENGINE_STATUS: return "STMT_SHOW_ENGINE_STATUS";
+	case SQLCOM_SHOW_ENGINE_MUTEX: return "STMT_SHOW_ENGINE_MUTEX";
+	case SQLCOM_SHOW_PROCESSLIST: return "STMT_SHOW_PROCESSLIST";
+	case SQLCOM_SHOW_MASTER_STAT: return "STMT_SHOW_MASTER_STAT";
+	case SQLCOM_SHOW_SLAVE_STAT: return "STMT_SHOW_SLAVE_STAT";
+	case SQLCOM_SHOW_GRANTS: return "STMT_SHOW_GRANTS";
+	case SQLCOM_SHOW_CREATE: return "STMT_SHOW_CREATE";
+	case SQLCOM_SHOW_CHARSETS: return "STMT_SHOW_CHARSETS";
+	case SQLCOM_SHOW_COLLATIONS: return "STMT_SHOW_COLLATIONS";
+	case SQLCOM_SHOW_CREATE_DB: return "STMT_SHOW_CREATE_DB";
+	case SQLCOM_SHOW_TABLE_STATUS: return "STMT_SHOW_TABLE_STATUS";
+	case SQLCOM_SHOW_TRIGGERS: return "STMT_SHOW_TRIGGERS";
+	case SQLCOM_LOAD: return "STMT_LOAD";
+	case SQLCOM_SET_OPTION: return "STMT_SET_OPTION";
+	case SQLCOM_LOCK_TABLES: return "STMT_LOCK_TABLES";
+	case SQLCOM_UNLOCK_TABLES: return "STMT_UNLOCK_TABLES";
+	case SQLCOM_GRANT: return "STMT_GRANT";
+	case SQLCOM_CHANGE_DB: return "STMT_CHANGE_DB";
+	case SQLCOM_CREATE_DB: return "STMT_CREATE_DB";
+	case SQLCOM_DROP_DB: return "STMT_DROP_DB";
+	case SQLCOM_ALTER_DB: return "STMT_ALTER_DB";
+	case SQLCOM_REPAIR: return "STMT_REPAIR";
+	case SQLCOM_REPLACE: return "STMT_REPLACE";
+	case SQLCOM_REPLACE_SELECT: return "STMT_REPLACE_SELECT";
+	case SQLCOM_CREATE_FUNCTION: return "STMT_CREATE_FUNCTION";
+	case SQLCOM_DROP_FUNCTION: return "STMT_DROP_FUNCTION";
+	case SQLCOM_REVOKE: return "STMT_REVOKE";
+	case SQLCOM_OPTIMIZE: return "STMT_OPTIMIZE";
+	case SQLCOM_CHECK: return "STMT_CHECK";
+	case SQLCOM_ASSIGN_TO_KEYCACHE: return "STMT_ASSIGN_TO_KEYCACHE";
+	case SQLCOM_PRELOAD_KEYS: return "STMT_PRELOAD_KEYS";
+	case SQLCOM_FLUSH: return "STMT_FLUSH";
+	case SQLCOM_KILL: return "STMT_KILL";
+	case SQLCOM_ANALYZE: return "STMT_ANALYZE";
+	case SQLCOM_ROLLBACK: return "STMT_ROLLBACK";
+	case SQLCOM_ROLLBACK_TO_SAVEPOINT: return "STMT_ROLLBACK_TO_SAVEPOINT";
+	case SQLCOM_COMMIT: return "STMT_COMMIT";
+	case SQLCOM_SAVEPOINT: return "STMT_SAVEPOINT";
+	case SQLCOM_RELEASE_SAVEPOINT: return "STMT_RELEASE_SAVEPOINT";
+	case SQLCOM_SLAVE_START: return "STMT_SLAVE_START";
+	case SQLCOM_SLAVE_STOP: return "STMT_SLAVE_STOP";
+	case SQLCOM_BEGIN: return "STMT_BEGIN";
+	case SQLCOM_CHANGE_MASTER: return "STMT_CHANGE_MASTER";
+	case SQLCOM_RENAME_TABLE: return "STMT_RENAME_TABLE";
+	case SQLCOM_RESET: return "STMT_RESET";
+	case SQLCOM_PURGE: return "STMT_PURGE";
+	case SQLCOM_PURGE_BEFORE: return "STMT_PURGE_BEFORE";
+	case SQLCOM_SHOW_BINLOGS: return "STMT_SHOW_BINLOGS";
+	case SQLCOM_SHOW_OPEN_TABLES: return "STMT_SHOW_OPEN_TABLES";
+	case SQLCOM_HA_OPEN: return "STMT_HA_OPEN";
+	case SQLCOM_HA_CLOSE: return "STMT_HA_CLOSE";
+	case SQLCOM_HA_READ: return "STMT_HA_READ";
+	case SQLCOM_SHOW_SLAVE_HOSTS: return "STMT_SHOW_SLAVE_HOSTS";
+	case SQLCOM_DELETE_MULTI: return "STMT_DELETE_MULTI";
+	case SQLCOM_UPDATE_MULTI: return "STMT_UPDATE_MULTI";
+	case SQLCOM_SHOW_BINLOG_EVENTS: return "STMT_SHOW_BINLOG_EVENTS";
+	case SQLCOM_DO: return "STMT_DO";
+	case SQLCOM_SHOW_WARNS: return "STMT_SHOW_WARNS";
+	case SQLCOM_EMPTY_QUERY: return "STMT_EMPTY_QUERY";
+	case SQLCOM_SHOW_ERRORS: return "STMT_SHOW_ERRORS";
+	case SQLCOM_SHOW_STORAGE_ENGINES: return "STMT_SHOW_STORAGE_ENGINES";
+	case SQLCOM_SHOW_PRIVILEGES: return "STMT_SHOW_PRIVILEGES";
+	case SQLCOM_HELP: return "STMT_HELP";
+	case SQLCOM_CREATE_USER: return "STMT_CREATE_USER";
+	case SQLCOM_DROP_USER: return "STMT_DROP_USER";
+	case SQLCOM_RENAME_USER: return "STMT_RENAME_USER";
+	case SQLCOM_REVOKE_ALL: return "STMT_REVOKE_ALL";
+	case SQLCOM_CHECKSUM: return "STMT_CHECKSUM";
+	case SQLCOM_CREATE_PROCEDURE: return "STMT_CREATE_PROCEDURE";
+	case SQLCOM_CREATE_SPFUNCTION: return "STMT_CREATE_SPFUNCTION";
+	case SQLCOM_CALL: return "STMT_CALL";
+	case SQLCOM_DROP_PROCEDURE: return "STMT_DROP_PROCEDURE";
+	case SQLCOM_ALTER_PROCEDURE: return "STMT_ALTER_PROCEDURE";
+	case SQLCOM_ALTER_FUNCTION: return "STMT_ALTER_FUNCTION";
+	case SQLCOM_SHOW_CREATE_PROC: return "STMT_SHOW_CREATE_PROC";
+	case SQLCOM_SHOW_CREATE_FUNC: return "STMT_SHOW_CREATE_FUNC";
+	case SQLCOM_SHOW_STATUS_PROC: return "STMT_SHOW_STATUS_PROC";
+	case SQLCOM_SHOW_STATUS_FUNC: return "STMT_SHOW_STATUS_FUNC";
+	case SQLCOM_PREPARE: return "STMT_PREPARE";
+	case SQLCOM_EXECUTE: return "STMT_EXECUTE";
+	case SQLCOM_DEALLOCATE_PREPARE: return "STMT_DEALLOCATE_PREPARE";
+	case SQLCOM_CREATE_VIEW: return "STMT_CREATE_VIEW";
+	case SQLCOM_DROP_VIEW: return "STMT_DROP_VIEW";
+	case SQLCOM_CREATE_TRIGGER: return "STMT_CREATE_TRIGGER";
+	case SQLCOM_DROP_TRIGGER: return "STMT_DROP_TRIGGER";
+	case SQLCOM_XA_START: return "STMT_XA_START";
+	case SQLCOM_XA_END: return "STMT_XA_END";
+	case SQLCOM_XA_PREPARE: return "STMT_XA_PREPARE";
+	case SQLCOM_XA_COMMIT: return "STMT_XA_COMMIT";
+	case SQLCOM_XA_ROLLBACK: return "STMT_XA_ROLLBACK";
+	case SQLCOM_XA_RECOVER: return "STMT_XA_RECOVER";
+	case SQLCOM_SHOW_PROC_CODE: return "STMT_SHOW_PROC_CODE";
+	case SQLCOM_SHOW_FUNC_CODE: return "STMT_SHOW_FUNC_CODE";
+	case SQLCOM_ALTER_TABLESPACE: return "STMT_ALTER_TABLESPACE";
+	case SQLCOM_INSTALL_PLUGIN: return "STMT_INSTALL_PLUGIN";
+	case SQLCOM_UNINSTALL_PLUGIN: return "STMT_UNINSTALL_PLUGIN";
+	case SQLCOM_SHOW_AUTHORS: return "STMT_SHOW_AUTHORS";
+	case SQLCOM_BINLOG_BASE64_EVENT: return "STMT_BINLOG_BASE64_EVENT";
+	case SQLCOM_SHOW_PLUGINS: return "STMT_SHOW_PLUGINS";
+	case SQLCOM_SHOW_CONTRIBUTORS: return "STMT_SHOW_CONTRIBUTORS";
+	case SQLCOM_CREATE_SERVER: return "STMT_CREATE_SERVER";
+	case SQLCOM_DROP_SERVER: return "STMT_DROP_SERVER";
+	case SQLCOM_ALTER_SERVER: return "STMT_ALTER_SERVER";
+	case SQLCOM_CREATE_EVENT: return "STMT_CREATE_EVENT";
+	case SQLCOM_ALTER_EVENT: return "STMT_ALTER_EVENT";
+	case SQLCOM_DROP_EVENT: return "STMT_DROP_EVENT";
+	case SQLCOM_SHOW_CREATE_EVENT: return "STMT_SHOW_CREATE_EVENT";
+	case SQLCOM_SHOW_EVENTS: return "STMT_SHOW_EVENTS";
+	case SQLCOM_SHOW_CREATE_TRIGGER: return "STMT_SHOW_CREATE_TRIGGER";
+	case SQLCOM_ALTER_DB_UPGRADE: return "STMT_ALTER_DB_UPGRADE";
+	case SQLCOM_SHOW_PROFILE: return "STMT_SHOW_PROFILE";
+	case SQLCOM_SHOW_PROFILES: return "STMT_SHOW_PROFILES";
+	case SQLCOM_SIGNAL: return "STMT_SIGNAL";
+	case SQLCOM_RESIGNAL: return "STMT_RESIGNAL";
+	case SQLCOM_SHOW_RELAYLOG_EVENTS: return "STMT_SHOW_RELAYLOG_EVENTS";
+	default:
+		break;
+	}
+	return "";
+}
+
+
+/************************************************************************/
+/* add by willhan. 2013-06-13                                                                     */
+/************************************************************************/
+int parse_result_audit_init(parse_result_audit* pra, char *version, char *charset)
+{
+    THD* thd;
+	enum_version current_version;
+	if(-1 == set_current_version(version, &current_version))
+	{
+		fprintf(stderr, "the input version is wrong.\n");
+		return -1;
+	}
+    //for safe 
+    parse_global_init();
+    thd= new THD;
+    thd->thread_id = 0xFFFFFFFF;
+    thd->prior_thr_create_utime= thd->start_utime= my_micro_time();
+    /*
+    The thread stack does not start from this function but we cannot
+    guess the real value. So better some value that doesn't assert than
+    no value.
+    */
+    thd->thread_stack= (char*) &thd;
+    if (thd->store_globals())
+	{
+        delete thd;    
+		fprintf(stderr, "the thread stack does not start\n");
+        return -1;
+    }
+    thd->security_ctx->skip_grants();
+    //thd->set_db(PARSE_RESULT_DEFAULT_DB_NAME, strlen(PARSE_RESULT_DEFAULT_DB_NAME));
+    /* init parse_result */
+    memset(pra, 0, sizeof(parse_result_audit));
+    pra->thd_org = thd;
+	/* allocate the table name buffer */
+	pra->n_tables_alloced = PARSE_RESULT_N_TABLE_ARR_INITED;
+	pra->n_tables = 0;
+	pra->line_number = 0;
+	pra->info.non_ascii = 0;
+	pra->table_arr = (parse_table_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_table_t));
+	pra->mysql_version = current_version;
+
+	if(charset)
+	{
+		int charset_len = strlen(charset);
+		pra->db_charset = (char*)calloc(charset_len+1, sizeof(char));
+		memcpy(pra->db_charset, charset, charset_len+1);
+	}
+	else
+		pra->db_charset = charset;
     return 0;
 }
+
+int 
+query_parse_audit_tsqlparse(
+		char *query,
+		Parser_state *parser_state,
+		parse_result_audit* pra)
+{
+	THD *thd;
+    LEX* lex;
+    SELECT_LEX *select_lex;
+	TABLE_LIST* all_tables;
+	TABLE_LIST* table;
+	int exit_code = 0;
+	SELECT_LEX *sl;
+	bool err;
+	sp_head* sp;
+	List<Create_field> list_field ;
+	List_iterator<Create_field> it_field;
+	Create_field *cur_field;
+	uint blob_text_count;
+
+
+    thd = (THD*)pra->thd_org;
+	DBUG_ASSERT(pra->n_tables_alloced > 0 && thd);
+
+    if (strlen(query) == 0)
+    {
+        sprintf(pra->err_msg, "%s", "empty string");
+		pra->result_type = 3;
+        exit_code = -1;
+		return exit_code;
+    }
+    lex_start(thd);
+    mysql_reset_thd_for_next_command(thd);
+    err = parse_sql(thd, parser_state, NULL);
+    if (err)
+    {
+        strmake(pra->err_msg, thd->get_error(), sizeof(pra->err_msg) - 1);
+        pra->errcode = thd->get_errcode();
+		pra->result_type = process_msg_error(pra->errcode, pra->err_msg);
+		exit_code = -1;
+		goto exit_pos;
+    }
+	
+    lex = thd->lex;
+    /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
+    select_lex= &lex->select_lex;
+	lex->first_lists_tables_same();
+	/* should be assigned after making first tables same */
+	all_tables= lex->query_tables;
+	/* set context for commands which do not use setup_tables */
+	select_lex->context.resolve_in_table_list_only(select_lex->table_list.first);
+    pra->query_type = lex->sql_command;
+	list_field = lex->alter_info.create_list;
+	it_field = lex->alter_info.create_list;
+
+	switch (lex->sql_command)
+    {
+    case SQLCOM_CHANGE_DB:
+        {
+            LEX_STRING db_str= { (char *) select_lex->db, strlen(select_lex->db) };
+            if (!mysql_change_db(thd, &db_str, FALSE))
+                my_ok(thd);
+            break;
+        }
+	case SQLCOM_DROP_DB:
+		{
+			strcpy(pra->dbname,(lex->name).str);
+			pra->tbdb = 1;
+			pra->result_type = 1;
+			pra->warning_type = DROP_DB;
+			break;
+		}
+	case SQLCOM_DROP_TABLE:
+		{
+			pra->tbdb = 0;
+			pra->result_type = 1;
+			pra->warning_type = DROP_TABLE;
+			break;
+		}		
+	case SQLCOM_DROP_VIEW:
+		{
+			pra->tbdb = 0;
+			pra->result_type = 1;
+			pra->warning_type = DROP_VIEW;
+			break;
+		}
+	case SQLCOM_TRUNCATE:
+		{
+			pra->tbdb = 0;
+			pra->result_type = 1;
+			pra->warning_type = TRUNCATE_TABLE;
+			break;
+		}
+	case SQLCOM_DELETE:
+		{
+			if(select_lex->where == NULL)
+			{
+				pra->tbdb = 0;
+				pra->result_type = 1;
+				pra->warning_type = DELETE_WITHOUT_WHERE;
+			}
+			break;
+		}
+	case SQLCOM_UPDATE:
+		{
+			if(select_lex->where == NULL)
+			{
+				pra->tbdb = 0;
+				pra->result_type = 1;
+				pra->warning_type = UPDATE_WITHOUT_WHERE;
+			}
+			break;
+		}
+	case SQLCOM_CREATE_TABLE:
+		{
+			List_iterator<Key> key_iterator(lex->alter_info.key_list);
+			Key *key;
+
+			/* 建表语句中，显示指定了非innodb的存储引擎，告警 */
+			if(lex->create_info.db_type)
+			{
+				/* 指针不为空，表示有显示指定存储引擎*/
+				if(lex->create_info.db_type->db_type != DB_TYPE_INNODB)
+				{
+					pra->result_type = 1;
+					pra->warning_type = CREATE_TABLE_NOT_INNODB;
+				}
+				break;
+			}
+
+			/* 建表不带主键告警 */
+			key = key_iterator++;
+			if(key == NULL)
+			{
+				/* 没有索引，显然没有主键*/
+				pra->result_type = 1;
+				pra->warning_type = CREATE_TABLE_NO_INDEX;
+			}
+			while (key)
+			{
+				/* 建表不带主键 */
+				pra->result_type = 1;
+				pra->warning_type = CREATE_TABLE_NO_INDEX;
+				if(key->type == Key::PRIMARY)
+				{
+					pra->result_type = 0;
+					pra->warning_type = WARNINGS_DEFAULT;
+					break;
+				}
+				key = key_iterator++;
+			}
+
+
+			/* 建表中，blob字段过多的告警 */
+			if(list_field.elements >= 10)
+			{
+				blob_text_count = 0;
+				while(!!(cur_field = it_field++))
+				{
+					switch(cur_field->sql_type)
+					{
+					case MYSQL_TYPE_BLOB:
+					case MYSQL_TYPE_TINY_BLOB:
+					case MYSQL_TYPE_MEDIUM_BLOB:
+					case MYSQL_TYPE_LONG_BLOB:
+						blob_text_count++;
+						break;
+					default:
+						break;
+					}
+				}
+				if(blob_text_count >= 10)
+				{//have more than 10 blob/text field
+					pra->result_type = 1;
+					pra->warning_type = CREATE_TABLE_WITH_MUCH_BLOB;
+					pra->blob_text_count = blob_text_count;
+					break;
+				}
+			}
+			{ // 处理字段中的字符集问题，表及每个字段的字符集类型，须与库的字符集一致
+			  // 由于库的字符集的通过参数pra->db_charset传进来， 
+				if(lex->create_info.default_table_charset && lex->create_info.default_table_charset->csname && pra->db_charset)
+				{
+					if(strcmp(lex->create_info.default_table_charset->csname, pra->db_charset))
+					{// 建表指定的字符集与DB字符集不同，告警
+						pra->result_type = 1;
+						pra->warning_type = CREATE_TABLE_WITH_OTHER_CHARACTER;
+						break;
+					}
+				}
+				
+				it_field.rewind();
+				while(!!(cur_field = it_field++))
+				{// 看字段中有没有指定其它类型的字符集，有则告警
+					switch(cur_field->sql_type)
+					{
+					case MYSQL_TYPE_BLOB:
+					case MYSQL_TYPE_TINY_BLOB:
+					case MYSQL_TYPE_MEDIUM_BLOB:
+					case MYSQL_TYPE_LONG_BLOB:
+					case MYSQL_TYPE_VARCHAR:
+					case MYSQL_TYPE_VAR_STRING:
+					case MYSQL_TYPE_STRING:
+
+						if(cur_field->charset && cur_field->charset->csname)
+						{
+							if(strcmp(cur_field->charset->csname, pra->db_charset))
+							{// 字段中指定了与db不同的字符集，告警
+								pra->result_type = 1;
+								pra->warning_type = CREATE_TABLE_WITH_OTHER_CHARACTER;
+							}
+						}
+						break;
+					default:
+						break;
+					}
+
+				}
+			}
+		}
+		break;
+	case SQLCOM_ALTER_TABLE:
+		{
+			/* 建表中，blob字段过多的告警 */
+			if(list_field.elements >= 10)
+			{
+				blob_text_count = 0;
+				while(!!(cur_field = it_field++))
+				{
+					switch(cur_field->sql_type)
+					{
+					case MYSQL_TYPE_BLOB:
+					case MYSQL_TYPE_TINY_BLOB:
+					case MYSQL_TYPE_MEDIUM_BLOB:
+					case MYSQL_TYPE_LONG_BLOB:
+						blob_text_count++;
+						break;
+					default:
+						break;
+					}
+				}
+				if(blob_text_count >= 10)
+				{//have more than 10 blob/text field
+					pra->result_type = 1;
+					pra->warning_type = CREATE_TABLE_WITH_MUCH_BLOB;
+					pra->blob_text_count = blob_text_count;
+					break;
+				}
+			}
+
+
+			if(pra->mysql_version > VERSION_5_5)
+			{// tmysql 下，才考虑特定加字段告警
+
+				if(lex->alter_info.flags & ALTER_COLUMN_ORDER)
+				{// 使用after来增加字段，则不能使用快速加字段功能，告警
+					pra->result = 1;
+					pra->warning_type = ALTER_TABLE_WITH_AFTER;
+					break;
+				}
+
+				// 使用alter来增加字段，在指定了default值而未指定NOT NULL选项告警
+				it_field.rewind();
+				while(!!(cur_field = it_field++))
+				{
+					if(cur_field->def && !(cur_field->flags & NOT_NULL_FLAG))
+					{// 表示有默认值, flags用于标识该字段的一些属性，其中1对应NOT_NULL_FLAG，
+						pra->result_type = 1;
+						pra->warning_type = ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL;
+					}
+				}
+			}
+		}
+		break;
+	case SQLCOM_CREATE_PROCEDURE:
+	case SQLCOM_CREATE_FUNCTION:
+	case SQLCOM_ALTER_PROCEDURE:
+	case SQLCOM_ALTER_FUNCTION:
+	case SQLCOM_CREATE_SPFUNCTION:
+		if(lex->definer && &(lex->definer->user) && &(lex->definer->host))
+		{// 使用了definer
+			if(strcmp(lex->definer->user.str, "ADMIN")==0 && strcmp(lex->definer->host.str, "localhost")==0)
+			{
+				pra->result_type = 1;
+				pra->warning_type = CREATE_PROCEDURE_WITH_DEFINER;
+			}
+		}
+
+		break;
+	case SQLCOM_DROP_INDEX:
+	case SQLCOM_DROP_USER:
+	case SQLCOM_DROP_TRIGGER:
+	case SQLCOM_DROP_SERVER:
+	case SQLCOM_DELETE_MULTI:
+	case SQLCOM_UPDATE_MULTI:
+    default:
+		break;
+    }
+
+	if (pra->result_type != 0)
+	{
+		pra->n_tables = 0;
+		for(table= all_tables; table; table= table->next_global)
+		{
+			if (parse_result_add_table_audit(pra, table->db, table->table_name))
+			{
+				exit_code = -1;
+				goto exit_pos;
+			}
+		}
+		sl = lex->all_selects_list;
+		for(; sl; sl= sl->next_select_in_list())
+		{
+			for (table = sl->table_list.first; table; table= table->next_global)
+			{
+				if (parse_result_add_table_audit(pra, table->db, table->table_name))
+				{
+					exit_code = -1;
+					goto exit_pos;
+				}
+			}
+		}
+		sp = thd->lex->sphead;
+		if (sp)
+		{
+			TABLE_LIST* sp_tl = NULL;
+			TABLE_LIST** sp_tl_ptr = &sp_tl;
+			sp->add_used_tables_to_table_list(thd, &sp_tl_ptr, NULL);
+			for (table= sp_tl; table; table= table->next_global)
+			{
+				if (parse_result_add_table_audit(pra, table->db, table->table_name))
+				{
+					exit_code = -1;
+					goto exit_pos;
+				}
+			}
+		}
+	}
+
+exit_pos:
+    thd->end_statement();
+    thd->cleanup_after_query();
+    return exit_code;
+}
+
+
+int query_parse_audit_low(char* query, parse_result_audit* pra)
+{
+    THD* thd;
+    Parser_state parser_state;
+	int exit_code = 0;
+	char *packet_end;
+    thd = (THD*)pra->thd_org;
+	DBUG_ASSERT(pra->n_tables_alloced > 0 && thd);
+	pra->n_tables = 0;
+	pra->errcode = 0;
+	pra->result_type = 0;
+	pra->err_msg[0] = 0;
+    if (strlen(query) == 0)
+    {
+        sprintf(pra->err_msg, "%s", "empty string");
+		pra->result_type = 3;
+
+        exit_code = -1;
+		return exit_code;
+    }
+    if (alloc_query(thd, query, strlen(query))) 
+    {
+        sprintf(pra->err_msg, "%s", "alloc_query error");
+        pra->result_type = 3;
+
+		exit_code = -1;
+		return exit_code;
+    }
+    if (parser_state.init(thd, thd->query(), thd->query_length()))
+    {
+        sprintf(pra->err_msg, "%s", "parser_state.init error");
+		pra->result_type = 3;
+		exit_code = -1;
+		return exit_code;
+    }
+	packet_end= thd->query() + thd->query_length();
+	thd->client_capabilities|= CLIENT_MULTI_QUERIES;
+	exit_code = query_parse_audit_tsqlparse(query, &parser_state, pra);
+	while (parser_state.m_lip.found_semicolon != NULL)
+	{
+		/*
+		Multiple queries exits, execute them individually
+		*/
+		char *beginning_of_next_stmt= (char*) parser_state.m_lip.found_semicolon;
+		ulong length= (ulong)(packet_end - beginning_of_next_stmt);
+		/* Remove garbage at start of query */
+		while (length > 0 && my_isspace(thd->charset(), *beginning_of_next_stmt))
+		{
+			beginning_of_next_stmt++;
+			length--;
+		}
+		parser_state.reset(beginning_of_next_stmt, length);
+		exit_code = query_parse_audit_tsqlparse(beginning_of_next_stmt, &parser_state, pra);
+	}
+	free_root(thd->mem_root,MYF(MY_KEEP_PREALLOC));
+    return exit_code;
+}
+
+
+int query_parse_audit(char* query, parse_result_audit* pra )
+{
+	int exit_code = 0;
+	int len = sizeof(reserve_words) / sizeof(reserve_words[0]);
+	const char *reserve;
+	char tmp_err_msg[PARSE_RESULT_MAX_STR_LEN + 1] = {0};
+	int tmp_err_code;
+	exit_code = query_parse_audit_low(query, pra);
+	//process the error message,
+	if(pra->errcode == ER_PARSE_ERROR)
+	{
+		reserve = has_reserve_in_errmsg(pra->mysql_version, pra->err_msg);
+		if(reserve)
+		{//have reserve to process
+			char *sql1, *sql2, *tmp;
+
+			size_t alloc_size = strlen(query) * 2;
+			sql1 = (char*)calloc(alloc_size, sizeof(char));
+			sql2 = (char*)calloc(alloc_size, sizeof(char));
+
+			strcpy(sql1,query);
+			for(int i=version_pos[pra->mysql_version]; i<len; i++)
+			{
+				const char* ret;
+				reserve = reserve_words[i];
+				ret = process_sql_for_reserve(sql1, sql2, alloc_size, reserve);
+				assert(ret);
+				tmp = sql1;
+				sql1 = sql2;
+				sql2 = tmp;
+			}
+			//保留先前的值
+			strcpy(tmp_err_msg, pra->err_msg);
+			tmp_err_code = pra->errcode;
+			if(!query_parse_audit_low(sql1, pra))
+			//保留字加上``，重新分析，语法正确
+			{
+				pra->result_type = 0;
+				exit_code = 0;
+			}
+			else
+			{
+				pra->result_type = 2;
+				strcpy(pra->err_msg, tmp_err_msg);
+				pra->errcode = tmp_err_code;
+			}
+			free(sql1);
+			free(sql2);
+		}
+	}
+	return exit_code;
+}
+
+int parse_result_add_table_audit(
+	parse_result_audit* pra, 
+	char*           db_name,
+	char*           table_name
+)
+{
+	int i;
+	DBUG_ASSERT(db_name && table_name);
+	DBUG_ASSERT(pra->n_tables <= pra->n_tables_alloced);
+/*	if(0==strcmp(db_name, PARSE_RESULT_DEFAULT_DB_NAME))
+	{//No database selected
+		strmake(pra->err_msg, "No databases selected", sizeof(pra->err_msg) - 1);
+		pra->errcode = 1046;
+		pra->result_type = 2;
+		return -1;
+	}
+*/	if (strlen(db_name) > NAME_LEN || strlen(table_name) > NAME_LEN)
+	{
+		sprintf(pra->err_msg, "%s", "too long db_name or table_name");
+		pra->result_type = 3;
+		return -1;
+	}
+	for (i = 0; i < pra->n_tables; i++)
+	{
+		if (!strcmp(pra->table_arr[i].dbname, db_name) && !strcmp(pra->table_arr[i].tablename, table_name))
+			return 0;
+	}
+	//buffer is not enough
+	if (pra->n_tables >= pra->n_tables_alloced)
+	{
+		parse_table_t* new_table_arr;
+		new_table_arr = (parse_table_t*)calloc(pra->n_tables_alloced * 2, sizeof(parse_table_t));
+		memcpy(new_table_arr, pra->table_arr, sizeof(parse_table_t) * pra->n_tables_alloced);
+		free(pra->table_arr);
+		pra->table_arr = new_table_arr;
+		pra->n_tables_alloced *= 2;
+	}
+	strcpy(pra->table_arr[pra->n_tables].dbname, db_name);
+	strcpy(pra->table_arr[pra->n_tables++].tablename, table_name);
+	return 0;
+}
+
+int
+parse_result_audit_destroy(parse_result_audit* pra)
+{
+    THD* thd;
+
+	/* free table name buffer array */
+	if (pra->table_arr) {
+
+		free(pra->table_arr);
+		pra->table_arr = NULL;
+		pra->n_tables_alloced = pra->n_tables = 0;
+	}
+    thd = (THD*)pra->thd_org;
+    if (thd != NULL)
+    {
+        thd->clear_error();
+        /*
+        Some extra safety, which should not been needed (normally, event deletion
+        should already have done these assignments (each event which sets these
+        variables is supposed to set them to 0 before terminating)).
+        */
+        thd->catalog= 0;
+        thd->reset_query();
+        if (thd->db)
+            my_free(thd->db);
+        thd->reset_db(NULL, 0);
+        //close_connection(thd);
+        delete thd;
+        pra->thd_org = NULL;
+    }
+	free(pra->db_charset);
+    return 0;
+}
+
+
+void parse_result_audit_init_db(parse_result_audit* pra, char* db)
+{
+	THD* thd = (THD*)pra->thd_org;
+	thd->set_db(db, strlen(db));
+}
+
+static int process_msg_error(int err_code, char *err_msg)
+{
+	int result_type = 2;//means parse fail
+	for(int i=0; ignore_error_code[i] != 0; ++i)
+	{
+		if(ignore_error_code[i] == err_code)
+		{
+			result_type = 0;//means ignore this parse error
+			break;
+		}
+	}
+	return result_type;
+}
+
+static int set_current_version(char *version, enum_version *current_version)
+{
+	*current_version = VERSION_5_5;
+	if(version == NULL)
+		return 0;
+	else
+	{
+		if(0 == strcmp(version, "5.0"))
+			*current_version = VERSION_5_0;
+		else if(0 == strcmp(version, "5.1"))
+			*current_version = VERSION_5_1;
+		else if(0 == strcmp(version, "5.5"))
+			*current_version = VERSION_5_5;
+		else if(0 == strcmp(version, "tmysql-1.0"))
+			*current_version = VERSION_TMYSQL_1_0;
+		else if(0 == strcmp(version, "tmysql-1.1"))
+			*current_version = VERSION_TMYSQL_1_1;
+		else if(0 == strcmp(version, "tmysql-1.2"))
+			*current_version = VERSION_TMYSQL_1_2;
+		else if(0 == strcmp(version, "tmysql-1.3"))
+			*current_version = VERSION_TMYSQL_1_3;
+		else if(0 == strcmp(version, "tmysql-1.4"))
+			*current_version = VERSION_TMYSQL_1_4;
+		else
+			return -1;
+	}
+	return 0;
+}
+
+
+static const char* has_reserve_in_errmsg(enum_version mysql_version, char *err_msg)
+{//return the reserve word
+	char *start;
+	char tmp[100]={0};
+	int len = sizeof(reserve_words) / sizeof(reserve_words[0]);
+	int start_pos = version_pos[mysql_version]; 
+	int i;
+	char substr[] = "your MySQL server version for the right syntax to use near \'";
+	if (!(start = strstr(err_msg, substr)))
+		return NULL;
+	start += strlen(substr);
+	/* 拷贝+转化为大写 */
+	for(i=0; *(start+i)!='\0' && i<99; ++i)
+	{//get the content of '' after near
+		if(*(start+i)>='a' && *(start+i)<='z')
+			tmp[i] = *(start+i)+'A'-'a';
+		else
+			tmp[i] = *(start+i);
+	}
+	tmp[i] = '\0';
+	for(i=start_pos; i<len ; ++i)
+	{
+		if(isprefix_word(tmp, reserve_words[i], 0))
+			return reserve_words[i];
+	}
+	return NULL;//have not reserve
+}
+
+
+static int isprefix_word(const char *s, const char *t, int first_pos)
+{//first_pos 表示开始匹配字符的位置, 该位置前一个位置必须满足条件。
+	if(first_pos > 0)
+	{//前面有字符
+		if(!is_word_segmentation(*(s-1)))
+			return 0;//not prefix
+	}
+	while (*t)
+	{
+		if (*s++ != *t++)
+			return 0;//not prefix
+	}
+	if(*s == '\0')
+		return 1;
+	else if(is_word_segmentation(*s))
+		return 1;
+	return 0;
+}
+
+static int is_word_segmentation(char ch)
+{//if ch is int the word_segmentation[]
+	int is_seg = 0;
+	int i;
+	for(i=0; word_segmentation[i]!='\0'; i++)
+	{
+		if(ch == word_segmentation[i])
+		{
+			is_seg = 1;
+			break;
+		}
+	}
+	return is_seg;
+}
+
+static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len,const char *reserve)
+{//process the query, if the word is reserve, add `reserve`
+	size_t i,j;
+	char in_string = 0;
+	char inchar;
+	size_t fromsql_len = strlen(fromsql);
+	
+	for(size_t k=0; k<fromsql_len; k++)
+	{//convert fromsql to uplower
+		if(fromsql[k]>='a' && fromsql[k]<='z')
+			fromsql[k] = fromsql[k]-'a'+'A';
+	}
+
+	for(i=j=0; fromsql[i]!='\0' && j < to_len ; i++,j++)
+	{
+		inchar = fromsql[i];
+
+		//TODO
+		if (inchar == '\\' /*&& no_*** */)
+		{
+			tosql[j] = fromsql[i];
+			tosql[++j] = fromsql[++i];
+
+			continue;
+		}
+
+		if(!in_string)
+		{
+			if(inchar=='\'' || inchar=='\"' || inchar=='`')
+			{
+				in_string = inchar;
+				tosql[j] = fromsql[i];
+			}
+			else
+			{
+				if(isprefix_word(&fromsql[i],reserve,i))
+				{//is prefix
+					size_t k;
+					tosql[j++] = '`';
+					for(k=0;k<strlen(reserve);i++,j++,k++)
+						tosql[j] = fromsql[i];
+					i--;
+					tosql[j] = '`';
+				}
+				else
+					tosql[j] = fromsql[i];
+			}
+		}
+		else
+		{
+			if(inchar == in_string)
+			{
+				tosql[j] = fromsql[i];
+				in_string = 0;
+			}
+			else
+				tosql[j] = fromsql[i];
+		}
+	}
+
+	if (j == to_len && fromsql[i]!='\0')
+		return NULL;
+
+	return tosql;
+}
+/***************************************
+static int find_reserve_pos(char *reserve)
+{//return the pos of reserve in reserve_words
+	int pos = -1;
+	int i, len = version_pos[VERSION_5_5];
+	for(i=0; i<=len; i++)
+	{
+		if(0 == strcmp(reserve, reserve_words[i]))
+			pos = i;
+	}
+	return pos;
+}
+*************************************/

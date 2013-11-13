@@ -1,0 +1,247 @@
+use test;
+
+# Normal upgrade
+create table upgrade_1 (
+c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+key idx_mi (c2, c4(5)),
+key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+# Replace the FRM with a 5.0.67 FRM that will require upgrade
+# Should indicate that ALTER TABLE ... MODIFY is needed
+CHECK TABLE upgrade_1 FOR UPGRADE;
+Table	Op	Msg_type	Msg_text
+test.upgrade_1	check	collate_upgrade	 ALTER TABLE `test`.`upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa',  MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL;
+ALTER TABLE `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL;
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+CHECK TABLE upgrade_1 FOR UPGRADE;
+Table	Op	Msg_type	Msg_text
+test.upgrade_1	check	status	OK
+SHOW CREATE TABLE upgrade_1;
+Table	Create Table
+upgrade_1	CREATE TABLE `upgrade_1` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` char(20) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  NOT NULL DEFAULT 'aa',
+  `c3` varchar(50) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL,
+  `c4` blob,
+  `c5` text,
+  KEY `idx_mi` (`c2`,`c4`(5)),
+  KEY `idx_mi2` (`c2`,`c3`(6))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT
+drop table upgrade_1;
+create table upgrade_2 (
+c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+key idx_mi (c2, c4(5)),
+key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=ucs2 row_format=compact;
+insert into upgrade_2 values (1,1,1,1,1);
+flush table upgrade_2;
+# Replace the FRM with a 5.0.67 FRM that will require upgrade
+# Should indicate that ALTER TABLE ... MODIFY is needed
+CHECK TABLE upgrade_2 FOR UPGRADE;
+Table	Op	Msg_type	Msg_text
+test.upgrade_2	check	collate_upgrade	 ALTER TABLE `test`.`upgrade_2`  MODIFY COLUMN c2 char(20) CHARACTER SET ucs2 COLLATE ucs2_general_mysql500_ci NOT NULL DEFAULT 'aa',  MODIFY COLUMN c3 varchar(50) CHARACTER SET ucs2 COLLATE ucs2_general_mysql500_ci DEFAULT NULL;
+ALTER TABLE upgrade_2 MODIFY COLUMN c2 char(20) CHARACTER SET ucs2 COLLATE ucs2_general_mysql500_ci NOT NULL DEFAULT 'aa',  
+MODIFY COLUMN c3 varchar(50) CHARACTER SET ucs2 COLLATE ucs2_general_mysql500_ci DEFAULT NULL;
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+CHECK TABLE upgrade_2 FOR UPGRADE;
+Table	Op	Msg_type	Msg_text
+test.upgrade_2	check	status	OK
+SHOW CREATE TABLE upgrade_2;
+Table	Create Table
+upgrade_2	CREATE TABLE `upgrade_2` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` char(20) CHARACTER SET ucs2 /*!50521  COLLATE ucs2_general_mysql500_ci */  NOT NULL DEFAULT 'aa',
+  `c3` varchar(50) CHARACTER SET ucs2 /*!50521  COLLATE ucs2_general_mysql500_ci */  DEFAULT NULL,
+  `c4` blob,
+  `c5` text,
+  KEY `idx_mi` (`c2`,`c4`(5)),
+  KEY `idx_mi2` (`c2`,`c3`(6))
+) ENGINE=InnoDB DEFAULT CHARSET=ucs2 ROW_FORMAT=COMPACT
+drop table upgrade_2;
+
+# Multi OP
+create table upgrade_1 (
+c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+key idx_mi (c2, c4(5)),
+key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+# Replace the FRM with a 5.0.67 FRM that will require upgrade
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL,
+add index idx_c5 (c5(30));
+affected rows: 1
+info: Records: 1  Duplicates: 0  Warnings: 0
+SHOW CREATE TABLE upgrade_1;
+Table	Create Table
+upgrade_1	CREATE TABLE `upgrade_1` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` char(20) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  NOT NULL DEFAULT 'aa',
+  `c3` varchar(50) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL,
+  `c4` blob,
+  `c5` text,
+  KEY `idx_mi` (`c2`,`c4`(5)),
+  KEY `idx_mi2` (`c2`,`c3`(6)),
+  KEY `idx_c5` (`c5`(30))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT
+drop table upgrade_1;
+create table upgrade_1 (
+c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+key idx_mi (c2, c4(5)),
+key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+# Replace the FRM with a 5.0.67 FRM that will require upgrade
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL,
+rename to upgrade_2;
+affected rows: 1
+info: Records: 1  Duplicates: 0  Warnings: 0
+SHOW CREATE TABLE upgrade_2;
+Table	Create Table
+upgrade_2	CREATE TABLE `upgrade_2` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` char(20) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  NOT NULL DEFAULT 'aa',
+  `c3` varchar(50) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL,
+  `c4` blob,
+  `c5` text,
+  KEY `idx_mi` (`c2`,`c4`(5)),
+  KEY `idx_mi2` (`c2`,`c3`(6))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT
+drop table upgrade_2;
+
+# Alter part of column
+create table upgrade_1 (
+c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+key idx_mi (c2, c4(5)),
+key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+# Replace the FRM with a 5.0.67 FRM that will require upgrade
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa';
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+SHOW CREATE TABLE upgrade_1;
+Table	Create Table
+upgrade_1	CREATE TABLE `upgrade_1` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` char(20) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  NOT NULL DEFAULT 'aa',
+  `c3` varchar(50) DEFAULT NULL,
+  `c4` blob,
+  `c5` text,
+  KEY `idx_mi` (`c2`,`c4`(5)),
+  KEY `idx_mi2` (`c2`,`c3`(6))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT
+drop table upgrade_1;
+
+# Length different
+create table upgrade_1 (
+c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+key idx_mi (c2, c4(5)),
+key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+# Replace the FRM with a 5.0.67 FRM that will require upgrade
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(40) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL;
+affected rows: 1
+info: Records: 1  Duplicates: 0  Warnings: 0
+SHOW CREATE TABLE upgrade_1;
+Table	Create Table
+upgrade_1	CREATE TABLE `upgrade_1` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` char(20) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  NOT NULL DEFAULT 'aa',
+  `c3` varchar(40) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL,
+  `c4` blob,
+  `c5` text,
+  KEY `idx_mi` (`c2`,`c4`(5)),
+  KEY `idx_mi2` (`c2`,`c3`(6))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT
+drop table upgrade_1;
+
+# fast alter low .frm version table row_format to GCS
+create table upgrade_1 (
+c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+key idx_mi (c2, c4(5)),
+key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+# Replace the FRM with a 5.0.67 FRM that will require upgrade
+alter table `upgrade_1`  row_format=GCS;
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+SHOW CREATE TABLE upgrade_1;
+Table	Create Table
+upgrade_1	CREATE TABLE `upgrade_1` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` char(20) NOT NULL DEFAULT 'aa',
+  `c3` varchar(50) DEFAULT NULL,
+  `c4` blob,
+  `c5` text,
+  KEY `idx_mi` (`c2`,`c4`(5)),
+  KEY `idx_mi2` (`c2`,`c3`(6))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 /*!99000 ROW_FORMAT=GCS */ 
+drop table upgrade_1;
+
+# Nullable different
+create table upgrade_1 (
+c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+key idx_mi (c2, c4(5)),
+key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+# Replace the FRM with a 5.0.67 FRM that will require upgrade
+alter table `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT 'aa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL;
+affected rows: 1
+info: Records: 1  Duplicates: 0  Warnings: 0
+SHOW CREATE TABLE upgrade_1;
+Table	Create Table
+upgrade_1	CREATE TABLE `upgrade_1` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` char(20) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT 'aa',
+  `c3` varchar(50) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL,
+  `c4` blob,
+  `c5` text,
+  KEY `idx_mi` (`c2`,`c4`(5)),
+  KEY `idx_mi2` (`c2`,`c3`(6))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT
+drop table upgrade_1;
+
+# Default value different
+create table upgrade_1 (
+c1 int, c2 char(20) not null default 'aa', c3 varchar(50), c4 blob, c5 text,
+key idx_mi (c2, c4(5)),
+key idx_mi2 (c2, c3(6))
+) engine=innodb default charset=utf8 row_format=compact;
+insert into upgrade_1 values (1,1,1,1,1);
+flush table upgrade_1;
+# Replace the FRM with a 5.0.67 FRM that will require upgrade
+ALTER TABLE `upgrade_1`  MODIFY COLUMN c2 char(20) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci NOT NULL DEFAULT 'aaa',
+MODIFY COLUMN c3 varchar(50) CHARACTER SET utf8 COLLATE utf8_general_mysql500_ci DEFAULT NULL;
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+SHOW CREATE TABLE upgrade_1;
+Table	Create Table
+upgrade_1	CREATE TABLE `upgrade_1` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` char(20) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  NOT NULL DEFAULT 'aaa',
+  `c3` varchar(50) CHARACTER SET utf8 /*!50521  COLLATE utf8_general_mysql500_ci */  DEFAULT NULL,
+  `c4` blob,
+  `c5` text,
+  KEY `idx_mi` (`c2`,`c4`(5)),
+  KEY `idx_mi2` (`c2`,`c3`(6))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=COMPACT
+drop table upgrade_1;
+

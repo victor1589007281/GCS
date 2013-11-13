@@ -1,0 +1,41 @@
+1. 下载
+curl http://curl.haxx.se/download/curl-7.33.0.tar.gz
+git https://git-core.googlecode.com/files/git-1.8.3.tar.gz
+
+2. 安装curl 
+./configure --prefix=/usr/local/curl-7.33 --with-{ssl,gnutls,nss,polarssl,cyassl,axtls,winssl,darwinssl}
+make 
+make install
+避免覆盖系统curl
+
+对于tlinux，可能需要安装nss，否则可能头文件缺失
+yum install nss-devel
+
+3. 安装git
+./configure --prefix=/usr/local/git --with-curl=/usr/local/curl-7.33 --without-python
+make
+make install
+
+最后的--without-python是可选的，如果遇到以下错误的话
+/usr/bin/perl -pe "s<\Q++LOCALEDIR++\E></usr/local/git/share/locale>" <Git.pm >blib/lib/Git.pm
+    SUBDIR git_remote_helpers
+Traceback (most recent call last):
+  File "setup.py", line 5, in ?
+    from distutils.core import setup
+ImportError: No module named distutils.core
+make[1]: *** [all] Error 1
+make: *** [all] Error 2
+
+4. curl/git路径加入环境变量
+export PATH=/usr/local/git/libexec/:/usr/local/git/bin:$PATH
+export PATH=/usr/local/curl-7.33/bin:$PATH
+
+5. 解决SSL证书的问题
+对于部分suse机器，SSL证书可能有问题，需要让Git跳过certificate的检查
+export GIT_SSL_NO_VERIFY=true
+加入环境变量
+
+否则可能出错：
+error: SSL certificate problem: unable to get local issuer certificate while accessing https://github.com/GCSAdmin/GCS-SQL.git/info/refs
+fatal: HTTP request failed
+

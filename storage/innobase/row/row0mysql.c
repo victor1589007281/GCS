@@ -53,6 +53,7 @@ Created 9/17/2000 Heikki Tuuri
 #include "ibuf0ibuf.h"
 #include "m_string.h"
 #include "my_sys.h"
+#include "zlib.h"
 
 
 /** Provide optional 4.x backwards compatibility for 5.0 and above */
@@ -260,12 +261,48 @@ row_mysql_read_blob_ref(
 					(not BLOB length) */
 {
 	byte*	data;
-
 	*len = mach_read_from_n_little_endian(ref, col_len - 8);
 
 	memcpy(&data, ref + col_len - 8, sizeof data);
 
 	return(data);
+}
+
+/*******************************************************************//**
+Reads a reference to a BLOB in the MySQL format and compress the blob field
+@return	pointer to BLOB data after compress*/
+UNIV_INTERN
+const byte*
+row_mysql_read_blob_ref_and_compress(
+/*====================*/
+	ulint*		len,		/*!< out: BLOB compressed length */
+	const byte*	ref,		/*!< in: BLOB reference in the
+					MySQL format */
+	ulint		col_len,	/*!< in: BLOB reference length
+					(not BLOB length) */
+	row_prebuilt_t*	prebuilt)
+{
+	const byte*	data_uncompress;
+	ulint	data_uncompress_len = 0;
+	byte*	data;
+
+	data_uncompress = row_mysql_read_blob_ref(&data_uncompress_len, ref, col_len);
+
+	/* 需要被压缩的情况，二者的差别，在于要不要再分配一些内存 */
+	if(prebuilt->blob_heap_for_compress == NULL)
+		prebuilt->blob_heap_for_compress = mem_heap_create(UNIV_PAGE_SIZE);
+	data = row_blob_compress_alloc(data_uncompress, data_uncompress_len, len, prebuilt);
+	
+	if(!data)
+	{
+		ut_print_timestamp(stderr);
+		fprintf(stderr, " [InnoDB compress ERROR] out of memory, orginal len : "ULINTPF", compressed len :"ULINTPF" \n", data_uncompress_len, *len); 
+
+		//TODO 
+		ut_error;
+	}
+	
+	return data;
 }
 
 /**************************************************************//**
@@ -344,12 +381,18 @@ row_mysql_store_col_in_innobase_format(
 					necessarily the length of the actual
 					payload data; if the column is a true
 					VARCHAR then this is irrelevant */
-	ulint		comp)		/*!< in: nonzero=compact format */
+	ulint		comp,   /*!< in: nonzero=compact format */
+	row_prebuilt_t*	prebuilt, /*存储所有的信息*/
+	int         i             /*第i个处理的col*/
+)		
 {
 	const byte*	ptr	= mysql_data;
 	const dtype_t*	dtype;
 	ulint		type;
 	ulint		lenlen;
+
+	int is_sql_compressed_flag = innobase_get_current_sql_compressed_flag(); /* 用于导入导出优化*/
+	ut_a(is_sql_compressed_flag==0 || is_sql_compressed_flag==1);
 
 	dtype = dfield_get_type(dfield);
 
@@ -479,8 +522,39 @@ row_mysql_store_col_in_innobase_format(
 			col_len--;
 		}
 	} else if (type == DATA_BLOB && row_format_col) {
+		if(prebuilt == NULL || !dict_col_is_compressed(&prebuilt->table->cols[i]) || 
+			(is_sql_compressed_flag && dict_col_is_binary_blob(&prebuilt->table->cols[i])))
+		{ 
+		   /* 满足如下几点，则不走压缩路径
+		    1, prebuilt为空，可能是在索引处理中传入该值，不压缩
+			2，blob列不具备compressed属性，不压缩
+			3，就算blob compressed，但是SQL显示指定不压缩，用于导入导出优化
+		   */
 
-		ptr = row_mysql_read_blob_ref(&col_len, mysql_data, col_len);
+			ptr = row_mysql_read_blob_ref(&col_len, mysql_data, col_len);
+
+			if (is_sql_compressed_flag && dict_col_is_compressed(&prebuilt->table->cols[i]))
+			{
+				if(!row_blob_compress_is_valid(ptr, col_len))
+				{
+					ut_print_timestamp(stderr);
+					fprintf(stderr, " [InnoDB compress ERROR] ERROR USAGE OF SQL_COMPRESSED, table_name %s\n", prebuilt->table->name);
+				}
+			}
+		}
+		else
+		{
+			//通过本函数处理对blob字段的压缩
+			/*保留压缩前的内容与长度，主要用于进行前缀索引的处理*/
+//			const byte* org_ptr;
+//			uint org_len = col_len;
+//			org_ptr = row_mysql_read_blob_ref(&org_len, mysql_data, org_len);
+//			dfield_set_org_data(dfield, org_ptr, org_len);
+
+			/*压缩处理*/
+			ptr = row_mysql_read_blob_ref_and_compress(&col_len, mysql_data, col_len, prebuilt);
+		}
+		
 	}
 
 	dfield_set_data(dfield, ptr, col_len);
@@ -512,6 +586,13 @@ row_mysql_convert_row_to_innobase(
 
 	ut_ad(prebuilt->template_type == ROW_MYSQL_WHOLE_ROW);
 	ut_ad(prebuilt->mysql_template);
+	
+	if (prebuilt->blob_heap_for_compress)
+	{
+		mem_heap_free(prebuilt->blob_heap_for_compress);
+		prebuilt->blob_heap_for_compress = NULL;
+	}
+
 
 	for (i = 0; i < prebuilt->n_template; i++) {
 
@@ -538,7 +619,9 @@ row_mysql_convert_row_to_innobase(
 			TRUE, /* MySQL row format data */
 			mysql_rec + templ->mysql_col_offset,
 			templ->mysql_col_len,
-			dict_table_is_comp(prebuilt->table));
+			dict_table_is_comp(prebuilt->table),
+			prebuilt,
+			i);
 next_column:
 		;
 	}
@@ -816,6 +899,10 @@ row_prebuilt_free(
 
 	if (prebuilt->blob_heap) {
 		mem_heap_free(prebuilt->blob_heap);
+	}
+	
+	if(prebuilt->blob_heap_for_compress){
+		mem_heap_free(prebuilt->blob_heap_for_compress);
 	}
 
 	if (prebuilt->old_vers_heap) {
@@ -3019,9 +3106,6 @@ next_rec:
 
     if (dict_table_is_gcs_after_alter_table(table))
     {
-        /* 只有compact格式table->flags第6 bit表示临时表，所以这样做更安全 */ 
-        ut_ad((table->flags >> DICT_TF2_SHIFT) == 0);
-
         if (create_use_gcs_real_format)
             pars_info_add_int4_literal(info, "mix_len",
                             (table->flags >> DICT_TF2_SHIFT) | ((dict_table_get_n_cols(table) - DATA_N_SYS_COLS) << 16));
@@ -4389,4 +4473,266 @@ row_is_magic_monitor_table(
 	}
 
 	return(FALSE);
+}
+
+/************************************************************************/
+/* this function used to compress the blob filed when the fild can satisfy	
+   the conditions of compressing*/
+/************************************************************************/
+byte* 
+row_blob_compress_alloc(/*函数返回压缩后的结果*/
+		const byte			*packet,     /*待压缩内容*/
+		ulint				len,         /*待压缩的长度*/
+		ulint				*complen,	 /*压缩后的长度*/
+		row_prebuilt_t		*prebuilt	 /*heap相关*/
+)
+{
+	byte *compbuf;
+	int is_blob_compressed_alloc_flag;
+	//int is_blob_compressed_alloc_flag = innobase_get_current_blob_compressed_alloc_flag();/* 如alter table情况*/
+
+	ut_a(len <= 0xFFFFFFFF);
+	ut_a(MIN_BLOB_COMPRESS_LENGTH > 0);
+
+    /* 暂时取消1字节优化，以后再详细定位！2013-10-28 */
+    is_blob_compressed_alloc_flag = FALSE;
+
+	if (len < MIN_BLOB_COMPRESS_LENGTH)
+	{ 	
+		if (packet && is_blob_compressed_alloc_flag)
+		{
+			//长度小于MIN_BLOB_COMPRESS_LENGTH，则不压缩：
+			//对于不压缩的字段，同样要增加头部分
+			compbuf = (byte*)packet - 1;
+			ut_a(compbuf[0] == 0x7B);  /* see in Field_blob::store */
+		}
+		else
+		{
+			//ut_a(len == 0);  // because is_blob_compressed_alloc_flag, remove the assert 
+			compbuf = mem_heap_alloc(prebuilt->blob_heap_for_compress, len + 1);
+			if(!compbuf)
+			{
+				ut_print_timestamp(stderr);
+				fprintf(stderr, " [InnoDB compress ERROR] BLOB COMPRESS FAILED, table_name : %s, out of memory\n", 
+					prebuilt->table->name);
+
+				return NULL;//malloc failed
+			}
+			memcpy(compbuf + 1, packet, len);
+		}
+
+		//增加头部分，记录数据是否被压缩
+		row_blob_compress_head_write(&compbuf[0], 0, 0, 0);
+		*complen=len + 1;
+	}
+	else
+	{//否则，进行压缩处理
+		int res;
+		int n = 0;
+		byte head;
+
+		*complen=  len + len/5 + 12 + 5; // 压缩长度总小于1.2倍原长度+12， 5表示（首字节+最长4字节长度）
+
+		memset(&head, 0, 1);
+		compbuf = mem_heap_alloc(prebuilt->blob_heap_for_compress, *complen);
+		if(!compbuf)
+		{
+			ut_print_timestamp(stderr);
+			fprintf(stderr, " [InnoDB compress ERROR] BLOB COMPRESS FAILED, table_name : %s, out of memory\n", 
+				prebuilt->table->name);
+			
+			return NULL;//malloc failed
+		}
+
+		if (len & 0xFF000000)
+		{
+			mach_write_to_4(compbuf+1, len);
+			n = 4;
+		}
+		else if (len & 0x00FF0000)
+		{
+			mach_write_to_3(compbuf+1, len);
+			n = 3;
+		}
+		else if (len & 0x0000ff00)
+		{
+			mach_write_to_2(compbuf+1, len);
+			n = 2;
+		}
+		else 
+		{
+			ut_a(len < 256);
+			mach_write_to_1(compbuf+1, len);
+			n = 1;
+		}
+
+		res= compress((Bytef*)(compbuf+n+1), complen, (Bytef*) packet, (uLong) len);
+		if (res != Z_OK)
+		{ 
+			//如果压缩失败，则直接保存原值
+			// warning
+			ut_print_timestamp(stderr);
+			fprintf(stderr, " [InnoDB compress ERROR] orginal len : "ULINTPF", compressed len :"ULINTPF" \n", len, *complen); 
+
+			//my_bolb_get_header(is_compress, n);
+			ut_a( n <= 4);
+			row_blob_compress_head_write(&head, 0, 0, 0);
+			memcpy(compbuf, &head, 1);
+			memcpy(compbuf+1, packet, len);
+			*complen=len + 1;
+			return compbuf;
+		}
+		else
+		{//成功压缩
+			row_blob_compress_head_write(&head, 1, n, 0);
+			memcpy(compbuf, &head, 1);
+			*complen += n+1;
+		}
+	}
+	return compbuf;
+}
+
+
+
+/************************************************************************/
+/* this function used to uncompress the blob filed when the fild have compressed property*/
+/************************************************************************/
+const byte* 
+row_blob_uncompress(/*函数返回解压后原数据的地址*/
+		const byte			*packet,     /*待解压内容*/
+		ulint				len,         /*待解压的内容及head信息的总长度*/
+		ulint				*complen,	 /*解缩后的长度*/
+		row_prebuilt_t		*prebuilt	 /*heap相关*/
+)
+{//return NULL means failed to uncompress
+	
+	uLongf tmp_complen = 0;
+	byte* data = NULL;
+	my_bool isCompress = FALSE;
+	ulint data_byte;
+	uint data_len;
+	int algo_type = 0;
+	int result;
+	uint compress_len;
+
+	if (row_blob_compress_head_read(packet, len, &isCompress, &data_byte, &algo_type))
+		return NULL;
+	
+	if (prebuilt->blob_heap == NULL) 
+		prebuilt->blob_heap = mem_heap_create(UNIV_PAGE_SIZE);
+
+	if(isCompress)
+	{//数据被压缩，需解压数据
+		if(data_byte == 4)
+			data_len = mach_read_from_4(packet+1);
+		else if(data_byte == 3)
+			data_len = mach_read_from_3(packet+1);
+		else if(data_byte == 2)
+			data_len = mach_read_from_2(packet+1);
+		else
+			data_len = mach_read_from_1(packet+1);
+		
+		data = mem_heap_alloc(prebuilt->blob_heap, data_len );
+		if(!data)//内存分配失败
+		{
+			ut_print_timestamp(stderr);
+			fprintf(stderr, " [InnoDB compress ERROR] BLOB UNCOMPRESS FAILED, table_name : %s, out of memory\n", 
+				prebuilt->table->name);
+			
+			return NULL;
+		}
+
+		compress_len = len - 1 - data_byte;
+		ut_a(compress_len > 0);
+		tmp_complen = (uint) data_len;
+		result = uncompress((Bytef*) data, &tmp_complen, (Bytef*) (packet+1+data_byte), (uLong) compress_len);
+		if(result != Z_OK)//解压失败
+			return NULL;
+		//TODO
+		ut_a(data_len == tmp_complen);
+		*complen = data_len;
+	}
+	else
+	{//数据没被压缩, 处理掉头
+		data = mem_heap_alloc(prebuilt->blob_heap, len-1);
+		memcpy(data, packet+1, len-1);
+		*complen = len-1;
+	}
+	return data;
+}
+
+
+
+/************************************************************************/
+/* head值中，第一个bit，0表示未压缩，1表示压缩；第2，3位表示算法类型
+第6，7，8位表示有几个字节来存储压缩长度*/
+/************************************************************************/
+void row_blob_compress_head_write(
+		byte		*head,		/*一个字节，存储头*/
+		my_bool		isCompress, /*表示是否压缩*/
+		ulint		len,		/*后续用几个字节存储长度*/
+		int			algo_type)	/*算法类型*/
+{
+	ut_a(algo_type == 0);
+
+	memset(head, 0, 1);//初始为全0
+	ut_a(len <= 4);
+	if(isCompress)
+	{//压缩
+		(*head) |= 0x80;
+		(*head) |= (byte)(algo_type << 5);
+		(*head) |= (byte)len;
+	}		
+}
+
+ibool
+row_blob_compress_is_valid(
+	const byte	*ptr,
+	ulint	    col_len
+)
+{
+	my_bool is_compressed = FALSE;
+	ulint data_byte = 0;
+	int alog_info = 0;
+
+	if(row_blob_compress_head_read(ptr, col_len, &is_compressed, &data_byte, &alog_info))
+		return FALSE;
+
+	return TRUE;
+}
+
+/* 0 success; -1 fail */
+int
+row_blob_compress_head_read(
+	const byte	*data, 
+	ulint		data_len,
+	my_bool     *isCompress,
+	ulint		*len,
+	int			*algo_type)
+{
+	byte head;
+
+	if (data_len < 1)
+		return -1;
+	
+	head = data[0];
+	if(head & 0x80)
+	{
+		*isCompress = TRUE;
+		*len = (head & 0x07);
+		*algo_type = (head>>5) & 0x03;
+
+		if (*algo_type != 0 || *len == 0 || *len > 4 || data_len < 1 + *len)
+			return -1;
+	}
+	else
+	{
+		*isCompress = FALSE;
+		*len = 0;
+		*algo_type = 0;
+
+		if (head != 0)
+			return  -1;
+	}
+	return 0;
 }

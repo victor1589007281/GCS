@@ -169,6 +169,8 @@ be less than 256 */
 				for shorter VARCHARs MySQL uses only 1 byte */
 /*-------------------------------------------*/
 
+#define DATA_IS_BLOB_COMPRESSED  (1 << 29)
+
 /* This many bytes we need to store the type information affecting the
 alphabetical order for a single field and decide the storage size of an
 SQL null*/
@@ -316,7 +318,8 @@ dtype_form_prtype(
 /*==============*/
 	ulint	old_prtype,	/*!< in: the MySQL type code and the flags
 				DATA_BINARY_TYPE etc. */
-	ulint	charset_coll);	/*!< in: MySQL charset-collation code */
+	ulint	charset_coll,	/*!< in: MySQL charset-collation code */
+    ibool   is_blob_compressed);
 /*********************************************************************//**
 Determines if a MySQL string type is a subset of UTF-8.  This function
 may return false negatives, in case further character-set collation
@@ -493,7 +496,8 @@ struct dtype_struct{
 					signedness, whether this is a
 					binary string, whether this is
 					a true VARCHAR where MySQL
-					uses 2 bytes to store the length */
+					uses 2 bytes to store the length */ 
+                            /* 与dict_col_t->prtype不同，不需记录列是否压缩 */
 
 	/* the remaining fields do not affect alphabetical ordering: */
 

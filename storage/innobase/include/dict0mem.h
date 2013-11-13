@@ -317,13 +317,6 @@ struct dict_col_struct{
 	so that all bit-fields can be packed tightly. */
 	/* @{ */
 	unsigned	mtype:8;	/*!< main data type */
-	unsigned	prtype:24;	/*!< precise type; MySQL data
-					type, charset code, flags to
-					indicate nullability,
-					signedness, whether this is a
-					binary string, whether this is
-					a true VARCHAR where MySQL
-					uses 2 bytes to store the length */
 
 	/* the remaining fields do not affect alphabetical ordering: */
 
@@ -353,6 +346,14 @@ struct dict_col_struct{
 	unsigned	max_prefix:12;	/*!< maximum index prefix length on
 					this column. Our current max limit is
 					3072 for Barracuda table */
+	//unsigned    is_blob_compressed:1; /*1 means compressed, 0 means not compressed.*/
+    unsigned	prtype;	/*!< precise type; MySQL data
+					type, charset code, flags to
+					indicate nullability,
+					signedness, whether this is a
+					binary string, whether this is
+					a true VARCHAR where MySQL
+					uses 2 bytes to store the length */
 
     dict_col_default_t*     def_val;
 };
@@ -748,6 +749,13 @@ dict_mem_table_add_col_simple(
     ulint                   col_names_len       /*!< in: col_names的长度 */
 );
 
+void
+dict_mem_table_fast_alter_collate(
+    dict_table_t*           table,              /*!< in: 原表字典对象 */
+    dict_col_t*             col_arr,            /*!< in: 修改后的用户列字典对象 */
+    ulint                   n_modify            /*!< in: col_arr的列数 */
+);
+
 /**********************************************************************//**
 直接对字典对象内存删除若干列 
 */
@@ -793,6 +801,13 @@ dict_mem_realloc_index_fields(
     dict_index_t *  index,  
     ulint           field_num    /*<! in: fields number need to allocate memmory(include the 3 system columns) */
 );
+
+void dict_mem_table_cols_rename_low(
+	dict_table_t*	table,	/*!< in/out: table */
+	char* col_names,		/* !<in: all table column names, excluded DB_ROW_ID、DB_TRX_ID、DB_ROLL_PTR */
+	ulint n_col_names_len	/* !<in: all table col names len, excluded DB_ROW_ID、DB_TRX_ID、DB_ROLL_PTR */
+);
+
 
 
 #ifndef UNIV_NONINL

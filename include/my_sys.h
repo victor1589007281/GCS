@@ -456,6 +456,7 @@ typedef struct st_io_cache		/* Used when cacheing files */
   char *file_name;			/* if used with 'open_cached_file' */
   char *dir,*prefix;
   File file; /* file descriptor */
+  my_bool output_file_as_dynstring;    /* copy to dynstring */
   /*
     seek_not_done is set by my_b_seek() to inform the upcoming read/write
     operation that a seek needs to be preformed prior to the actual I/O
@@ -789,7 +790,16 @@ extern my_bool dynstr_append_os_quoted(DYNAMIC_STRING *str, const char *append,
 extern my_bool dynstr_set(DYNAMIC_STRING *str, const char *init_str);
 extern my_bool dynstr_realloc(DYNAMIC_STRING *str, size_t additional_size);
 extern my_bool dynstr_trunc(DYNAMIC_STRING *str, size_t n);
+extern my_bool dynstr_clear(DYNAMIC_STRING *str);
 extern void dynstr_free(DYNAMIC_STRING *str);
+
+void 
+my_get_time_str(
+    time_t  tm,
+    char*   buf,
+    size_t  buf_size
+);
+
 #ifdef HAVE_MLOCK
 extern void *my_malloc_lock(size_t length,myf flags);
 extern void my_free_lock(void *ptr);

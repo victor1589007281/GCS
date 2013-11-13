@@ -63,7 +63,7 @@
 #define PSEUDO_TABLE_BITS (PARAM_TABLE_BIT | OUTER_REF_TABLE_BIT | \
                            RAND_TABLE_BIT)
 #define MAX_FIELDS	4096			/* Limit in the .frm file */
-#define MAX_PARTITIONS  1024
+#define MAX_PARTITIONS  4096        /* TMySQL modify the max partition from 1024 to 4096 */
 
 #define MAX_SELECT_NESTING (sizeof(nesting_map)*8-1)
 

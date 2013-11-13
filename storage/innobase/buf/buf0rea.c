@@ -237,6 +237,7 @@ buf_read_ahead_random(
 
 	buf_pool_mutex_enter(buf_pool);
 
+    /* 如果正在读的页面数多于当前bp大小的一半，返回 */
 	if (buf_pool->n_pend_reads
 	    > buf_pool->curr_size / BUF_READ_AHEAD_PEND_LIMIT) {
 		buf_pool_mutex_exit(buf_pool);
@@ -437,6 +438,10 @@ buf_read_ahead_linear(
 	high = (offset / buf_read_ahead_linear_area + 1)
 		* buf_read_ahead_linear_area;
 
+    /* 页面需要在边界上
+        high -1， 从左往右
+        low，从右往左
+    */
 	if ((offset != low) && (offset != high - 1)) {
 		/* This is not a border page of the area: return */
 
@@ -481,6 +486,7 @@ buf_read_ahead_linear(
 
 	asc_or_desc = 1;
 
+    /* 从右往左 */
 	if (offset == low) {
 		asc_or_desc = -1;
 	}
@@ -492,6 +498,7 @@ buf_read_ahead_linear(
 
 	fail_count = 0;
 
+    /* 判断是否以正确的访问顺序 */
 	for (i = low; i < high; i++) {
 		bpage = buf_page_hash_get(buf_pool, space, i);
 
@@ -562,6 +569,7 @@ buf_read_ahead_linear(
 
 	buf_pool_mutex_exit(buf_pool);
 
+    /* 边界页面的左右兄弟是相邻的 */
 	if ((offset == low) && (succ_offset == offset + 1)) {
 
 		/* This is ok, we can continue */

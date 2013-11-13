@@ -52,6 +52,11 @@
 #define HA_ADMIN_NEEDS_UPGRADE  -10
 #define HA_ADMIN_NEEDS_ALTER    -11
 #define HA_ADMIN_NEEDS_CHECK    -12
+/*
+  table need upgrade column's collate to upgrade,for fix the incompatible change in 5.1.24
+  here define the ERROR CODE directly to -33 in case of new RET status be added to mysql
+*/
+#define HA_ADMIN_NEEDS_COLLATE_UPGRADE    -33
 
 /**
    Return values for check_if_supported_inplace_alter().
@@ -177,6 +182,11 @@ enum enum_alter_inplace_result {
   will report ER_TABLE_NEEDS_UPGRADE, otherwise ER_TABLE_NEED_REBUILD.
 */
 #define HA_CAN_REPAIR                    (LL(1) << 37)
+
+/*Engine supports BLOB file can be compressed.
+Only innobase supports this function.
+*/
+#define HA_BLOB_COMPRESSED				 (LL(1) << 50)
 
 /*
   Set of all binlog flags. Currently only contain the capabilities
@@ -605,10 +615,12 @@ struct TABLE;
 enum enum_schema_tables
 {
   SCH_CHARSETS= 0,
+  SCH_CLIENT_STATS,
   SCH_COLLATIONS,
   SCH_COLLATION_CHARACTER_SET_APPLICABILITY,
   SCH_COLUMNS,
   SCH_COLUMN_PRIVILEGES,
+  SCH_INDEX_STATS,
   SCH_ENGINES,
   SCH_EVENTS,
   SCH_FILES,
@@ -623,6 +635,7 @@ enum enum_schema_tables
   SCH_PROFILES,
   SCH_REFERENTIAL_CONSTRAINTS,
   SCH_PROCEDURES,
+  SCH_QUERY_RESPONSE_TIME,
   SCH_SCHEMATA,
   SCH_SCHEMA_PRIVILEGES,
   SCH_SESSION_STATUS,
@@ -634,8 +647,11 @@ enum enum_schema_tables
   SCH_TABLE_CONSTRAINTS,
   SCH_TABLE_NAMES,
   SCH_TABLE_PRIVILEGES,
+  SCH_TABLE_STATS,
+  SCH_THREAD_STATS,
   SCH_TRIGGERS,
   SCH_USER_PRIVILEGES,
+  SCH_USER_STATS,
   SCH_VARIABLES,
   SCH_VIEWS
 };
@@ -1209,6 +1225,12 @@ public:
   // Change the column format of column
   static const HA_ALTER_FLAGS ALTER_COLUMN_COLUMN_FORMAT_FLAG = 1L << 20;
 
+  // Change the column 
+  static const HA_ALTER_FLAGS ALTER_COLUMN_CHANGE             = 1L << 21;
+
+  // change the column collation
+  static const HA_ALTER_FLAGS ALTER_COLUMN_CHANGE_COLLATION   = 1L << 22;
+
   /**
     Create options (like MAX_ROWS) for the new version of table.
 
@@ -1287,6 +1309,8 @@ public:
   /** true for ALTER IGNORE TABLE ... */
   const bool ignore;
 
+  bool print_flag;  /* to control partitoned table only print one [Inplace alter table] */
+
   /* used for backup alter info before alter */
   ALTER_INFO_BAK* alter_info_bak;
 
@@ -1304,7 +1328,8 @@ public:
 //     index_add_buffer(NULL),
 //     handler_ctx(NULL),
     handler_flags(0),
-    ignore(ignore_arg)
+    ignore(ignore_arg),
+    print_flag(0)
   {}
 
   ~Alter_inplace_info()
@@ -1524,6 +1549,9 @@ public:
   bool locked;
   bool implicit_emptied;                /* Can be !=0 only if HEAP */
   const COND *pushed_cond;
+  ulonglong rows_read;
+  ulonglong rows_changed;
+  ulonglong index_rows_read[MAX_KEY];
   /**
     next_insert_id is the next value which should be inserted into the
     auto_increment column: in a inserting-multi-row statement (like INSERT
@@ -1575,10 +1603,12 @@ public:
     ref_length(sizeof(my_off_t)),
     ft_handler(0), inited(NONE),
     locked(FALSE), implicit_emptied(0),
-    pushed_cond(0), next_insert_id(0), insert_id_for_cur_row(0),
+    pushed_cond(0), rows_read(0), rows_changed(0), next_insert_id(0), insert_id_for_cur_row(0),
     auto_inc_intervals_count(0),
     m_psi(NULL)
-    {}
+    {
+      memset(index_rows_read, 0, sizeof(index_rows_read));
+    }
   virtual ~handler(void)
   {
     DBUG_ASSERT(locked == FALSE);
@@ -1701,6 +1731,8 @@ public:
   {
     table= table_arg;
     table_share= share;
+    rows_read = rows_changed= 0;
+    memset(index_rows_read, 0, sizeof(index_rows_read));
   }
   virtual double scan_time()
   { return ulonglong2double(stats.data_file_length) / IO_SIZE + 2; }
@@ -1751,7 +1783,12 @@ public:
   */
   virtual enum row_type get_row_type() const { return ROW_TYPE_NOT_USED; }
 
+  virtual const char* get_row_type_str() const;
+
   virtual const char* get_row_type_str_for_gcs() const { return "Gcs"; }
+
+  /* 表示是否对默认值敏感，只有GCS表敏感 */
+  virtual bool is_def_value_sensitive() const { return false; }
 
   /*
     use the judge if the table's SE level table(s) had been fast altered before.
@@ -2108,6 +2145,8 @@ public:
   virtual bool is_crashed() const  { return 0; }
   virtual bool auto_repair() const { return 0; }
 
+  void update_global_table_stats();
+  void update_global_index_stats();
 
 #define CHF_CREATE_FLAG 0
 #define CHF_DELETE_FLAG 1
@@ -2225,10 +2264,12 @@ public:
    Pops the top if condition stack, if stack is not empty.
  */
  virtual void cond_pop() { return; };
- virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info,
+ virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info, Alter_inplace_info* inplae_alter,
 					 uint table_changes)
  { return COMPATIBLE_DATA_NO; }
 
+ virtual bool check_if_support_fast_collate_upgrade()
+ { return FALSE; }
   /**
     use_hidden_primary_key() is called in case of an update/delete when
     (table_flags() and HA_PRIMARY_KEY_REQUIRED_FOR_DELETE) is defined
@@ -2676,5 +2717,8 @@ inline const char *table_case_name(HA_CREATE_INFO *info, const char *name)
 {
   return ((lower_case_table_names == 2 && info->alias) ? info->alias : name);
 }
+
+/* fill the packet String with the correspond  field's creation string */
+int  fill_field_create_str(Field * field, String * packet,THD* thd, TABLE* table);
 
 #endif /* HANDLER_INCLUDED */

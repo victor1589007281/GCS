@@ -442,7 +442,7 @@ dict_process_sys_fields_rec(
 
 }
 
-#ifdef FOREIGN_NOT_USED
+//#ifdef FOREIGN_NOT_USED
 /********************************************************************//**
 This function parses a SYS_FOREIGN record and populate a dict_foreign_t
 structure with the information from the record. For detail information
@@ -518,9 +518,9 @@ err_len:
 
 	return(NULL);
 }
-#endif  /* FOREIGN_NOT_USED */
+//#endif  /* FOREIGN_NOT_USED */
 
-#ifdef FOREIGN_NOT_USED
+//#ifdef FOREIGN_NOT_USED
 /********************************************************************//**
 This function parses a SYS_FOREIGN_COLS record and extract necessary
 information from the record and return to caller.
@@ -584,7 +584,7 @@ err_len:
 
 	return(NULL);
 }
-#endif  /* FOREIGN_NOT_USED */
+//#endif  /* FOREIGN_NOT_USED */
 
 /********************************************************************//**
 Determine the flags of a table described in SYS_TABLES.
@@ -1073,6 +1073,7 @@ err_len:
 	if (dtype_get_charset_coll(prtype) == 0
 	    && dtype_is_string_type(mtype)) {
 		/* The table was created with < 4.1.2. */
+        ut_a(!(prtype & DATA_IS_BLOB_COMPRESSED));
 
 		if (dtype_is_binary_string_type(mtype, prtype)) {
 			/* Use the binary collation for
@@ -1080,14 +1081,14 @@ err_len:
 
 			prtype = dtype_form_prtype(
 				prtype,
-				DATA_MYSQL_BINARY_CHARSET_COLL);
+				DATA_MYSQL_BINARY_CHARSET_COLL, FALSE);
 		} else {
 			/* Use the default charset for
 			other than binary columns. */
 
 			prtype = dtype_form_prtype(
 				prtype,
-				data_mysql_default_charset_coll);
+				data_mysql_default_charset_coll, FALSE);
 		}
 	}
 
@@ -1887,7 +1888,7 @@ err_len:
         /* 对GCS表，mix_len的高两字节是保存alter table add column前的字段数 */
         n_cols_before_alter_table = (flags2 & 0xFFFF0000) >> 16;
         ut_ad(n_cols_before_alter_table == 0 || is_gcs);
-        flags2 &= flags2 & 0x0000FFFF;
+        flags2 &= 0x0000FFFF;
 
 		if (flags2 & (~0 << (DICT_TF2_BITS - DICT_TF2_SHIFT))) {
 			ut_print_timestamp(stderr);

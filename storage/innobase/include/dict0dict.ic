@@ -81,7 +81,7 @@ dict_col_copy_type(
 	ut_ad(col && type);
 
 	type->mtype = col->mtype;
-	type->prtype = col->prtype;
+	type->prtype = col->prtype & 0xFFFFFF; /* 只赋值前24bit */
 	type->len = col->len;
 	type->mbminmaxlen = col->mbminmaxlen;
 }
@@ -102,7 +102,7 @@ dict_col_type_assert_equal(
 	ut_ad(type);
 
 	ut_ad(col->mtype == type->mtype);
-	ut_ad(col->prtype == type->prtype);
+	ut_ad((col->prtype & 0xFFFFFF) == type->prtype);  /* 只比较前24bit，忽略压缩属性 */
 	ut_ad(col->len == type->len);
 # ifndef UNIV_HOTBACKUP
 	ut_ad(col->mbminmaxlen == type->mbminmaxlen);
@@ -174,6 +174,27 @@ dict_col_is_nullable(
 	const dict_col_t*	col)	/*!< in: column */
 {
 	return (col->prtype & DATA_NOT_NULL) == 0;
+}
+
+UNIV_INLINE
+ibool
+dict_col_is_compressed(
+/*============*/
+	const dict_col_t*	col)	/*!< in: column */
+{
+    return (col->prtype & DATA_IS_BLOB_COMPRESSED) ? TRUE : FALSE;
+}
+
+UNIV_INLINE
+ibool
+dict_col_is_binary_blob(
+	const dict_col_t* col)
+{
+	if(col->mtype == DATA_BLOB && (col->prtype & DATA_BINARY_TYPE))
+	{
+		return TRUE;
+	}
+	return FALSE;
 }
 
 /*********************************************************************//**

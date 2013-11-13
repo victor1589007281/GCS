@@ -161,6 +161,7 @@ int init_io_cache(IO_CACHE *info, File file, size_t cachesize,
   info->alloced_buffer = 0;
   info->buffer=0;
   info->seek_not_done= 0;
+  info->output_file_as_dynstring = FALSE;
 
   if (file >= 0)
   {

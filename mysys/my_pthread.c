@@ -467,3 +467,14 @@ int pthread_dummy(int ret)
 {
   return ret;
 }
+
+pid_t
+my_pthread_get_tid()
+{
+#ifdef __WIN__
+    return GetCurrentThreadId();
+#else
+    return syscall(SYS_gettid); 
+#endif // __WIN__
+
+}

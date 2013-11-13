@@ -420,7 +420,8 @@ void lex_start(THD *thd)
   lex->reset_query_tables_list(FALSE);
   lex->expr_allows_subselect= TRUE;
   lex->use_only_table_context= FALSE;
-
+  lex->is_sql_compressed= FALSE;
+  lex->is_blob_compressed_alloc = FALSE;
   lex->name.str= 0;
   lex->name.length= 0;
   lex->event_parse_data= NULL;
@@ -1441,7 +1442,7 @@ int lex_one_token(void *arg, void *yythd)
           ulong version;
           version=strtol(version_str, NULL, 10);
 
-          if (version <= MYSQL_VERSION_ID)
+          if (version <= MYSQL_VERSION_ID || ( version >= TMYSQL_VERSION_START_ID && version <= TMYSQL_VERSION_ID))
           {
             /* Accept 'M' 'm' 'm' 'd' 'd' */
             lip->yySkipn(5);
@@ -1473,6 +1474,50 @@ int lex_one_token(void *arg, void *yythd)
           break;
         }
       }
+      //else if (lip->yyPeekn(2) == '$')
+      //{
+      //  lip->in_comment= DISCARD_COMMENT;
+      //  /* Accept '/' '*' '$', but do not keep this marker. */
+      //  lip->set_echo(FALSE);
+      //  lip->yySkip();
+      //  lip->yySkip();
+      //  lip->yySkip();
+
+      //  /*
+      //    The special comment format is very strict:
+      //    '/' '*' '$', followed by exactly 'TMYSQL'
+      //  */
+      //  
+      //  if (lip->yyPeekn(0) == 'T' &&
+      //      lip->yyPeekn(1) == 'M' &&
+      //      lip->yyPeekn(2) == 'Y' &&
+      //      lip->yyPeekn(3) == 'S' &&
+      //      lip->yyPeekn(4) == 'Q' &&
+      //      lip->yyPeekn(5) == 'L'
+      //     )
+      //  { 
+      //      /* Accept 'T' 'M' 'Y' S' 'Q' 'L' */
+      //      lip->yySkipn(6);
+      //      /* Expand the content of the special comment as real code */
+      //      lip->set_echo(TRUE);
+      //      state=MY_LEX_START;
+      //      break;  /* Do not treat contents as a comment.  */
+      //  }
+      //  else
+      //  {
+      //     /*
+      //        Patch and skip the conditional comment to avoid it
+      //        being propagated infinitely (eg. to a slave).
+      //      */
+      //      char *pcom= lip->yyUnput(' ');
+      //      comment_closed= ! consume_comment(lip, 1);
+      //      if (! comment_closed)
+      //      {
+      //        *pcom= '!';
+      //      }
+      //      /* version allowed to have one level of comment inside. */
+      //  }
+      //}
       else
       {
         lip->in_comment= PRESERVE_COMMENT;
@@ -1733,6 +1778,7 @@ void st_select_lex::init_query()
 {
   st_select_lex_node::init_query();
   table_list.empty();
+  routine_list.empty();
   top_join_list.empty();
   join_list= &top_join_list;
   embedding= leaf_tables= 0;

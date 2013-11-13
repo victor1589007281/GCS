@@ -41,6 +41,7 @@
 #include "log_event.h"                   // class Table_map_log_event
 #include <m_ctype.h>
 #include <errno.h>
+#include "sql_show.h"                    // get_field_default_value
 
 // Maximum allowed exponent value for converting string to decimal
 #define MAX_EXPONENT 1024
@@ -1074,7 +1075,6 @@ static void push_numerical_conversion_warning(THD* thd, const char* str,
                         field_name, row_num);
 }
 
-
 /**
   Check whether a field type can be partially indexed by a key.
 
@@ -1820,7 +1820,7 @@ Field *Field::new_field(MEM_ROOT *root, TABLE *new_table,
   tmp->part_of_sortkey.init(0);
   tmp->unireg_check= Field::NONE;
   tmp->flags&= (NOT_NULL_FLAG | BLOB_FLAG | UNSIGNED_FLAG |
-                ZEROFILL_FLAG | BINARY_FLAG | ENUM_FLAG | SET_FLAG);
+                ZEROFILL_FLAG | BINARY_FLAG | ENUM_FLAG | SET_FLAG | COMPRESSED_BLOB_FLAG);
   tmp->reset_fields();
   return tmp;
 }
@@ -2898,7 +2898,8 @@ uint Field_new_decimal::is_equal(Create_field *new_field)
           ((new_field->flags & AUTO_INCREMENT_FLAG) ==
            (uint) (flags & AUTO_INCREMENT_FLAG)) &&
           (new_field->length == max_display_length()) &&
-          (new_field->decimals == dec));
+          (new_field->decimals == dec) && 
+          is_def_value_equal(new_field));
 }
 
 
@@ -6350,7 +6351,84 @@ int Field_str::store(double nr)
 
 uint Field::is_equal(Create_field *new_field)
 {
-  return (new_field->sql_type == real_type());
+  return (new_field->sql_type == real_type() && is_def_value_equal(new_field));
+}
+
+bool Field::is_def_value_equal(Create_field *new_field)
+{
+    //String def_value, def_value2;
+    //bool f_has_def, f_has_def2;
+
+    /* 
+        即使对于GCS表，修改默认值只会导致frm和innodb内部默认值不一致，并不影响数据，因此不用比较默认值
+        该接口保留，但目前总是返回true。
+    */
+    return true;
+
+    //// 确定表是否已经被正常打开，如果没有只可能是innodb内部调用,用于alter table，返回true
+    //if (!table->db_stat || !new_field->field->table->db_stat)
+    //    return true;
+
+    ///* 只有对默认值敏感的表类型，如GCS表，才需比较默认值 */
+    //if (table->file->is_def_value_sensitive() ||
+    //    new_field->field->table->file->is_def_value_sensitive()) 
+    //{
+    //    f_has_def = get_field_default_value(NULL, table->timestamp_field, this, &def_value, 1);
+    //    f_has_def2 = get_field_default_value(NULL, new_field->field->table->timestamp_field, new_field->field, &def_value2, 1);
+
+    //    if (f_has_def == f_has_def2 && 
+    //        def_value.is_equal(def_value2))
+    //        return true; 
+    //    else
+    //        return false;
+    //}
+    //
+    //return true;
+}
+
+uint Field_str::is_charset_equal(Create_field *new_field)
+{
+    ulong mysql_version = get_mysql_version();
+    uint cs_number = field_charset->number;
+
+    /* 5.1.24以前 */
+    if (mysql_version < 50124) 
+    {
+        if (mysql_version < 50048 && is_part_key() && /* 索引列 */
+            (cs_number == 11 || /* ascii_general_ci - bug #29499, bug #27562 */
+            cs_number == 41 || /* latin7_general_ci - bug #29461 */
+            cs_number == 42 || /* latin7_general_cs - bug #29461 */
+            cs_number == 20 || /* latin7_estonian_cs - bug #29461 */
+            cs_number == 21 || /* latin2_hungarian_ci - bug #29461 */
+            cs_number == 22 || /* koi8u_general_ci - bug #29461 */
+            cs_number == 23 || /* cp1251_ukrainian_ci - bug #29461 */
+            cs_number == 26))  /* cp1250_general_ci - bug #29461 */
+            return IS_EQUAL_NO;
+
+        if ((cs_number == 33 || /* utf8_general_ci - bug #27877 */
+            cs_number == 35)) /* ucs2_general_ci - bug #27877 */ {
+
+            if ((new_field->charset == &my_charset_utf8_general_mysql500_ci &&
+                    field_charset == &my_charset_utf8_general_ci ) ||
+                (new_field->charset == &my_charset_ucs2_general_mysql500_ci &&
+                    field_charset == &my_charset_ucs2_general_ci) )
+                return IS_EQUAL_WITH_MYSQL500_COLLATE;            
+            else if (field_charset == new_field->charset)
+            {
+                /* 注意:这里如果该列是索引列,理论上字符集是不相同的,参见5.1.24修复字符集bug. 
+                但此处依靠外围检查,保证允许升级!   */
+                /*
+                if (is_part_key())
+                    return IS_EQUAL_NO;
+                */
+                return IS_EQUAL_YES;   /* 不是索引键，允许字符集相同 */
+            }
+        }
+    }
+
+    if (field_charset == new_field->charset)
+        return IS_EQUAL_YES;
+    return IS_EQUAL_NO;
 }
 
 
@@ -6359,9 +6437,12 @@ uint Field_str::is_equal(Create_field *new_field)
   if (field_flags_are_binary() != new_field->field_flags_are_binary())
     return 0;
 
-  return ((new_field->sql_type == real_type()) &&
-	  new_field->charset == field_charset &&
-	  new_field->length == max_display_length());
+  if ((new_field->sql_type == real_type()) &&
+	  new_field->length == max_display_length() &&
+      is_def_value_equal(new_field))
+      return is_charset_equal(new_field);
+
+  return IS_EQUAL_NO;
 }
 
 
@@ -7198,15 +7279,17 @@ Field *Field_varstring::new_key_field(MEM_ROOT *root,
 uint Field_varstring::is_equal(Create_field *new_field)
 {
   if (new_field->sql_type == real_type() &&
-      new_field->charset == field_charset)
+      is_def_value_equal(new_field))
   {
+    uint ret = is_charset_equal(new_field);
     if (new_field->length == max_display_length())
-      return IS_EQUAL_YES;
+      return ret;
     if (new_field->length > max_display_length() &&
 	((new_field->length <= 255 && max_display_length() <= 255) ||
 	 (new_field->length > 255 && max_display_length() > 255)))
-      return IS_EQUAL_PACK_LENGTH; // VARCHAR, longer variable length
+     return (ret == IS_EQUAL_YES) ? IS_EQUAL_PACK_LENGTH : (ret | IS_EQUAL_PACK_LENGTH); // VARCHAR, longer variable length
   }
+  
   return IS_EQUAL_NO;
 }
 
@@ -7243,6 +7326,9 @@ Field_blob::Field_blob(uchar *ptr_arg, uchar *null_ptr_arg, uchar null_bit_arg,
 {
   DBUG_ASSERT(blob_pack_length <= 4); // Only pack lengths 1-4 supported currently
   flags|= BLOB_FLAG;
+  if (unireg_check_arg == COMPRESSED_BLOB_FIELD)
+	  flags |= COMPRESSED_BLOB_FLAG;
+
   share->blob_fields++;
   /* TODO: why do not fill table->s->blob_field array here? */
 }
@@ -7352,6 +7438,8 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE;
   uint copy_length, new_length;
+  uint alloc_length;
+  char *ptr_ex;
   const char *well_formed_error_pos;
   const char *cannot_convert_error_pos;
   const char *from_end_pos, *tmp;
@@ -7377,7 +7465,7 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
       it is possible that the content needs a character conversion.
     */
     uint32 dummy_offset;
-    if (!String::needs_conversion(length, cs, field_charset, &dummy_offset))
+    if (!String::needs_conversion(length, cs, field_charset, &dummy_offset) && !is_compressed())
     {
       Field_blob::store_length(length);
       bmove(ptr+packlength,(char*) &from,sizeof(char*));
@@ -7389,17 +7477,35 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
   }
 
   new_length= min(max_data_length(), field_charset->mbmaxlen * length);
-  if (value.alloc(new_length))
+  /* 当new_length用于blob/text有 compressed属性时，为了压缩时不重复分配内存，
+  让new_length=new_length+1；多分配一个字节的head信息。 */
+  alloc_length =  is_compressed() ? (new_length + 1) : new_length;
+
+  if (value.alloc(alloc_length))
     goto oom_error;
 
+  ptr_ex = (char*)value.ptr(); 
+  if(is_compressed())
+  {
+	  THD* thd;
+	  /* magic number */
+	  *ptr_ex = 0x7B;
+	  ptr_ex +=1;
+	  
+	  /* 分配优化 */
+	  thd = current_thd;
+	  if (thd && thd->lex)
+		  thd->lex->is_blob_compressed_alloc = true;
+  }
 
   if (f_is_hex_escape(flags))
   {
+	 
     copy_length= my_copy_with_hex_escaping(field_charset,
-                                           (char*) value.ptr(), new_length,
+                                           (char*) ptr_ex, new_length,
                                             from, length);
     Field_blob::store_length(copy_length);
-    tmp= value.ptr();
+    tmp= ptr_ex;
     bmove(ptr + packlength, (uchar*) &tmp, sizeof(char*));
     return 0;
   }
@@ -7408,8 +7514,9 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
     is never used to limit the length of the data. The cut of long data
     is done with the new_length value.
   */
+  /* 无compressed属性的blob/text字段处理 */
   copy_length= well_formed_copy_nchars(field_charset,
-                                       (char*) value.ptr(), new_length,
+                                       (char*) ptr_ex, new_length,
                                        cs, from, length,
                                        length,
                                        &well_formed_error_pos,
@@ -7417,9 +7524,9 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
                                        &from_end_pos);
 
   Field_blob::store_length(copy_length);
-  tmp= value.ptr();
+  tmp= ptr_ex;
   bmove(ptr+packlength,(uchar*) &tmp,sizeof(char*));
-
+  
   if (check_string_copy_error(this, well_formed_error_pos,
                               cannot_convert_error_pos, from + length, cs))
     return 2;
@@ -7811,9 +7918,16 @@ uint Field_blob::is_equal(Create_field *new_field)
   if (field_flags_are_binary() != new_field->field_flags_are_binary())
     return 0;
 
-  return ((new_field->sql_type == get_blob_type_from_length(max_data_length()))
-          && new_field->charset == field_charset &&
-          new_field->pack_length == pack_length());
+  /* 压缩标记需一样 */
+  if (is_compressed() != new_field->is_compressed())
+    return 0;
+
+  if ((new_field->sql_type == get_blob_type_from_length(max_data_length()))
+          && is_def_value_equal(new_field) &&
+          new_field->pack_length == pack_length())
+      return is_charset_equal(new_field);
+
+  return IS_EQUAL_NO;
 }
 
 
@@ -8386,7 +8500,7 @@ uint Field_enum::is_equal(Create_field *new_field)
   */
   if (new_field->field_flags_are_binary() != field_flags_are_binary() ||
       new_field->sql_type != real_type() ||
-      new_field->charset != field_charset ||
+      !is_def_value_equal(new_field) ||
       new_field->pack_length != pack_length())
     return IS_EQUAL_NO;
 
@@ -8402,7 +8516,7 @@ uint Field_enum::is_equal(Create_field *new_field)
   if (! compare_type_names(field_charset, typelib, new_field->interval))
     return IS_EQUAL_NO;
 
-  return IS_EQUAL_YES;
+  return is_charset_equal(new_field);
 }
 
 
@@ -8485,7 +8599,8 @@ uint Field_num::is_equal(Create_field *new_field)
            (uint) (flags & UNSIGNED_FLAG)) &&
 	  ((new_field->flags & AUTO_INCREMENT_FLAG) ==
 	   (uint) (flags & AUTO_INCREMENT_FLAG)) &&
-          (new_field->pack_length == pack_length()));
+          (new_field->pack_length == pack_length()) &&
+          is_def_value_equal(new_field));
 }
 
 
@@ -8607,7 +8722,8 @@ Field *Field_bit::new_key_field(MEM_ROOT *root,
 uint Field_bit::is_equal(Create_field *new_field) 
 {
   return (new_field->sql_type == real_type() &&
-          new_field->length == max_display_length());
+          new_field->length == max_display_length() &&
+          is_def_value_equal(new_field));
 }
 
                        
@@ -9409,7 +9525,7 @@ bool Create_field::init(THD *thd, char *fld_name, enum_field_types fld_type,
       }
       def= 0;
     }
-    flags|= BLOB_FLAG;
+    flags|= BLOB_FLAG | BINARY_FLAG;  // 对于blob字段，必行是binary。这改动为了修正Field_blob::field_flags_are_binary
     break;
   case MYSQL_TYPE_YEAR:
     if (!fld_length || length != 2)

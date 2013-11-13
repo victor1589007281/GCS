@@ -6503,6 +6503,17 @@ ER_TABLE_IN_FK_CHECK
 ER_UNSUPPORTED_ENGINE
   eng "Storage engine '%s' does not support system tables. [%s.%s]"
 
+ER_FIELD_TYPE_NOT_ALLOWED_AS_COMPRESSED_FIELD
+  eng "Field '%-.192s' is of a not allowed type to use compressed property"
+
+ER_FIELD_CAN_NOT_COMPRESSED_AND_INDEX
+  eng "Field '%-.192s' can not have compressed property and to be index at the sametime"
+
+ER_FIELD_CAN_NOT_COMPRESSED_IN_CURRENT_ENGINESS
+  eng "Field '%-.192s' can not have compressed property in this enginess"
+
+ER_FIELD_CAN_NOT_COMPRESSED_IN_CURRENT_FORMAT
+  eng "Field '%-.192s' can not have compressed property in this row format"
 #
 #  End of 5.5 error messages.
 #

@@ -116,6 +116,15 @@ static inline void my_hash_free_elements(HASH *hash)
   hash->records=0;
 }
 
+void
+my_hash_delegate(HASH * hash, my_hash_delegate_func func, void* func_arg)
+{
+    HASH_LINK *data=dynamic_element(&hash->array,0,HASH_LINK*);
+    HASH_LINK *end= data + hash->records;
+    while (data < end)
+        (*func)((data++)->data, func_arg);
+}
+
 
 /*
   Free memory used by hash.

@@ -33,6 +33,7 @@ Created 1/8/1996 Heikki Tuuri
 #include "data0type.h"
 #include "mach0data.h"
 #include "dict0dict.h"
+#include "mysql_com.h"
 #include "ha_prototypes.h" /* innobase_casedn_str()*/
 #ifndef UNIV_HOTBACKUP
 # include "lock0lock.h"
@@ -202,7 +203,7 @@ dict_mem_table_add_col(
 	mem_heap_t*	heap,	/*!< in: temporary memory heap, or NULL */
 	const char*	name,	/*!< in: column name, or NULL */
 	ulint		mtype,	/*!< in: main datatype */
-	ulint		prtype,	/*!< in: precise type */
+	ulint		prtype,	/*!< in: precise type, maybe 29 bit bolb compress */
 	ulint		len)	/*!< in: precision */
 {
 	dict_col_t*	col;
@@ -360,6 +361,9 @@ dict_mem_fill_column_struct(
 	ulint	mbminlen;
 	ulint	mbmaxlen;
 #endif /* !UNIV_HOTBACKUP */
+
+    /* only blob field have compressed  */
+	ut_ad(mtype == DATA_BLOB || !(prtype & DATA_IS_BLOB_COMPRESSED));
 
 	column->ind = (unsigned int) col_pos;
 	column->ord_part = 0;
@@ -528,6 +532,43 @@ dict_mem_index_free(
 	mem_heap_free(index->heap);
 }
 
+/* 重命名列，修改数据字典相关的内存镜像 */
+void dict_mem_table_cols_rename_low(
+	dict_table_t*	table,	/*!< in/out: table */
+	char* col_names,		/* !<in: all table column names, excluded DB_ROW_ID、DB_TRX_ID、DB_ROLL_PTR */
+	ulint n_col_names_len)	/* !<in: all table col names len, excluded DB_ROW_ID、DB_TRX_ID、DB_ROLL_PTR */
+{
+	ulint i ;
+	dict_field_t* fields;
+	dict_index_t* index;
+
+	/* 重新分配内存 */
+	table->col_names = (char*)dict_mem_realloc_dict_col_names(table, n_col_names_len);
+	memset(table->col_names, 0, table->col_names_length_alloced);
+	memcpy(table->col_names, col_names, n_col_names_len);
+	/* 增加系统列 */
+	table->cached = 0;
+	dict_table_add_system_columns(table, NULL);
+	table->cached = 1;
+
+	/* 处理index指向的field_name */
+	for (index = dict_table_get_first_index(table);
+		index != NULL;
+		index = dict_table_get_next_index(index))
+	{
+		ulint n_fields = dict_index_get_n_fields(index);
+
+		fields = index->fields;       
+		/* 修改索引列name指针地址 */
+		for (i = 0; i < n_fields; ++i)
+		{         
+			ulint  col_ind = fields[i].col_ind;
+			fields[i].name = dict_table_get_col_name(table, col_ind);
+		}
+	}
+
+	/* !! mysql 5.5 不支持外键字段的重命名，故此处不处理外键引用的列名信息 */
+};
 
 /**********************************************************************//**
 直接对字典对象内存增加若干列 
@@ -994,3 +1035,28 @@ dict_mem_realloc_index_fields(
     }        
     return index->fields;
 }
+
+
+
+/**********************************************************************//**
+快速修改列字符集,修改表对象内存中列的字符集.
+直接修改table->cols列对象的字符集规则即可.除了列字符集修改,表对象的其他成员均无变化
+*/
+void
+dict_mem_table_fast_alter_collate(
+    dict_table_t*           table,              /*!< in: 原表字典对象 */
+    dict_col_t*             col_arr,            /*!< in: 修改列后的用户列字典对象,不包含系统列 */ 
+    ulint                   n_modify            /*!< in: col_arr的列数 */
+)
+{
+    ulint i, ind;
+
+    for(i=0; i < n_modify; i++){
+        /* 只有ind值合法才修改，不合法列没有修改字符集 */
+        ind = col_arr[i].ind;
+
+        ut_ad(ind < table->n_cols);
+        table->cols[ind].prtype = col_arr[i].prtype;
+    }
+}
+

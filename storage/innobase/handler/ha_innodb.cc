@@ -1091,6 +1091,35 @@ innobase_mysql_print_thd(
 	putc('\n', f);
 }
 
+extern "C" UNIV_INTERN
+int
+innobase_get_current_sql_compressed_flag()
+{
+	THD* thd;
+
+	thd = current_thd;
+
+	if (!thd)
+		return 0;
+
+	return thd_get_sql_compressed_flag(thd);
+}
+
+extern "C" UNIV_INTERN
+int
+innobase_get_current_blob_compressed_alloc_flag()
+{
+	THD* thd;
+
+	thd = current_thd;
+
+	if (!thd)
+		return 0;
+
+	return thd_get_blob_compressed_alloc_flag(thd);
+}
+
+
 /******************************************************************//**
 Get the variable length bounds of the given character set. */
 extern "C" UNIV_INTERN
@@ -1713,7 +1742,7 @@ ha_innobase::ha_innobase(handlerton *hton, TABLE_SHARE *table_arg)
 		  HA_PRIMARY_KEY_IN_READ_INDEX |
 		  HA_BINLOG_ROW_CAPABLE |
 		  HA_CAN_GEOMETRY | HA_PARTIAL_COLUMN_READ |
-		  HA_TABLE_SCAN_ON_INDEX),
+		  HA_TABLE_SCAN_ON_INDEX | HA_BLOB_COMPRESSED),
   start_of_scan(0),
   num_write_row(0)
 {}
@@ -3236,6 +3265,23 @@ ha_innobase::get_row_type_str_for_gcs() const
     return("Gcs");
 }
 
+UNIV_INTERN
+bool
+ha_innobase::is_def_value_sensitive() const
+{
+    if (prebuilt && prebuilt->table) {
+        /* 只有加过字段才是敏感的，因为改变默认值会改变在线加字段后记录的内容 */
+        if(dict_table_is_gcs_after_alter_table(prebuilt->table)){
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    ut_ad(0);
+    return false;
+}
+
 /****************************************************************//**
 Get the table flags to use for the statement.
 @return	table flags */
@@ -4686,6 +4732,8 @@ ha_innobase::store_key_val_for_row(
 
 			cs = field->charset();
 
+            /* 压缩字段不能作为索引 */
+            ut_a(!field->is_compressed());
 			blob_data = row_mysql_read_blob_ref(&blob_len,
 				(byte*) (record
 				+ (ulint)get_field_offset(table, field)),
@@ -5132,7 +5180,7 @@ ha_innobase::write_row(
 	uchar*	record)	/*!< in: a row in MySQL format */
 {
 	ulint		error = 0;
-        int             error_result= 0;
+    int             error_result= 0;
 	ibool		auto_inc_used= FALSE;
 	ulint		sql_command;
 	trx_t*		trx = thd_to_trx(user_thd);
@@ -5274,6 +5322,10 @@ no_commit:
 
 	error = row_insert_for_mysql((byte*) record, prebuilt);
 
+#ifdef EXTENDED_FOR_USERSTAT
+	if (error == DB_SUCCESS) rows_changed++;
+#endif
+
 	/* Handle duplicate key errors */
 	if (auto_inc_used) {
 		ulint		err;
@@ -5414,6 +5466,13 @@ calc_row_difference(
 	/* We use upd_buff to convert changed fields */
 	buf = (byte*) upd_buff;
 
+
+	if (prebuilt->blob_heap_for_compress)
+	{
+		mem_heap_free(prebuilt->blob_heap_for_compress);
+		prebuilt->blob_heap_for_compress = NULL;
+	}
+
 	for (i = 0; i < n_fields; i++) {
 		field = table->field[i];
 
@@ -5499,7 +5558,9 @@ calc_row_difference(
 					TRUE,
 					new_mysql_row_col,
 					col_pack_len,
-					dict_table_is_comp(prebuilt->table));
+					dict_table_is_comp(prebuilt->table),
+					prebuilt,
+					i);
 				dfield_copy(&ufield->new_val, &dfield);
 			} else {
 				dfield_set_null(&ufield->new_val);
@@ -5626,6 +5687,10 @@ ha_innobase::update_row(
 		}
 	}
 
+#ifdef EXTENDED_FOR_USERSTAT
+	if (error == DB_SUCCESS) rows_changed++;
+#endif
+
 	innodb_srv_conc_exit_innodb(trx);
 
 	error = convert_error_code_to_mysql(error,
@@ -5678,6 +5743,10 @@ ha_innobase::delete_row(
 	innodb_srv_conc_enter_innodb(trx);
 
 	error = row_update_for_mysql((byte*) record, prebuilt);
+
+#ifdef EXTENDED_FOR_USERSTAT
+	if (error == DB_SUCCESS) rows_changed++;
+#endif
 
 	innodb_srv_conc_exit_innodb(trx);
 
@@ -6000,6 +6069,11 @@ ha_innobase::index_read(
 	case DB_SUCCESS:
 		error = 0;
 		table->status = 0;
+#ifdef EXTENDED_FOR_USERSTAT
+		rows_read++;
+		if (active_index < MAX_KEY)
+			index_rows_read[active_index]++;
+#endif
 		break;
 	case DB_RECORD_NOT_FOUND:
 		error = HA_ERR_KEY_NOT_FOUND;
@@ -6231,6 +6305,11 @@ ha_innobase::general_fetch(
 	case DB_SUCCESS:
 		error = 0;
 		table->status = 0;
+#ifdef EXTENDED_FOR_USERSTAT
+		rows_read++;
+		if (active_index < MAX_KEY)
+			index_rows_read[active_index]++;
+#endif
 		break;
 	case DB_RECORD_NOT_FOUND:
 		error = HA_ERR_END_OF_FILE;
@@ -6590,6 +6669,20 @@ create_table_def(
 			mem_heap_strdup(table->heap, path_of_temp_table);
 	}
 
+	if(!is_gcs)
+	{//如果不是gcs行格式，则不能使用blob compressed特性
+		for (i = 0; i < n_cols; i++)
+		{
+			if(form->field[i]->is_compressed())
+			{
+				my_error(ER_FIELD_CAN_NOT_COMPRESSED_IN_CURRENT_FORMAT, MYF(0), form->field[i]->field_name);
+				error = DB_ERROR;
+				goto error_ret;
+
+			}
+		}
+	}
+
 	for (i = 0; i < n_cols; i++) {
 		field = form->field[i];
 
@@ -6682,7 +6775,7 @@ err_col:
 				(ulint)field->type()
 				| nulls_allowed | unsigned_type
 				| binary_type | long_true_varchar,
-				charset_no),
+				charset_no, field->is_compressed()), 
 			col_len);
 	}
 
@@ -7266,36 +7359,18 @@ ha_innobase::create(
 			ER_ILLEGAL_HA_CREATE_OPTION,
 			"InnoDB: assuming ROW_FORMAT=GCS.");
 	case ROW_TYPE_DEFAULT:
-        if (!(create_info->options & HA_LEX_CREATE_TMP_TABLE))  
+       /* 指定GCS为默认格式时，默认为GCS表 */
+        if (srv_is_gcs_default)
         {
-            /* 指定GCS为默认格式时，默认为GCS表 */
-            if (srv_is_gcs_default)
-            {
-                is_gcs = TRUE;                              /* 非临时表,分区表,设置为 gcs row_format,否则设置为compact  */
-            }
-        }
+            is_gcs = TRUE;                             
+        }       
 	case ROW_TYPE_COMPACT:
 		flags = DICT_TF_COMPACT;
 		break;
 
     case ROW_TYPE_GCS:   
-        /* for GCS row_format */
-
-        if ((create_info->options & HA_LEX_CREATE_TMP_TABLE) )
-        {
-            /* error: cannot create a table of gcs row_format for tmp_table or partition_table */
-            /*push_warning(
-                thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                ER_ILLEGAL_HA_CREATE_OPTION,
-                "InnoDB: assuming ROW_FORMAT=COMPACT. Cannot create a GCS table for tmp table or partition table."); 
-            */
-            my_error(ER_CANT_CREATE_TABLE,MYF(0),create_info->alias,ER_CANT_CREATE_TABLE);
-            
-            DBUG_RETURN(-1);
-        }else{
-            /* set row_format as gcs */
-            is_gcs = TRUE;
-        }
+        /* for GCS row_format,here allowed to create a temporary GCS table. */
+        is_gcs = TRUE;
         flags = DICT_TF_COMPACT;
         break;
 
@@ -9176,6 +9251,11 @@ ha_innobase::extra(
 			if (prebuilt->blob_heap) {
 				row_mysql_prebuilt_free_blob_heap(prebuilt);
 			}
+			if (prebuilt->blob_heap_for_compress){
+				mem_heap_free(prebuilt->blob_heap_for_compress);
+				prebuilt->blob_heap_for_compress = NULL;
+			}
+
 			break;
 		case HA_EXTRA_RESET_STATE:
 			reset_template(prebuilt);
@@ -9222,6 +9302,11 @@ ha_innobase::reset()
 {
 	if (prebuilt->blob_heap) {
 		row_mysql_prebuilt_free_blob_heap(prebuilt);
+	}
+
+	if (prebuilt->blob_heap_for_compress){
+		mem_heap_free(prebuilt->blob_heap_for_compress);
+		prebuilt->blob_heap_for_compress = NULL;
 	}
 
 	reset_template(prebuilt);
@@ -10931,12 +11016,17 @@ UNIV_INTERN
 bool
 ha_innobase::check_if_incompatible_data(
 	HA_CREATE_INFO*	info,
+    Alter_inplace_info* inplace_alter,
 	uint		table_changes)
 {
-	if (table_changes != IS_EQUAL_YES) {
 
-		return(COMPATIBLE_DATA_NO);
-	}
+    /* 除了IS_EQUAL_YES，必须保证inplace_alter不为空 */
+ 
+	if (table_changes != IS_EQUAL_YES)
+		if (!inplace_alter ||
+			(table_changes != (IS_EQUAL_YES|IS_EQUAL_WITH_MYSQL500_COLLATE) &&
+        	table_changes != IS_EQUAL_WITH_MYSQL500_COLLATE)) 
+			return(COMPATIBLE_DATA_NO);
 
 	/* Check that auto_increment value was not changed */
 	if ((info->used_fields & HA_CREATE_USED_AUTO) &&
@@ -10950,7 +11040,12 @@ ha_innobase::check_if_incompatible_data(
 	system metadata change. To avoid system metadata inconsistency,
 	currently we can just request a table rebuild/copy by returning
 	COMPATIBLE_DATA_NO */
-	if (check_column_being_renamed(table, NULL)) {
+
+	/* 
+		增加修改列名的支持，后续会修改innodb数据字典及相关的内存镜像 
+		参见handler0alter.cc的innobase_rename_columns函数
+	*/
+	if (!inplace_alter && check_column_being_renamed(table, NULL)) {
 		return COMPATIBLE_DATA_NO;
 	}
 
@@ -12048,7 +12143,22 @@ i_s_innodb_lock_waits,
 i_s_innodb_cmp,
 i_s_innodb_cmp_reset,
 i_s_innodb_cmpmem,
-i_s_innodb_cmpmem_reset
+i_s_innodb_cmpmem_reset,
+i_s_innodb_sys_tables,      /* add from percona */
+i_s_innodb_sys_tablestats,
+i_s_innodb_sys_indexes,
+i_s_innodb_sys_columns,
+i_s_innodb_sys_fields,
+i_s_innodb_sys_foreign,
+i_s_innodb_sys_foreign_cols,
+//i_s_innodb_sys_stats,
+i_s_innodb_rseg,
+i_s_innodb_table_stats,
+i_s_innodb_index_stats
+//i_s_innodb_buffer_pool_pages,
+//i_s_innodb_buffer_pool_pages_index,
+//i_s_innodb_buffer_pool_pages_blob,
+//i_s_innodb_admin_command
 mysql_declare_plugin_end;
 
 /** @brief Initialize the default value of innodb_commit_concurrency.

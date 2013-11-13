@@ -4778,6 +4778,36 @@ buf_pool_check_num_pending_io(void)
 	return(pending_io);
 }
 
+/********************************************************************//**
+*/
+UNIV_INTERN
+buf_block_t*
+buf_page_from_array(
+/*================*/
+	buf_pool_t*	buf_pool,
+	ulint		n_block)
+{
+	ulint		n_chunks, offset;
+	buf_chunk_t*	chunk;
+
+	ut_a(n_block < buf_pool->curr_size);
+
+	chunk = buf_pool->chunks;
+	offset = n_block;
+
+	for (n_chunks = buf_pool->n_chunks; n_chunks--; chunk++) {
+		if (offset < chunk->size) {
+			return(&chunk->blocks[offset]);
+		}
+
+		offset -= chunk->size;
+	}
+
+	ut_error;
+
+	return(NULL);
+}
+
 #if 0
 Code currently not used
 /*********************************************************************//**

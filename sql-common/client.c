@@ -2429,22 +2429,28 @@ error:
 static void get_current_program_name(char *name, unsigned int len)
 {
 #ifdef __WIN__
-	const char *msg = "hello world"; // don't support windows platform
+	// __TO_DO support windows platform
+	const char *msg = "hello world"; 
 	strmake(name, msg, strlen(msg));
 #else
 	int fd, ret_num, i;
 	char cmd[MAX_CLIENT_PROGRAM_NAME + 1] = {0};
 	int pid = getpid();
 	sprintf(cmd, "/proc/%d/cmdline", pid);
+	const char *err_msg = "GET_CLIENT_PROGRAM_NAME_ERROR";
 	fd = open(cmd, O_RDONLY);
 	if( fd < 0) {
-		const char *msg = "GET_CLIENT_PROGRAM_NAME_ERROR";
-		strmake(name, msg, strlen(msg));
+		strmake(name, err_msg, strlen(err_msg));
 	}else {
-		ret_num = read(fd, name, len);
-		for( i=0; i<ret_num; i++ )
-			if(name[i] == 0)
-				name[i] = ' ';
+		ret_num = read(fd, name, len-1);
+		if( ret_num == -1 ) {
+			strmake(name, err_msg, strlen(err_msg));
+		}else{
+			for( i=0; i<ret_num; i++ )
+				if(name[i] == 0)
+					name[i] = ' ';
+			name[ret_num] = '\0';
+		}
 		close(fd);
 	}
 #endif
@@ -2646,7 +2652,7 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
   /* if server support program_server_cert, send the client program name */
   if (mysql->server_capabilities & CLIENT_PROGRAM_NAME_SERVER_CERT)
   {
-	  get_current_program_name(p_name, MAX_CLIENT_PROGRAM_NAME);
+	  get_current_program_name(p_name, MAX_CLIENT_PROGRAM_NAME + 1);
   	  end = strmake(end, p_name, strlen(p_name)) + 1;
   }
 

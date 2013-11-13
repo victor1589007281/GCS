@@ -2655,6 +2655,9 @@ void plugin_thdvar_init(THD *thd)
   thd->variables.dynamic_variables_size= 0;
   thd->variables.dynamic_variables_ptr= 0;
 
+  if (parse_export)
+      DBUG_VOID_RETURN;
+
   mysql_mutex_lock(&LOCK_plugin);
   thd->variables.table_plugin=
         my_intern_plugin_lock(NULL, global_system_variables.table_plugin);
@@ -2699,6 +2702,9 @@ void plugin_thdvar_cleanup(THD *thd)
   uint idx;
   plugin_ref *list;
   DBUG_ENTER("plugin_thdvar_cleanup");
+
+  if (parse_export)
+      DBUG_VOID_RETURN;
 
   mysql_mutex_lock(&LOCK_plugin);
 
@@ -3561,15 +3567,21 @@ static int test_plugin_options(MEM_ROOT *tmp_root, struct st_plugin_int *tmp,
         tmp->load_option != PLUGIN_FORCE_PLUS_PERMANENT)
       opts[0].def_value= opts[1].def_value= plugin_load_option;
 
-    error= handle_options(argc, &argv, opts, NULL);
-    (*argc)++; /* add back one for the program name */
-
-    if (error)
+    /* 语法分析模块，不处理参数 */
+    if (!parse_export)
     {
-       sql_print_error("Parsing options for plugin '%s' failed.",
-                       tmp->name.str);
-       goto err;
+        error= handle_options(argc, &argv, opts, NULL);
+        (*argc)++; /* add back one for the program name */
+
+        if (error)
+        {
+            sql_print_error("Parsing options for plugin '%s' failed.",
+                tmp->name.str);
+            goto err;
+        }
     }
+
+
     /*
      Set plugin loading policy from option value. First element in the option
      list is always the <plugin name> option value.

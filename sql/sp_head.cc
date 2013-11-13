@@ -804,6 +804,7 @@ sp_head::~sp_head()
 
   my_hash_free(&m_sptabs);
   my_hash_free(&m_sroutines);
+  m_routine_list.empty();
 
   delete m_next_cached_sp;
 
@@ -2361,6 +2362,7 @@ sp_head::restore_lex(THD *thd)
     procedures) to multiset of tables used by this routine.
   */
   merge_table_list(thd, sublex->query_tables, sublex);
+  merge_routine_list(thd, sublex);
   if (! sublex->sp_lex_in_use)
   {
     sublex->sphead= NULL;
@@ -4042,6 +4044,34 @@ uchar *sp_table_key(const uchar *ptr, size_t *plen, my_bool first)
   return (uchar *)tab->qname.str;
 }
 
+/*
+@retval
+TRUE    Success
+@retval
+FALSE   Error
+*/
+bool
+sp_head::merge_routine_list(THD *thd, LEX *lex)
+{
+    ROUTINE_LIST* ptr;
+    ROUTINE_LIST* i;
+    
+    for (i = lex->select_lex.routine_list.first; i ; i = i->next_local)
+    {
+	    DBUG_ASSERT(parse_export);
+        ptr = (ROUTINE_LIST*)thd->calloc(sizeof(ROUTINE_LIST));
+        if (!ptr)
+            return FALSE;
+
+        ptr->item = i->item;
+        strncpy(ptr->dbname, i->dbname, sizeof(ptr->dbname) - 1);
+        strncpy(ptr->routine_name, i->routine_name, sizeof(ptr->routine_name) - 1);
+
+        m_routine_list.link_in_list(ptr, &ptr->next_local);
+    }
+
+    return TRUE;
+}
 
 /**
   Merge the list of tables used by some query into the multi-set of
@@ -4068,7 +4098,7 @@ sp_head::merge_table_list(THD *thd, TABLE_LIST *table, LEX *lex_for_tmp_check)
   SP_TABLE *tab;
 
   if (lex_for_tmp_check->sql_command == SQLCOM_DROP_TABLE &&
-      lex_for_tmp_check->drop_temporary)
+      lex_for_tmp_check->drop_temporary)   /* 删除临时表暂不加入语法分析模块中 */ 
     return TRUE;
 
   for (uint i= 0 ; i < m_sptabs.records ; i++)
@@ -4195,7 +4225,7 @@ sp_head::add_used_tables_to_table_list(THD *thd,
     char *tab_buff, *key_buff;
     TABLE_LIST *table;
     SP_TABLE *stab= (SP_TABLE*) my_hash_element(&m_sptabs, i);
-    if (stab->temp)
+    if (stab->temp && !parse_export)  /* 语法分析模块不忽略存储过程中的临时表 */
       continue;
 
     if (!(tab_buff= (char *)thd->calloc(ALIGN_SIZE(sizeof(TABLE_LIST)) *

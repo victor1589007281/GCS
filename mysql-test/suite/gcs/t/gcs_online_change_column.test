@@ -1,0 +1,175 @@
+######################################################################
+# alter table change column
+# CHANGE [COLUMN] old_col_name new_col_name column_definition
+#         [FIRST|AFTER col_name]
+# column_definition:
+#     data_type [NOT NULL | NULL] [DEFAULT default_value]
+#       [AUTO_INCREMENT] [UNIQUE [KEY] | [PRIMARY] KEY]
+#       [COMMENT 'string']
+#       [COLUMN_FORMAT {FIXED|DYNAMIC|DEFAULT}]
+#       [STORAGE {DISK|MEMORY|DEFAULT}]
+#       [reference_definition]
+######################################################################
+#########
+# NOTE: 
+#	TMySQL 1.4 support change column name online(not copy data), so does change column default value and comment
+#      	 
+#########
+
+-- source include/have_innodb.inc
+#### test normal table
+create table tt(
+id int primary key not null auto_increment,
+c1 int not null default 1,
+c2 varchar(10),
+c3 varchar(100),
+c4 char(10),
+key idx_c1 (c1),
+key idx_com( c2, c3)) engine = innodb;
+show create table tt;
+insert into tt set id=1,c1=11,c2='felix',c3='liang',c4='test';
+select * from tt;
+
+-- enable_info
+
+## 1. alter table change normal column's name, should be online
+alter table tt change c4 cc4 char(10);
+show create table tt;
+select * from tt;
+
+## 2. alter table change primary column's name, should be online
+alter table tt change id new_id int not null auto_increment;
+show create table tt;
+select * from tt;
+
+## 3. alter table change index column's name
+# should be online, column name in index_info should change correctly 
+alter table tt change c3 cc3 varchar(100);
+show create table tt;
+select * from tt;
+
+## 4. alter table change several columns name, should be online
+alter table tt change c2 cc2 varchar(10), change cc3 c3 varchar(100), change cc4 c4 char(10);
+show create table tt;
+select * from tt;
+
+## 5. alter table add blob and change blob column name, should be online
+alter table tt add column b1 blob compressed;
+alter table tt change column b1 bb1 blob compressed;
+show create table tt;
+
+## 6. alter table change blob name and compressed attribute, not online, should copy data
+alter table tt change column bb1 b1 blob;
+show create table tt;
+
+## 7. alter table change column name, NOTE: column's attribute is changed, auto_increment is removed
+# should not be online, column attributes change, should copy data
+alter table tt change new_id id int not null;
+show create table tt;
+
+## 8. alter table change column name and it's default value, should be online, new data should use new default value
+insert into tt set id=2, cc2 ='2cc2', c3='2felix2', c4='2liang2', b1='2b1';
+alter table tt change c1 cc1 int not null default 100;
+insert into tt set id=3, cc2 ='3cc2', c3='3felix3', c4='3liang3', b1='3b1';
+select * from tt;
+
+## 9. alter table, add column and change column name, should not be online, need copy data
+alter table tt add column c6 int, change column cc2 c2 varchar(10);
+
+## 10. alter table, change column name and it's collate, should not be online, need copy data
+alter table tt change column c3 cc3 varchar(10) collate utf8_bin;
+show create table tt;
+
+-- disable_info
+
+#### test foreign key
+# create parent table
+CREATE TABLE `parent` (
+  `id` int(11) NOT NULL,
+  `name` varchar(10) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+# create child table
+CREATE TABLE `child` (
+  `id` int(11) NOT NULL,
+  `pid` int(11) DEFAULT NULL,
+  `name` varchar(10) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `c1` (`pid`),
+  CONSTRAINT `c1` FOREIGN KEY (`pid`) REFERENCES `parent` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+
+-- disable_query_log
+call mtr.add_suppression("in ALTER TABLE `test`.`(parent|child)`"); 
+call mtr.add_suppression("table `test`.`(parent|child)` does not exist in the InnoDB internal"); 
+
+#call mtr.add_suppression("in ALTER TABLE `test`.`child`"); 
+#call mtr.add_suppression("table `test`.`child` does not exist in the InnoDB internal"); 
+-- enable_query_log
+
+-- enable_info
+
+## 1. change parent's foreign column 
+# should return error, errno 1025, when the alter sql return error string is changed every time etc:[ ERROR HY000: Error on rename of './test/#sql-2563_2' to './test/parent' (errno: 150) ] , so i use disable_result_log and 'show create table' show the schema is not changed
+
+-- disable_result_log
+-- error 1025
+alter table parent change column id pid int not null;
+-- enable_result_log
+show create table parent;
+
+## 2. change child's reference column
+# should return error, errno 1025
+-- disable_result_log
+-- error 1025
+alter table child change pid ppid int;
+-- enable_result_log
+show create table child;
+
+## 3. check the table is ok after encounter error 1025
+insert into parent set id=1,name='felix';
+insert into child set id=40,pid=1,name='cherry';
+select id, name from parent;
+select id, pid, name from child;
+
+-- disable_info
+
+#### test partition table
+# create partition table
+CREATE TABLE `p1` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `created` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `a` int(11) DEFAULT NULL,
+  `b` varchar(10),
+  `c` char(10),
+  key idx_com(b,c),
+  PRIMARY KEY (`id`,`created`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY RANGE (TO_DAYS(created))
+(PARTITION sub_p1 VALUES LESS THAN (733773) ENGINE = InnoDB,
+ PARTITION sub_p2 VALUES LESS THAN (734138) ENGINE = InnoDB,
+ PARTITION sub_p3 VALUES LESS THAN (734503) ENGINE = InnoDB,
+ PARTITION sub_p4 VALUES LESS THAN (734868) ENGINE = InnoDB,
+ PARTITION sub_p5 VALUES LESS THAN (735234) ENGINE = InnoDB,
+ PARTITION sub_p6 VALUES LESS THAN (9999999999) ENGINE = InnoDB) */;
+
+insert into p1 set id=1,created='2013-1-1',a=1,b='felix',c='liang';
+
+-- enable_info
+
+## 1. alter partition table change normal columns name, change primary column, should be online
+alter table p1 change id new_id int(11) NOT NULL auto_increment;
+alter table p1 change a aaa int, change b bbb varchar(10), change c ccc char(10);
+show create table p1;
+
+## 2. alter partition table change partition key column name, should return error
+-- error 1054
+alter table p1 change created create_time datetime NOT NULL;
+
+-- disable_info
+# drop test tables
+drop table tt;
+drop table child;
+drop table parent;
+drop table p1;

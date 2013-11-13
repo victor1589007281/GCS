@@ -79,6 +79,7 @@ typedef int pthread_mutexattr_t;
 #define pthread_self() GetCurrentThreadId()
 #define pthread_handler_t EXTERNC void * __cdecl
 typedef void * (__cdecl *pthread_handler)(void *);
+typedef DWORD pid_t;
 
 typedef volatile LONG my_pthread_once_t;
 #define MY_PTHREAD_ONCE_INIT  0
@@ -144,6 +145,7 @@ int pthread_attr_destroy(pthread_attr_t *connect_att);
 int my_pthread_once(my_pthread_once_t *once_control,void (*init_routine)(void));
 struct tm *localtime_r(const time_t *timep,struct tm *tmp);
 struct tm *gmtime_r(const time_t *timep,struct tm *tmp);
+int gettimeofday(struct timeval *tp, void *tzp);
 
 void pthread_exit(void *a);
 int pthread_join(pthread_t thread, void **value_ptr);
@@ -370,6 +372,13 @@ struct tm *gmtime_r(const time_t *clock, struct tm *res);
 #endif
 
 #endif /* defined(__WIN__) */
+
+#ifndef __WIN__
+#include <sys/types.h>
+#include <sys/syscall.h>
+#endif
+
+pid_t my_pthread_get_tid();
 
 #if defined(HPUX10) && !defined(DONT_REMAP_PTHREAD_FUNCTIONS)
 #undef pthread_cond_timedwait

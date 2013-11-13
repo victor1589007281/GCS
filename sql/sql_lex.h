@@ -195,6 +195,9 @@ enum enum_sql_command {
     When a command is added here, be sure it's also added in mysqld.cc
     in "struct show_var_st status_vars[]= {" ...
   */
+  // TODO(mcallaghan): update status_vars in mysqld to export these
+  SQLCOM_SHOW_USER_STATS, SQLCOM_SHOW_TABLE_STATS, SQLCOM_SHOW_INDEX_STATS,
+  SQLCOM_SHOW_CLIENT_STATS, SQLCOM_SHOW_THREAD_STATS,
   /* This should be the last !!! */
   SQLCOM_END
 };
@@ -765,6 +768,7 @@ public:
   enum olap_type olap;
   /* FROM clause - points to the beginning of the TABLE_LIST::next_local list. */
   SQL_I_List<TABLE_LIST>  table_list;
+  SQL_I_List<ROUTINE_LIST>  routine_list;
 
   /*
     GROUP BY clause.
@@ -926,6 +930,12 @@ public:
                                 enum_mdl_type mdl_type= MDL_SHARED_READ,
 				List<Index_hint> *hints= 0,
                                 LEX_STRING *option= 0);
+  ROUTINE_LIST *add_routine_to_list(THD *thd,
+      LEX_STRING dbname,
+      LEX_STRING func,
+      Item *item
+      );
+
   TABLE_LIST* get_table_list();
   bool init_nested_join(THD *thd);
   TABLE_LIST *end_nested_join(THD *thd);
@@ -2517,6 +2527,9 @@ struct LEX: public Query_tables_list
     const char *stmt_definition_end;
     uint keyword_delayed_end_offset;
   };
+
+  bool is_sql_compressed; /* used for do not uncompress blob compressed data when select*/
+  bool is_blob_compressed_alloc; /* used for allloc memory for blob compressed opt*/
 
   /**
     During name resolution search only in the table list given by 

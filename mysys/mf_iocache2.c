@@ -22,6 +22,14 @@
 #include <stdarg.h>
 #include <m_ctype.h>
 
+int my_write_dynstr(DYNAMIC_STRING *dynstr, const uchar *Buffer, size_t Count)
+{
+    if (dynstr_append_mem(dynstr, (const char*)Buffer, Count))
+        return -1;
+
+    return 0;
+} /* my_fwrite */
+
 /*
   Copy contents of an IO_CACHE to a file.
 
@@ -58,9 +66,21 @@ my_b_copy_to_file(IO_CACHE *cache, FILE *file)
   bytes_in_cache= my_b_bytes_in_cache(cache);
   do
   {
-    if (my_fwrite(file, cache->read_pos, bytes_in_cache,
-                  MYF(MY_WME | MY_NABP)) == (size_t) -1)
-      DBUG_RETURN(1);
+    if (!cache->output_file_as_dynstring)
+    {
+        if (my_fwrite(file, cache->read_pos, bytes_in_cache,
+            MYF(MY_WME | MY_NABP)) == (size_t) -1)
+            DBUG_RETURN(1);
+    }
+    else
+    {
+        // now only for tmysqlbinlogex
+        DYNAMIC_STRING* dstr = (DYNAMIC_STRING*)file;
+        DBUG_ASSERT(!dstr->str[dstr->length]);
+
+        if (my_write_dynstr(dstr, cache->read_pos, bytes_in_cache) < 0)
+            DBUG_RETURN(1);
+    }
     cache->read_pos= cache->read_end;
   } while ((bytes_in_cache= my_b_fill(cache)));
   DBUG_RETURN(0);

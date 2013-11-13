@@ -1147,6 +1147,13 @@ innobase_start_or_create_for_mysql(void)
 	      " with validation"
 #endif /* UNIV_ZIP_DEBUG */
 	      "\n" , stderr);
+
+
+	ut_print_timestamp(stderr);
+	fprintf(stderr," InnoDB: MIN_BLOB_COMPRESS_LENGTH = %d\n",MIN_BLOB_COMPRESS_LENGTH);;
+
+
+
 #ifdef UNIV_ZIP_COPY
 	ut_print_timestamp(stderr);
 	fputs(" InnoDB: and extra copying\n", stderr);
