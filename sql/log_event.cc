@@ -657,6 +657,7 @@ static void print_set_option(IO_CACHE* file, uint32 bits_changed,
   returns the human readable name of the event's type
 */
 
+my_bool opt_binlog_user_ip= 0;
 const char* Log_event::get_type_str(Log_event_type type)
 {
   switch(type) {
@@ -2261,6 +2262,26 @@ bool Query_log_event::write(IO_CACHE* file)
   int4store(buf + Q_EXEC_TIME_OFFSET, exec_time);
   buf[Q_DB_LEN_OFFSET] = (char) db_len;
   int2store(buf + Q_ERR_CODE_OFFSET, error_code);
+  /*
+  add user and ip into query event
+  */
+  ulong user_len = 0;
+  if(0 != thd->security_ctx->user)
+  {
+  user_len = strlen(thd->security_ctx->user);
+  }
+  ulong ip_host_len = strlen("unknow");
+  const char* ip_host = "unknow";
+  if(0 != thd->security_ctx->ip)
+  {
+	ip_host_len = strlen(thd->security_ctx->ip);
+    ip_host = thd->security_ctx->ip;
+  }
+  else if(0 != thd->security_ctx->host)
+  {
+	ip_host_len = strlen(thd->security_ctx->host);
+	ip_host = thd->security_ctx->host;
+  }
 
   /*
     You MUST always write status vars in increasing order of code. This
@@ -2427,13 +2448,46 @@ bool Query_log_event::write(IO_CACHE* file)
   */
   event_length= (uint) (start-buf) + get_post_header_size_for_derived() + db_len + 1 + q_len;
 
-  return (write_header(file, event_length) ||
+  //return (write_header(file, event_length) ||
+  if(opt_binlog_user_ip && !thd->slave_thread)
+  {
+	  event_length+= 4 + user_len + ip_host_len;
+  }
+  bool rflag = 0;
+  rflag = (write_header(file, event_length) ||
           my_b_safe_write(file, (uchar*) buf, QUERY_HEADER_LEN) ||
           write_post_header_for_derived(file) ||
           my_b_safe_write(file, (uchar*) start_of_status,
                           (uint) (start-start_of_status)) ||
-          my_b_safe_write(file, (db) ? (uchar*) db : (uchar*)"", db_len + 1) ||
-          my_b_safe_write(file, (uchar*) query, q_len)) ? 1 : 0;
+//          my_b_safe_write(file, (db) ? (uchar*) db : (uchar*)"", db_len + 1) ||
+//          my_b_safe_write(file, (uchar*) query, q_len)) ? 1 : 0;
+			my_b_safe_write(file, (db) ? (uchar*) db : (uchar*)"", db_len + 1));
+
+	if(!opt_binlog_user_ip || thd->slave_thread)
+    {
+	/*
+		don't need to record user and ip in binary log
+	*/
+		rflag = rflag || my_b_safe_write(file, (uchar*) query, q_len);
+	}
+	else
+	{
+	/*
+		add user and ip into query event
+
+	*/
+		uchar *query_tmp = (uchar*)my_malloc(q_len+1, MYF(MY_WME));
+		memmove(query_tmp, query, q_len);
+		query_tmp[q_len] = 0;
+		rflag = rflag || my_b_safe_write(file, (uchar*) query_tmp, q_len+1);
+		my_free(query_tmp);
+		rflag = rflag || (my_b_safe_write(file, (uchar*) "\n", 1) ||
+		my_b_safe_write(file, (uchar*) "#", 1) ||
+		my_b_safe_write(file, (uchar*) thd->security_ctx->user, user_len) ||
+		my_b_safe_write(file, (uchar*) "@", 1) ||
+		my_b_safe_write(file, (uchar*) ip_host, ip_host_len));
+	}
+	return rflag ? 1 : 0;
 }
 
 /**
@@ -2964,7 +3018,15 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
   start[data_len]= '\0';              // End query with \0 (For safetly)
   db= (char *)start;
   query= (char *)(start + db_len + 1);
-  q_len= data_len - db_len -1;
+ // q_len= data_len - db_len -1;
+  if(opt_binlog_user_ip)
+  {
+	q_len= strlen(query);
+   }
+  else
+  {
+	q_len= data_len - db_len -1;
+  }
   DBUG_VOID_RETURN;
 }
 
@@ -3149,6 +3211,11 @@ void Query_log_event::print(FILE* file, PRINT_EVENT_INFO* print_event_info)
   print_query_header(&cache, print_event_info);
   my_b_write(&cache, (uchar*) query, q_len);
   my_b_printf(&cache, "\n%s\n", print_event_info->delimiter);
+  if(opt_binlog_user_ip)
+  {
+	const char *user_ip = query + q_len + 1;
+	my_b_printf(&cache, "#%s\n", user_ip);
+   }
 }
 #endif /* MYSQL_CLIENT */
 

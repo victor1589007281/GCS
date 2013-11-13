@@ -82,6 +82,7 @@ static int port= 0;
 static uint my_end_arg;
 static const char* sock= 0;
 static char *opt_plugin_dir= 0, *opt_default_auth= 0;
+extern my_bool opt_binlog_user_ip;
 
 #ifdef HAVE_SMEM
 static char *shared_memory_base_name= 0;
@@ -1014,6 +1015,9 @@ end:
 
 static struct my_option my_long_options[] =
 {
+  {"binlog-user-ip", 'B', "show user and ip of a statement in binlog.",
+   &opt_binlog_user_ip, &opt_binlog_user_ip, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0,
+   0, 0},
   {"help", '?', "Display this help and exit.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"base64-output", OPT_BASE64_OUTPUT_MODE,
