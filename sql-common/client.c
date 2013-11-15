@@ -2619,8 +2619,15 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
   if (mysql->user[0])
     strmake(end, mysql->user, USERNAME_LENGTH);
   else
+  {
+#ifdef __WIN__
+    // 对于用户名为NULL，不知为什么无法调用read_user_name
+    char *str=getenv("USER");		/* ODBC will send user variable */
+    strmake(end,str ? str : "ODBC", USERNAME_LENGTH);
+#else
     read_user_name(end);
-
+#endif // __WIN__
+  }
   /* We have to handle different version of handshake here */
   DBUG_PRINT("info",("user: %s",end));
   end= strend(end) + 1;

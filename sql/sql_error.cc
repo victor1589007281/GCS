@@ -355,13 +355,15 @@ Diagnostics_area::set_ok_status(THD *thd, ulonglong affected_rows_arg,
                                 const char *message_arg)
 {
   DBUG_ENTER("set_ok_status");
+/*
   DBUG_ASSERT(! is_set());
+*/
   /*
     In production, refuse to overwrite an error or a custom response
     with an OK packet.
   */
   if (is_error() || is_disabled())
-    return;
+    DBUG_VOID_RETURN;
 
   m_statement_warn_count= thd->warning_info->statement_warn_count();
   m_affected_rows= affected_rows_arg;
@@ -390,7 +392,7 @@ Diagnostics_area::set_eof_status(THD *thd)
     with an EOF packet.
   */
   if (is_error() || is_disabled())
-    return;
+    DBUG_VOID_RETURN;
 
   /*
     If inside a stored procedure, do not return the total
@@ -419,7 +421,9 @@ Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
     The only exception is when we flush the message to the client,
     an error can happen during the flush.
   */
+/*
   DBUG_ASSERT(! is_set() || can_overwrite_status);
+*/
 #ifdef DBUG_OFF
   /*
     In production, refuse to overwrite a custom response with an

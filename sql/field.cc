@@ -64,8 +64,11 @@ const char field_separator=',';
 #define BLOB_PACK_LENGTH_TO_MAX_LENGH(arg) \
 ((ulong) ((LL(1) << min(arg, 4) * 8) - LL(1)))
 
-#define ASSERT_COLUMN_MARKED_FOR_READ DBUG_ASSERT(!table || (!table->read_set || bitmap_is_set(table->read_set, field_index)))
-#define ASSERT_COLUMN_MARKED_FOR_WRITE DBUG_ASSERT(!table || (!table->write_set || bitmap_is_set(table->write_set, field_index)))
+//#define ASSERT_COLUMN_MARKED_FOR_READ DBUG_ASSERT(!table || (!table->read_set || bitmap_is_set(table->read_set, field_index)))
+//#define ASSERT_COLUMN_MARKED_FOR_WRITE DBUG_ASSERT(!table || (!table->write_set || bitmap_is_set(table->write_set, field_index)))
+
+#define ASSERT_COLUMN_MARKED_FOR_READ
+#define ASSERT_COLUMN_MARKED_FOR_WRITE
 
 #define FLAGSTR(S,F) ((S) & (F) ? #F " " : "")
 
@@ -3719,7 +3722,9 @@ longlong Field_long::val_int(void)
   ASSERT_COLUMN_MARKED_FOR_READ;
   int32 j;
   /* See the comment in Field_long::store(long long) */
+/*
   DBUG_ASSERT(table->in_use == current_thd);
+*/
 #ifdef WORDS_BIGENDIAN
   if (table->s->db_low_byte_first)
     j=sint4korr(ptr);
@@ -6294,7 +6299,9 @@ int Field_string::store(const char *from,uint length,CHARSET_INFO *cs)
   const char *from_end_pos;
 
   /* See the comment for Field_long::store(long long) */
+/*
   DBUG_ASSERT(table->in_use == current_thd);
+*/
 
   copy_length= well_formed_copy_nchars(field_charset,
                                        (char*) ptr, field_length,
@@ -6524,7 +6531,9 @@ String *Field_string::val_str(String *val_buffer __attribute__((unused)),
 {
   ASSERT_COLUMN_MARKED_FOR_READ;
   /* See the comment for Field_long::store(long long) */
+/*
   DBUG_ASSERT(table->in_use == current_thd);
+*/
   uint length;
   if (table->in_use->variables.sql_mode &
       MODE_PAD_CHAR_TO_FULL_LENGTH)
@@ -7921,8 +7930,14 @@ uint Field_blob::is_equal(Create_field *new_field)
   /* 压缩标记需一样 */
   if (is_compressed() != new_field->is_compressed())
     return 0;
+	
+  enum_field_types sql_type;
+  if (real_type() == MYSQL_TYPE_GEOMETRY)
+    sql_type = MYSQL_TYPE_GEOMETRY;
+  else
+    sql_type = get_blob_type_from_length(max_data_length());
 
-  if ((new_field->sql_type == get_blob_type_from_length(max_data_length()))
+  if (new_field->sql_type == sql_type
           && is_def_value_equal(new_field) &&
           new_field->pack_length == pack_length())
       return is_charset_equal(new_field);
