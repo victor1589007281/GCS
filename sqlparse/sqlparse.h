@@ -84,8 +84,9 @@ enum enum_stmt_command {
 #define NAME_LEN                (NAME_CHAR_LEN*SYSTEM_CHARSET_MBMAXLEN)
 #define USERNAME_LENGTH         (USERNAME_CHAR_LENGTH*SYSTEM_CHARSET_MBMAXLEN)
 
+
 // 增加版本号的同时，要注意修改sqlparse.cc中的数组 version_pos
-enum enum_versio {VERSION_5_0, VERSION_5_1, VERSION_5_5, VERSION_TMYSQL_1_0, VERSION_TMYSQL_1_1,
+enum enum_version {VERSION_5_0, VERSION_5_1, VERSION_5_5, VERSION_TMYSQL_1_0, VERSION_TMYSQL_1_1,
 					VERSION_TMYSQL_1_2, VERSION_TMYSQL_1_3, VERSION_TMYSQL_1_4};
 
 struct parse_table_struct {
@@ -141,9 +142,10 @@ typedef struct info_audit
 
 
 enum enum_result_types {SQLPARSE_SUCESS, SQLPARSE_WARNING, SQLPARSE_FAIL, SQLPARSE_FAIL_OTHER};
-enum enum_warning_types {WARNINGS_DEFAULT, DROP_DB, DROP_TABLE, DROP_VIEW, TRUNCETE, DELETE_WITHOUT_WHERE, UPDATE_WITHOUT_WHERE,
+enum enum_warning_types {WARNINGS_DEFAULT, DROP_DB, DROP_TABLE, DROP_VIEW, TRUNCATE_TABLE, DELETE_WITHOUT_WHERE, UPDATE_WITHOUT_WHERE,
 						CREATE_TABLE_WITH_MUCH_BLOB, ALTER_TABLE_ADD_MUCH_BLOB, CREATE_TABLE_NOT_INNODB,
-						CREATE_TABLE_NO_INDEX, ALTER_TABLE_WITH_AFTER, ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL, CREATE_TABLE_WITH_OTHER_CHARACTER};
+						CREATE_TABLE_NO_INDEX, ALTER_TABLE_WITH_AFTER, ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL, 
+						CREATE_TABLE_WITH_OTHER_CHARACTER, CREATE_PROCEDURE_WITH_DEFINER};
 struct parse_result_audit {
 	void* thd_org;
 	int query_type;
@@ -159,13 +161,13 @@ struct parse_result_audit {
 	int blob_text_count;
 	/*records the number of blob/text fields when create/alter table*/
 
-	int table_without_primarykey;  /* 置1表示建表没有主键 */
 	
 	unsigned short n_tables_alloced;
 	unsigned short n_tables;
 	parse_table_t*  table_arr;
 	//char** table_arr;       /* table name array, each is <dbname>.<tablename> */
-	enum_versio mysql_version;
+	enum_version mysql_version;
+	char *db_charset;
 
 	int errcode;
 	char err_msg[PARSE_RESULT_MAX_STR_LEN + 1];
@@ -214,7 +216,7 @@ parse_global_destroy();
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
-int parse_result_audit_init(parse_result_audit* pr, char *version);
+int parse_result_audit_init(parse_result_audit* pr, char *version, char *charset);
 int query_parse_audit(char *query, parse_result_audit* pra);
 int parse_result_audit_destroy(parse_result_audit* pra);
 int parse_result_add_table_audit(parse_result_audit* pra, char* db_name, char* table_name);

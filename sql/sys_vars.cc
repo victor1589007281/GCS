@@ -58,7 +58,10 @@ TYPELIB bool_typelib={ array_elements(bool_values)-1, "", bool_values, 0 };
   and include a file with the prototype instead.
 */
 extern void close_thread_tables(THD *thd);
-
+/*
+ Used with --binlog-user-ip for recording user and ip in binnry log
+*/
+extern my_bool opt_binlog_user_ip;
 
 static bool update_buffer_size(THD *thd, KEY_CACHE *key_cache,
                                ptrdiff_t offset, ulonglong new_value)
@@ -295,7 +298,11 @@ static Sys_var_mybool Sys_automatic_sp_privileges(
        "Creating and dropping stored procedures alters ACLs",
        GLOBAL_VAR(sp_automatic_privileges),
        CMD_LINE(OPT_ARG), DEFAULT(TRUE));
-
+static Sys_var_mybool Sys_binlog_userip_enable(
+		"binlog_user_ip",	
+		"Record user and ip of a statement in binlog",
+		READ_ONLY GLOBAL_VAR(opt_binlog_user_ip),
+		CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 static Sys_var_ulong Sys_back_log(
        "back_log", "The number of outstanding connection requests "
        "MySQL can have. This comes into play when the main MySQL thread "

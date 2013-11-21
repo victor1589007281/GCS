@@ -138,7 +138,7 @@ static char * opt_mysql_unix_port=0;
 static int connect_flag=CLIENT_INTERACTIVE;
 static char *current_host,*current_db,*current_user=0,*opt_password=0,
 *current_prompt=0, *delimiter_str= 0,*audit_output_file=0,*set_version=0,
-*default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME;
+*set_charset=0, *default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME;
 static char *histfile;
 static char *histfile_tmp;
 static String glob_buffer,old_buffer;
@@ -1216,7 +1216,7 @@ int main(int argc,char *argv[])
 	/************************************************************************/
 	/* add by willhan. 2013-06-17                                                                     */
 	/************************************************************************/
-	if(-1 == parse_result_audit_init(&pra,set_version))
+	if(-1 == parse_result_audit_init(&pra,set_version, set_charset))
 		return -1;
 	tmysqlparse_result_init(&roa);
 	if(current_db)//set the currentdb
@@ -1281,6 +1281,7 @@ sig_handler mysql_end(int sig)
 	my_free(current_user);
 	my_free(audit_output_file);
 	my_free(set_version);
+	my_free(set_charset);
 	my_free(full_username);
 	my_free(part_username);
 	my_free(default_prompt);
@@ -1527,8 +1528,10 @@ static struct my_option my_long_options[] =
 	0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
 */	{"version", 'V', "Output version information and exit.", 0, 0, 0,
 	GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
-	{"set_version", 'v', "choose a version to parse sql, like, \"5.0\" \"5.1\" \"5.5\"."
+	{"set_version", 'v', "choose a version to parse sql, like, \"5.0\" \"5.1\" \"5.5\" \"tmysql-1.0\" " 
+	" \"tmysql-1.1\" \"tmysql-1.2\" \"tmysql-1.3\" \"tmysql-1.4\"."
 	"default value is \"5.5\"",&set_version, &set_version, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+	{"set_charset", 'c', "set the charset of db.", &set_charset, &set_charset, 0 ,GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 /*	{"wait", 'w', "Wait and retry if connection is down.", 0, 0, 0, GET_NO_ARG,
 	NO_ARG, 0, 0, 0, 0, 0, 0},
 	{"connect_timeout", OPT_CONNECT_TIMEOUT,
