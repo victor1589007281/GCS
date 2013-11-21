@@ -2752,11 +2752,16 @@ static uint get_table_structure(char *table, char *db, char *table_type,
   {
     /* using SHOW CREATE statement */
     my_bool is_view = (strcmp (table_type, "VIEW") == 0);
-    if (!opt_no_create_info || (opt_dump_views && is_view))
+    if (!opt_no_create_info || (opt_dump_views && is_view) || opt_enable_compress_optimization)
     {
       /* Make an sql-file, if path was given iow. option -T was given */
       char buff[20+FN_REFLEN];
       MYSQL_FIELD *field;
+      bool write_to_file = true;
+
+      /* 不需要create语句，但启用压缩，需要获得create table语句，但不能输出文件 */
+      if (opt_no_create_info && opt_enable_compress_optimization)
+          write_to_file = false;
 
       my_snprintf(buff, sizeof(buff), "show create table %s", result_table);
 
@@ -2765,7 +2770,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
           switch_character_set_results(mysql, default_charset))
         DBUG_RETURN(0);
 
-      if (path)
+      if (path && write_to_file)
       {
         if (!(sql_file= open_sql_file_for_table(table, O_WRONLY)))
           DBUG_RETURN(0);
@@ -2773,16 +2778,19 @@ static uint get_table_structure(char *table, char *db, char *table_type,
         write_header(sql_file, db);
       }
 
-      if (strcmp (table_type, "VIEW") == 0)         /* view */
-        print_comment(sql_file, 0,
-                      "\n--\n-- Temporary table structure for view %s\n--\n\n",
-                      result_table);
-      else
-        print_comment(sql_file, 0,
-                      "\n--\n-- Table structure for table %s\n--\n\n",
-                      result_table);
+      if (write_to_file) 
+      {
+          if (strcmp (table_type, "VIEW") == 0)         /* view */
+              print_comment(sql_file, 0,
+              "\n--\n-- Temporary table structure for view %s\n--\n\n",
+              result_table);
+          else
+              print_comment(sql_file, 0,
+              "\n--\n-- Table structure for table %s\n--\n\n",
+              result_table);
+      }
 
-      if (opt_drop)
+      if (opt_drop && write_to_file)
       {
       /*
         Even if the "table" is a view, we do a DROP TABLE here.  The
@@ -2794,7 +2802,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
       }
 
       field= mysql_fetch_field_direct(result, 0);
-      if (strcmp(field->name, "View") == 0)
+      if (strcmp(field->name, "View") == 0 && write_to_file)
       {
         char *scv_buff= NULL;
 
@@ -2901,12 +2909,15 @@ static uint get_table_structure(char *table, char *db, char *table_type,
 
       row= mysql_fetch_row(result);
 
-      fprintf(sql_file, (opt_compatible_mode & 3) ? "%s;\n" :
+      if (write_to_file)
+      {
+          fprintf(sql_file, (opt_compatible_mode & 3) ? "%s;\n" :
               "/*!40101 SET @saved_cs_client     = @@character_set_client */;\n"
               "/*!40101 SET character_set_client = utf8 */;\n"
               "%s;\n"
               "/*!40101 SET character_set_client = @saved_cs_client */;\n",
               row[1]);
+      }
 
 	  if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
 	  {
@@ -2914,7 +2925,9 @@ static uint get_table_structure(char *table, char *db, char *table_type,
 		  *is_blob_compress_in_table = TRUE;
 	  }
 
-      check_io(sql_file);
+      if (write_to_file)
+        check_io(sql_file);
+      
       mysql_free_result(result);
     }
     my_snprintf(query_buff, sizeof(query_buff), "show fields from %s",
@@ -6178,25 +6191,19 @@ int main(int argc, char **argv)
 
   if(opt_replace_into && opt_enable_compress_optimization)
   {
-	  fprintf(stderr, "opt_replace_into must be use with opt_disable_compress_optimization.\n");
+	  fprintf(stderr, "opt_replace_into can't be use with opt_enable_compress_optimization.\n");
 	  exit(1);
   }
 
   if(opt_xml && opt_enable_compress_optimization)
   {
-	  fprintf(stderr, "opt_xml must be use with opt_disable_compress_optimization.\n");
-	  exit(1);
-  }
-
-  if(opt_no_create_info && opt_enable_compress_optimization)
-  {
-	  fprintf(stderr, "opt_no_create_info must be use with opt_disable_compress_optimization.\n");
+	  fprintf(stderr, "opt_xml can't be use with opt_enable_compress_optimization.\n");
 	  exit(1);
   }
 
   if(path && opt_enable_compress_optimization)
   {
-	  fprintf(stderr, "path must be use with opt_disable_compress_optimization.\n");
+	  fprintf(stderr, "path can't be use with opt_enable_compress_optimization.\n");
 	  exit(1);
   }
 
@@ -7270,11 +7277,15 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
   if (!mysql_query_with_error_report(mysql, 0, query_buff))
   {
     /* using SHOW CREATE statement */
-    if (!opt_no_create_info)
+    if (!opt_no_create_info || opt_enable_compress_optimization)
     {
       /* Make an sql-file, if path was given iow. option -T was given */
       char buff[20+FN_REFLEN];
       MYSQL_FIELD *field;
+      bool write_to_file = true;
+
+      if (opt_no_create_info && opt_enable_compress_optimization)
+          write_to_file = false;
 
       my_snprintf(buff, sizeof(buff), "show create table %s", result_table);
 
@@ -7283,41 +7294,44 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
           switch_character_set_results(mysql, default_charset))
         DBUG_RETURN(0);
 
-      sql_file = open_sql_zip_file_for_table(db, table, "schema");
-      if(sql_file == NULL)
+      if (write_to_file)
       {
-        fprintf(stderr, "Create schema file for %s.%s failed\n", db, table);
-        exit(1);
-      }
-      z_write_header(sql_file, db);
+          sql_file = open_sql_zip_file_for_table(db, table, "schema");
+          if(sql_file == NULL)
+          {
+              fprintf(stderr, "Create schema file for %s.%s failed\n", db, table);
+              exit(1);
+          }
+          z_write_header(sql_file, db);
 
-      z_print_comment(sql_file, 0,
-                    "\n--\n-- Current Database: %s\n--\n", db);
+          z_print_comment(sql_file, 0,
+              "\n--\n-- Current Database: %s\n--\n", db);
 
-      if (strcmp (table_type, "VIEW") == 0)         /* view */
-        z_print_comment(sql_file, 0,
-                      "\n--\n-- Temporary table structure for view %s\n--\n\n",
-                      result_table);
-      else
-        z_print_comment(sql_file, 0,
-                      "\n--\n-- Table structure for table %s\n--\n\n",
-                      result_table);
+          if (strcmp (table_type, "VIEW") == 0)         /* view */
+              z_print_comment(sql_file, 0,
+              "\n--\n-- Temporary table structure for view %s\n--\n\n",
+              result_table);
+          else
+              z_print_comment(sql_file, 0,
+              "\n--\n-- Table structure for table %s\n--\n\n",
+              result_table);
 
-      if (opt_drop)
-      {
-      /*
-        Even if the "table" is a view, we do a DROP TABLE here.  The
-        view-specific code below fills in the DROP VIEW.
-       */
-        ZPRINTF(sql_file, "DROP TABLE IF EXISTS %s;\n",
-                opt_quoted_table);
+          if (opt_drop)
+          {
+              /*
+              Even if the "table" is a view, we do a DROP TABLE here.  The
+              view-specific code below fills in the DROP VIEW.
+              */
+              ZPRINTF(sql_file, "DROP TABLE IF EXISTS %s;\n",
+                  opt_quoted_table);
 #ifndef __WIN__
-        check_io(sql_file);
+              check_io(sql_file);
 #endif
+          }
       }
 
       field= mysql_fetch_field_direct(result, 0);
-      if (strcmp(field->name, "View") == 0)
+      if (strcmp(field->name, "View") == 0 && write_to_file)
       {
         char *scv_buff= NULL;
 
@@ -7425,25 +7439,28 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
 
       row= mysql_fetch_row(result);
 
-      ZPRINTF(sql_file, (opt_compatible_mode & 3) ? "%s;\n" :
+      if (write_to_file)
+      {
+          ZPRINTF(sql_file, (opt_compatible_mode & 3) ? "%s;\n" :
               "/*!40101 SET @saved_cs_client     = @@character_set_client */;\n"
               "/*!40101 SET character_set_client = utf8 */;\n"
               "%s;\n"
               "/*!40101 SET character_set_client = @saved_cs_client */;\n",
               row[1]);
 
-	  if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
-	  {
-		  /* 如果表中存在有blob/text字段，有compressed属性 */
-		  *is_blob_compress_in_table = TRUE;
-	  }
 
 #ifndef __WIN__
-      check_io(sql_file);
+        check_io(sql_file);
 #endif
-      ZPUTS("\n", sql_file);
-      z_write_footer(sql_file);
-      my_close_zip(sql_file);
+        ZPUTS("\n", sql_file);
+        z_write_footer(sql_file);
+        my_close_zip(sql_file);
+      }
+      if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
+      {
+          /* 如果表中存在有blob/text字段，有compressed属性 */
+          *is_blob_compress_in_table = TRUE;
+      }
       mysql_free_result(result);
     }
     my_snprintf(query_buff, sizeof(query_buff), "show fields from %s",
