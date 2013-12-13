@@ -48,7 +48,7 @@
 #include <hash.h>
 #include <stdarg.h>
 #include <signal.h>
-
+#include <io.h>
 #include "client_priv.h"
 #include "mysql.h"
 #include "mysql_version.h"
@@ -707,7 +707,7 @@ static struct my_option my_long_options[] =
   {0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
 
-static const char *load_default_groups[]= { "tmysqldump","client",0 };
+static const char *load_default_groups[]= { "mysqldump","client",0 };
 
 static void maybe_exit(int error);
 static void die(int error, const char* reason, ...);
@@ -3783,12 +3783,13 @@ static my_bool z_post_dump_content(MYSQL_RES *res,
       ZPRINTF(result_file, "commit;\n");
       check_io(result_file);
     }
-    mysql_free_result(res);
-
+    
     z_write_footer(result_file);
-    my_close_zip(result_file);
+    /* harryczhang: dont close zip file here, close all zip(s) on outer caller control. */
+    /* my_close_zip(result_file); */
   }
 
+  mysql_free_result(res);
   DBUG_RETURN(0);
 }
 
@@ -3805,7 +3806,37 @@ static my_bool z_before_dump_content(
   ZFILE result_file;
   int i = 0;
   DBUG_ENTER("z_before_dump_content");
-  while (result_file = result_file_arr[i++]) {
+  if(opt_enable_compress_optimization && is_blob_compress_in_table)
+    dynstr_append_checked(query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
+  else
+    dynstr_append_checked(query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
+  dynstr_append_checked(query_string, result_table);
+
+  if (where)
+  {
+//    z_print_comment(result_file, 0, "-- WHERE:  %s\n", where);
+
+    dynstr_append_checked(query_string, " WHERE ");
+    dynstr_append_checked(query_string, where);
+  }
+  if (order_by)
+  {
+//    z_print_comment(result_file, 0, "-- ORDER BY:  %s\n", order_by);
+
+    dynstr_append_checked(query_string, " ORDER BY ");
+    dynstr_append_checked(query_string, order_by);
+  }
+  if (mysql_query_with_error_report(mysql, 0, query_string->str))
+  {
+    DB_error(mysql, "when retrieving data from server");
+    DBUG_RETURN(EX_MYSQLERR);
+  }
+  if (quick)
+    *res=mysql_use_result(mysql);
+  else
+    *res=mysql_store_result(mysql);
+
+  while (result_file = (ZFILE)result_file_arr[i++]) {
     z_write_header(result_file, db);
 
     z_print_comment(result_file, 0,
@@ -3814,41 +3845,29 @@ static my_bool z_before_dump_content(
     z_print_comment(result_file, 0,
                   "\n--\n-- Dumping data for table %s\n--\n",
                   result_table);
-    if(opt_enable_compress_optimization && is_blob_compress_in_table)
-      dynstr_append_checked(query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
-    else
-      dynstr_append_checked(query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
-    dynstr_append_checked(query_string, result_table);
 
     if (where)
     {
       z_print_comment(result_file, 0, "-- WHERE:  %s\n", where);
-
-      dynstr_append_checked(query_string, " WHERE ");
-      dynstr_append_checked(query_string, where);
     }
     if (order_by)
     {
       z_print_comment(result_file, 0, "-- ORDER BY:  %s\n", order_by);
-
-      dynstr_append_checked(query_string, " ORDER BY ");
-      dynstr_append_checked(query_string, order_by);
     }
-
     if (!opt_compact)
     {
       ZPUTS("\n", result_file);
       check_io(result_file);
     }
-    if (mysql_query_with_error_report(mysql, 0, query_string->str))
-    {
-      DB_error(mysql, "when retrieving data from server");
-      DBUG_RETURN(EX_MYSQLERR);
-    }
-    if (quick)
-      *res=mysql_use_result(mysql);
-    else
-      *res=mysql_store_result(mysql);
+//    if (mysql_query_with_error_report(mysql, 0, query_string->str))
+//    {
+//      DB_error(mysql, "when retrieving data from server");
+//      DBUG_RETURN(EX_MYSQLERR);
+//    }
+//    if (quick)
+//      *res=mysql_use_result(mysql);
+//    else
+//      *res=mysql_store_result(mysql);
     if (!*res)
     {
       DB_error(mysql, "when retrieving data from server");
@@ -4294,15 +4313,17 @@ static void free_result_files(ZFILE **result_file_arr) {
   }
 
   ZFILE *p = *result_file_arr;
+  if (!p) {
+    DBUG_VOID_RETURN;
+  }
+
   while (*p) {
     my_close_zip(*p);
     ++p;
   }
 
-  if (*result_file_arr) {
-    my_free(*result_file_arr);
-    *result_file_arr = 0;
-  }
+  my_free(*result_file_arr);
+  *result_file_arr = 0;
 
   DBUG_VOID_RETURN;
 }
@@ -4588,7 +4609,7 @@ static void dump_table(char *table, char *db)
           }
 
           for (size_t i = 0; i < piece_num; ++i) {
-            result_file_arr[i] = open_sql_zip_file_for_table(db, table, table_type, i);
+            result_file_arr[i] = open_sql_zip_file_for_table(db, table, "data", i);
           }
 
           /* harryczhang: before content dumpping */
@@ -4655,10 +4676,6 @@ gztab:
         goto err;
       }
 
-      total_length= opt_net_buffer_length;                /* Force row break */
-      init_length=(uint) insert_pat.length+4;
-      row_break = 0;
-      rownr = 0;
       /* harryczhang: dumpping INSERT body here */
       /* harryczhang: dumpping rows */
       if (z_dump_content(
@@ -4693,8 +4710,8 @@ gztab:
                   result_table);
     if(opt_enable_compress_optimization && is_blob_compress_in_table)
 	    dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
-	else
-		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
+    else
+      dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
     dynstr_append_checked(&query_string, result_table);
 
     if (where)
@@ -6837,7 +6854,7 @@ int main(int argc, char **argv)
     }
 
     convert_dirname(tmp_path, tmp_buf, NullS);
-    if(my_mkdir(tmp_path, 0777, MYF(0)) < 0)
+    if(access(tmp_path, F_OK) < 0 && my_mkdir(tmp_path, 0777, MYF(0)) < 0)
     {
     	fprintf(stderr, "Create %s failed.\n", tmp_path);
     	free_resources();
@@ -6973,7 +6990,7 @@ int main(int argc, char **argv)
 
 //  if (gzpath)
 //  {
-//      /* close dump_begin_file  */
+      /* close dump_begin_file  */
 //      my_close_zip(dump_begin_file);
 //  }
 
@@ -7142,9 +7159,9 @@ static ZFILE open_sql_zip_file_for_table(const char *db,
     DBUG_ENTER("open_sql_zip_file_for_table");
     convert_dirname(tmp_path, gzpath, NullS);
     my_snprintf(path_add_db, sizeof(path_add_db), "%s/%s", tmp_path, db);
-    my_snprintf(file_extend, sizeof(file_extend), ".%s.sql.%ud.gz", type, piece_id);
+    my_snprintf(file_extend, sizeof(file_extend), ".%s.sql.%d.gz", type, piece_id);
     res = my_open_zip(fn_format(file_path, table, path_add_db, file_extend, 4));
-    snprintf(for_meta_fn, sizeof(for_meta_fn), "%s/%s.%s", db, table, file_extend);
+    snprintf(for_meta_fn, sizeof(for_meta_fn), "%s/%s%s", db, table, file_extend);
     fprintf(META, "%s\t%s\t%s\t%s\n", db, table, type, for_meta_fn);
     DBUG_RETURN(res);
 }
