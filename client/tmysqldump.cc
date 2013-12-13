@@ -31,7 +31,7 @@
 ** master/autocommit code by Brian Aker <brian@tangent.org>
 ** SSL by
 ** Andrei Errapart <andreie@no.spam.ee>
-** TÃµnu Samuel  <tonu@please.do.not.remove.this.spam.ee>
+** T脙碌nu Samuel  <tonu@please.do.not.remove.this.spam.ee>
 ** XML by Gary Huntress <ghuntress@mediaone.net> 10/10/01, cleaned up
 ** and adapted to mysqldump 05/11/01 by Jani Tolonen
 ** Added --single-transaction option 06/06/2002 by Peter Zaitsev
@@ -136,8 +136,39 @@ static char  *opt_password=0,*current_user=0,
              *where=0, *order_by=0,
              *opt_compatible_mode_str= 0,
              *err_ptr= 0,
-	     *gzpath = 0,
+
+             /* harryczhang: Path of splitted .gz files from mysqldump. */
+             *gzpath = 0,
+
+             /* harryczhang: Threshold size of tables which need to be segmented into smaller pieces for concurrency recovery. */
+             *largetable_size = 0,
+
              *log_error_file= NULL;
+
+/* harryczhang: Variable to control the scale of recovery concurrency. */
+static uint split_count = 0; 
+/* harryczhang: use my_snprintf instead of sprintf */
+/*#define my_snprintf(buf, n, fmt, arg) \
+    do { \
+      int ret = sprintf((buf), (n), (fmt), (arg)); \
+      if(ret < 0 || ret >= n) { \
+        fprintf(stderr, "my_snprintf is error."); \
+      } \
+    } while(0)
+    */
+
+/* harryczhang: used for multiple dump. */
+typedef struct {
+  my_ulonglong table_rows;
+  my_ulonglong data_length;
+  my_ulonglong index_length;
+//  my_ulonglong (*total_length) (my_ulonglong data_length, my_ulonglong index_length);
+} st_my_table_status;
+
+static my_ulonglong my_total_length(my_ulonglong len1, my_ulonglong len2) {
+  return len1 + len2;
+}
+
 static char **defaults_argv= 0;
 static char compatible_mode_normal_str[255];
 /* Server supports character_set_results session variable? */
@@ -147,6 +178,7 @@ static ulong opt_compatible_mode= 0;
 #define MYSQL_OPT_MASTER_DATA_COMMENTED_SQL 2
 #define MYSQL_OPT_SLAVE_DATA_EFFECTIVE_SQL 1
 #define MYSQL_OPT_SLAVE_DATA_COMMENTED_SQL 2
+#define MYSQL_OPT_SPLIT_COUNT_MAX_VALUE 128
 static uint opt_mysql_port= 0, opt_master_data, opt_flush_wait_timeout=0;
 static uint opt_slave_data;
 static uint my_end_arg;
@@ -168,7 +200,12 @@ For gztab
 */
 #include <stdarg.h>
 
-#define GBUFF 1024*1024*64	//Only for my_gzprintf
+//#define GBUFF 1024*1024*64	//Only for my_gzprintf
+#define GBUFF ((my_ulonglong)1 << 26) /* harryczhang: 64MB */
+#define TB_IN_BYTES ((my_ulonglong)1 << 40) /* harryczhang: 1t=1024*1024*1024*1024 bytes*/
+#define GB_IN_BYTES ((my_ulonglong)1 << 30) /* harryczhang: 1g=1024*1024*1024 bytes*/
+#define MB_IN_BYTES ((my_ulonglong)1 << 20) /* harryczhang: 1m=1024*1024 bytes*/
+#define KB_IN_BYTES ((my_ulonglong)1 << 10) /* harryczhang: 1k=1024 bytes*/
 
 #ifdef __WIN__
 #define ZFILE gzFile
@@ -176,10 +213,10 @@ For gztab
 #define ZFILE FILE*
 #endif
 
-FILE *META;
-ZFILE dump_begin_file;
-ZFILE dump_end_file;
-char *global_buffer;
+FILE *META = 0;
+ZFILE dump_begin_file = 0;
+ZFILE dump_end_file = 0;
+char *global_buffer = 0;
 
 static ZFILE my_open_zip(const char* file_full_name);
 static void my_close_zip(ZFILE file);
@@ -197,7 +234,7 @@ int my_gzprintf(gzFile file, const char* format, ...) ;
 #define ZPRINTF fprintf
 #endif
 
-static void z_write_header(ZFILE sql_file, char *db_name);
+static void z_write_header(ZFILE sql_file, const char *db_name);
 static void z_write_footer(ZFILE sql_file);
 static void z_print_comment(ZFILE sql_file, my_bool is_error, const char *format, ...);
 static int z_add_stop_slave(void);
@@ -206,6 +243,7 @@ static int z_do_show_master_status(MYSQL *mysql_con);
 static int z_add_slave_statements(void);
 static uint z_dump_events_for_db(char *db);
 static ZFILE open_sql_zip_file_for_table(const char* db, const char* table, const char* type);
+static ZFILE open_sql_zip_file_for_table(const char *db, const char *table, const char *type, size_t piece_id);
 static my_bool z_get_view_structure(char *table, char* db);
 static int z_dump_trigger(ZFILE sql_file, MYSQL_RES *show_create_trigger_rs,
                         const char *db_name,
@@ -268,7 +306,11 @@ static const char *mysql_universal_client_charset=
   MYSQL_UNIVERSAL_CLIENT_CHARSET;
 static char *default_charset;
 static CHARSET_INFO *charset_info= &my_charset_latin1;
-const char *default_dbug_option="d:t:o,/tmp/mysqldump.trace";
+
+/* @harryczhang: default dbug output under working directory. */
+/* const char *default_dbug_option="d:t:o,/tmp/mysql.trace"; */
+const char *default_dbug_option="d:t:o,tmysql.trace"; 
+
 /* have we seen any VIEWs during table scanning? */
 my_bool seen_views= 0;
 const char *compatible_mode_names[]=
@@ -603,6 +645,31 @@ static struct my_option my_long_options[] =
    "Create separated compressed sqlfile for each table to given path."
    "Will NOT dump any TABLESPACE when use this opt.",
    &gzpath, &gzpath, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+
+   /* harryczhang: add two opts to control segmentation of large tables. */
+  {"largetable_size",                       /* option name */
+   0,                                       /* no short version */
+                                            /* comment */
+   "If a table's size is greater or equal than this option value, "
+   "as well as gztab is turned ON, then segment this table into X pieces."
+   "X is an unsigned integer, please refer to 'split_size' option.",
+   &largetable_size,                        /* opt variable value */
+   &largetable_size,                        /* the user def. max variable value */ 
+   0, 
+   GET_STR,                                 /* string type */
+   REQUIRED_ARG,                            /* required */
+   0, 0, 0, 0, 0, 0},
+  {"split_count",
+   0,
+   "If a table due to be segmented into X pieces, X is assigned by this opt value."
+   "This option is valid when gztab & largetable_size are both provided.",
+   &split_count, 
+   &split_count, 
+   0, 
+   GET_UINT, 
+   REQUIRED_ARG, 1, 0, 0, 0, 0, 0},
+  /* harryczhang */
+
   {"tables", OPT_TABLES, "Overrides option --databases (-B).",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"triggers", OPT_TRIGGERS, "Dump triggers for each dumped table.",
@@ -639,7 +706,8 @@ static struct my_option my_long_options[] =
    GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
-static const char *load_default_groups[]= { "mysqldump","client",0 };
+
+static const char *load_default_groups[]= { "tmysqldump","client",0 };
 
 static void maybe_exit(int error);
 static void die(int error, const char* reason, ...);
@@ -701,12 +769,15 @@ static void verbose_msg(const char *fmt, ...)
     check_io()
     file        - checked file
 */
-
+#ifndef __WIN__
 void check_io(FILE *file)
 {
   if (ferror(file))
     die(EX_EOF, "Got errno %d on write", errno);
 }
+#else
+#define check_io(file)
+#endif
 
 static void print_version(void)
 {
@@ -1100,8 +1171,23 @@ static int get_options(int *argc, char ***argv)
     return(EX_USAGE);
   }
 
-  if (gzpath)
+  /* harryczhang: --largetable_size and --split_count must be specified together if only --gztab option is valid. */
+  if (gzpath) {
       opt_notspcs = 1;
+      if ((!largetable_size && split_count) || (largetable_size && !split_count)) {
+        fprintf(stderr, "%s: --largetable_size and --split_count must be specified together.\n", my_progname);
+        return(EX_USAGE);
+      }
+  } else if (largetable_size || split_count) {
+      fprintf(stderr, "%s: --largetable_size and --split_count must be used with valid --gztab option.\n", my_progname);
+      return(EX_USAGE);
+  }
+
+  /* harryczhang: cant be used with --no-data option */
+  if ((split_count || largetable_size) && opt_no_data) {
+    fprintf(stderr, "%s: --largetable_size or --split_count cant be used with --no-data.\n", my_progname);
+    return(EX_USAGE);
+  }
 
   if ((opt_databases || opt_alldbs ||gzpath) && path)
   {
@@ -1682,6 +1768,17 @@ static void free_resources()
     dynstr_free(&insert_pat);
   if (defaults_argv)
     free_defaults(defaults_argv);
+  /* harryczhang: close these files resources */
+  if (stderror_file)
+    my_fclose(stderror_file, MYF(MY_WME));
+  if (dump_begin_file)
+    my_close_zip(dump_begin_file);
+  if (dump_end_file)
+    my_close_zip(dump_end_file);
+  if (META)
+    my_fclose(META, MYF(MY_WME));
+  if (global_buffer)
+    my_free(global_buffer);
   my_end(my_end_arg);
 }
 
@@ -2377,11 +2474,10 @@ static uint dump_events_for_db(char *db)
               NOTE: the dump may be incorrect, since character set
               information is required in order to restore event properly.
             */
-
             fprintf(sql_file,
                     "--\n"
                     "-- WARNING: old server version. "
-                      "The following dump may be incomplete.\n"
+                    "The following dump may be incomplete.\n"
                     "--\n");
           }
 
@@ -2393,7 +2489,6 @@ static uint dump_events_for_db(char *db)
                                           C_STRING_WITH_LEN("50117"),
                                           C_STRING_WITH_LEN("50106"),
                                           C_STRING_WITH_LEN(" EVENT"));
-
           fprintf(sql_file,
                   "/*!50106 %s */ %s\n",
                   (const char *) (query_str != NULL ? query_str : row[3]),
@@ -2759,7 +2854,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
       MYSQL_FIELD *field;
       bool write_to_file = true;
 
-      /* 不需要create语句，但启用压缩，需要获得create table语句，但不能输出文件 */
+      /* 涓嶉渶瑕乧reate璇彞锛屼絾鍚敤鍘嬬缉锛岄渶瑕佽幏寰梒reate table璇彞锛屼絾涓嶈兘杈撳嚭鏂囦欢 */
       if (opt_no_create_info && opt_enable_compress_optimization)
           write_to_file = false;
 
@@ -2919,14 +3014,15 @@ static uint get_table_structure(char *table, char *db, char *table_type,
               row[1]);
       }
 
-	  if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
-	  {
-		  /* 如果表中存在有blob/text字段，有compressed属性 */
-		  *is_blob_compress_in_table = TRUE;
-	  }
+      if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
+      {
+        /* 濡傛灉琛ㄤ腑瀛樺湪鏈塨lob/text瀛楁锛屾湁compressed灞炴� */
+        *is_blob_compress_in_table = TRUE;
+      }
 
-      if (write_to_file)
+      if (write_to_file) {
         check_io(sql_file);
+      }
       
       mysql_free_result(result);
     }
@@ -2950,12 +3046,12 @@ static uint get_table_structure(char *table, char *db, char *table_type,
       if (opt_replace_into)
         dynstr_append_checked(&insert_pat, "REPLACE ");
       else
-	  {
-		  if(opt_enable_compress_optimization && *is_blob_compress_in_table)
-			  dynstr_append_checked(&insert_pat, "INSERT SQL_COMPRESSED ");
-		  else
-			  dynstr_append_checked(&insert_pat, "INSERT ");
-	  }
+      {
+        if(opt_enable_compress_optimization && *is_blob_compress_in_table)
+          dynstr_append_checked(&insert_pat, "INSERT SQL_COMPRESSED ");
+        else
+          dynstr_append_checked(&insert_pat, "INSERT ");
+      }
       dynstr_append_checked(&insert_pat, insert_option);
       dynstr_append_checked(&insert_pat, "INTO ");
       dynstr_append_checked(&insert_pat, opt_quoted_table);
@@ -3599,6 +3695,708 @@ static char *alloc_query_str(ulong size)
   return query;
 }
 
+/*
+ * harryczhang: utils for parse str of size.
+ * for example: 10G/10g/10GB ==> return 10*2^30 */
+static my_ulonglong get_bytes_by_str(const char *src) {
+  const char *beg = src;
+  ulong err_ret = 0;
+  char tmp_buf[32];
+  size_t len = 0;
+
+  for (; *beg && isdigit(*beg); ++beg)
+    ;
+  len = beg - src;
+  if (!len) {
+    /* empty src or the first letter of src is not digit, such as +120G */
+    return err_ret;
+  }
+  if (len > 31) {
+    /* stack overflow */
+    return err_ret;
+  }
+
+  strncpy(tmp_buf, src, len);
+  if (*beg == 'b' || *beg == 'B' || *beg == 0) {
+    return (my_ulonglong) atol(tmp_buf);
+  }
+
+  if (*beg == 't' || *beg == 'T') {
+    return ((my_ulonglong) atol(tmp_buf)) * TB_IN_BYTES;
+  }
+  if (*beg == 'g' || *beg == 'G') {
+    return ((my_ulonglong) atol(tmp_buf)) * GB_IN_BYTES;
+  }
+  if (*beg == 'm' || *beg == 'M') {
+    return ((my_ulonglong) atol(tmp_buf)) * MB_IN_BYTES;
+  }
+  if (*beg == 'k' || *beg == 'K') {
+    return ((my_ulonglong) atol(tmp_buf)) * KB_IN_BYTES;
+  }
+
+  return err_ret;
+
+}
+
+static my_bool z_post_dump_content(MYSQL_RES *res,
+    ZFILE *result_file_arr,
+    char *buf,
+    ulong row_break,
+    ulong rownr,
+    const char *result_table,
+    const char *opt_quoted_table) {
+  ZFILE result_file;
+  size_t i = 0;
+  DBUG_ENTER("z_post_dump_content");
+  while (result_file = result_file_arr[i++]) {
+    /* XML - close table tag and supress regular output */
+    if (extended_insert && row_break)
+      ZPUTS(";\n", result_file);             /* If not empty table */
+    check_io(result_file);
+    if (mysql_errno(mysql))
+    {
+      my_snprintf(buf, sizeof(buf),
+                  "%s: Error %d: %s when dumping table %s at row: %lu\n",
+                  my_progname,
+                  mysql_errno(mysql),
+                  mysql_error(mysql),
+                  result_table,
+                  rownr);
+      fputs(buf,stderr);
+      DBUG_RETURN(EX_CONSCHECK);
+    }
+
+    /* Moved enable keys to before unlock per bug 15977 */
+    if (opt_disable_keys)
+    {
+      ZPRINTF(result_file,"/*!40000 ALTER TABLE %s ENABLE KEYS */;\n",
+              opt_quoted_table);
+      check_io(result_file);
+    }
+    if (opt_lock)
+    {
+      ZPUTS("UNLOCK TABLES;\n", result_file);
+      check_io(result_file);
+    }
+    if (opt_autocommit)
+    {
+      ZPRINTF(result_file, "commit;\n");
+      check_io(result_file);
+    }
+    mysql_free_result(res);
+
+    z_write_footer(result_file);
+    my_close_zip(result_file);
+  }
+
+  DBUG_RETURN(0);
+}
+
+/* harryczhang: */
+static my_bool z_before_dump_content(
+    MYSQL_RES **res,
+    ZFILE *result_file_arr,
+    DYNAMIC_STRING *query_string,
+    const char *db,
+    const char *result_table,
+    const char *opt_quoted_table,
+    my_bool is_blob_compress_in_table,
+    uint num_fields) {
+  ZFILE result_file;
+  int i = 0;
+  DBUG_ENTER("z_before_dump_content");
+  while (result_file = result_file_arr[i++]) {
+    z_write_header(result_file, db);
+
+    z_print_comment(result_file, 0,
+    "\n--\n-- Current Database: %s\n--\n", db);
+
+    z_print_comment(result_file, 0,
+                  "\n--\n-- Dumping data for table %s\n--\n",
+                  result_table);
+    if(opt_enable_compress_optimization && is_blob_compress_in_table)
+      dynstr_append_checked(query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
+    else
+      dynstr_append_checked(query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
+    dynstr_append_checked(query_string, result_table);
+
+    if (where)
+    {
+      z_print_comment(result_file, 0, "-- WHERE:  %s\n", where);
+
+      dynstr_append_checked(query_string, " WHERE ");
+      dynstr_append_checked(query_string, where);
+    }
+    if (order_by)
+    {
+      z_print_comment(result_file, 0, "-- ORDER BY:  %s\n", order_by);
+
+      dynstr_append_checked(query_string, " ORDER BY ");
+      dynstr_append_checked(query_string, order_by);
+    }
+
+    if (!opt_compact)
+    {
+      ZPUTS("\n", result_file);
+      check_io(result_file);
+    }
+    if (mysql_query_with_error_report(mysql, 0, query_string->str))
+    {
+      DB_error(mysql, "when retrieving data from server");
+      DBUG_RETURN(EX_MYSQLERR);
+    }
+    if (quick)
+      *res=mysql_use_result(mysql);
+    else
+      *res=mysql_store_result(mysql);
+    if (!*res)
+    {
+      DB_error(mysql, "when retrieving data from server");
+      DBUG_RETURN(EX_MYSQLERR);
+    }
+
+    verbose_msg("-- Retrieving rows...\n");
+    if (mysql_num_fields(*res) != num_fields)
+    {
+      fprintf(stderr,"%s: Error in field count for table: %s !  Aborting.\n",
+              my_progname, result_table);
+      DBUG_RETURN(EX_CONSCHECK);
+    }
+
+    if (opt_lock)
+    {
+      ZPRINTF(result_file,"LOCK TABLES %s WRITE;\n", opt_quoted_table);
+      check_io(result_file);
+    }
+    /* Moved disable keys to after lock per bug 15977 */
+    if (opt_disable_keys)
+    {
+      ZPRINTF(result_file, "/*!40000 ALTER TABLE %s DISABLE KEYS */;\n",
+        opt_quoted_table);
+      check_io(result_file);
+    }
+
+    if (opt_autocommit)
+    {
+      ZPRINTF(result_file, "set autocommit=0;\n");
+      check_io(md_result_file);
+    }
+  }
+
+  DBUG_RETURN(0);
+}
+
+static my_bool z_dump_content(
+    MYSQL_RES *res,
+    MYSQL_ROW *mysql_row,
+    ulong piece_rows,
+    const char *result_table,
+    ZFILE *result_file_arr,
+    ulong *total_length,
+    ulong *init_length,
+    ulong *row_break,
+    ulong *rownr) {
+
+  MYSQL_FIELD *field = 0;
+  MYSQL_ROW row = *mysql_row;
+
+  DBUG_ENTER("z_dump_content");
+  if (!result_file_arr) {
+    DBUG_RETURN(1);
+  }
+
+  *total_length= opt_net_buffer_length;                /* Force row break */
+  *init_length=(uint) insert_pat.length+4;
+  *row_break = 0;
+  *rownr = 0;
+
+  size_t result_file_arr_idx = 0;
+  ZFILE result_file = result_file_arr[result_file_arr_idx];
+  if (piece_rows > 0) {
+    /* harryczhang: dumpping INSERT body here */
+    while ((row= mysql_fetch_row(res)))
+    {
+      uint i = 0;
+      ulong *lengths= mysql_fetch_lengths(res);
+      ++*rownr;
+      if (*rownr % piece_rows == 0) {
+        result_file = result_file_arr[++result_file_arr_idx];
+      }
+
+      if (!extended_insert)
+      {
+        ZPUTS(insert_pat.str, result_file);
+        check_io(md_result_file);
+      }
+      mysql_field_seek(res,0);
+
+      for (i= 0; i < mysql_num_fields(res); i++)
+      {
+        int is_blob;
+        ulong length= lengths[i];
+
+        if (!(field= mysql_fetch_field(res)))
+          die(EX_CONSCHECK,
+                      "Not enough fields from table %s! Aborting.\n",
+                      result_table);
+
+        /*
+           63 is my_charset_bin. If charsetnr is not 63,
+           we have not a BLOB but a TEXT column.
+           we'll dump in hex only BLOB columns.
+        */
+        is_blob= (opt_hex_blob && field->charsetnr == 63 &&
+                  (field->type == MYSQL_TYPE_BIT ||
+                   field->type == MYSQL_TYPE_STRING ||
+                   field->type == MYSQL_TYPE_VAR_STRING ||
+                   field->type == MYSQL_TYPE_VARCHAR ||
+                   field->type == MYSQL_TYPE_BLOB ||
+                   field->type == MYSQL_TYPE_LONG_BLOB ||
+                   field->type == MYSQL_TYPE_MEDIUM_BLOB ||
+                   field->type == MYSQL_TYPE_TINY_BLOB)) ? 1 : 0;
+        if (extended_insert)
+        {
+          if (i == 0)
+            dynstr_set_checked(&extended_row,"(");
+          else
+            dynstr_append_checked(&extended_row,",");
+
+          if (row[i])
+          {
+            if (length)
+            {
+              if (!(field->flags & NUM_FLAG))
+              {
+                /*
+                  "length * 2 + 2" is OK for both HEX and non-HEX modes:
+                  - In HEX mode we need exactly 2 bytes per character
+                  plus 2 bytes for '0x' prefix.
+                  - In non-HEX mode we need up to 2 bytes per character,
+                  plus 2 bytes for leading and trailing '\'' characters.
+                  Also we need to reserve 1 byte for terminating '\0'.
+                */
+                dynstr_realloc_checked(&extended_row,length * 2 + 2 + 1);
+                if (opt_hex_blob && is_blob)
+                {
+                  dynstr_append_checked(&extended_row, "0x");
+                  extended_row.length+= mysql_hex_string(extended_row.str +
+                                                         extended_row.length,
+                                                         row[i], length);
+                  DBUG_ASSERT(extended_row.length+1 <= extended_row.max_length);
+                  /* mysql_hex_string() already terminated string by '\0' */
+                  DBUG_ASSERT(extended_row.str[extended_row.length] == '\0');
+                }
+                else
+                {
+                  dynstr_append_checked(&extended_row,"'");
+                  extended_row.length +=
+                  mysql_real_escape_string(&mysql_connection,
+                                           &extended_row.str[extended_row.length],
+                                           row[i],length);
+                  extended_row.str[extended_row.length]='\0';
+                  dynstr_append_checked(&extended_row,"'");
+                }
+              }
+              else
+              {
+                /* change any strings ("inf", "-inf", "nan") into NULL */
+                char *ptr= row[i];
+                if (my_isalpha(charset_info, *ptr) || (*ptr == '-' &&
+                    my_isalpha(charset_info, ptr[1])))
+                  dynstr_append_checked(&extended_row, "NULL");
+                else
+                {
+                  if (field->type == MYSQL_TYPE_DECIMAL)
+                  {
+                    /* add " signs around */
+                    dynstr_append_checked(&extended_row, "'");
+                    dynstr_append_checked(&extended_row, ptr);
+                    dynstr_append_checked(&extended_row, "'");
+                  }
+                  else
+                    dynstr_append_checked(&extended_row, ptr);
+                }
+              }
+            }
+            else
+              dynstr_append_checked(&extended_row,"''");
+          }
+          else
+            dynstr_append_checked(&extended_row,"NULL");
+        }
+        else
+        {
+          if (i)
+          {
+            ZPUTC(',', result_file);
+            check_io(md_result_file);
+          }
+          if (row[i])
+          {
+            if (!(field->flags & NUM_FLAG))
+            {
+              if (opt_hex_blob && is_blob && length)
+              {
+                ZPUTS("0x", result_file);
+                z_print_blob_as_hex(result_file, row[i], length);
+              }
+              else
+                z_unescape(result_file, row[i], length);
+            }
+            else
+            {
+              /* change any strings ("inf", "-inf", "nan") into NULL */
+              char *ptr= row[i];
+              if (my_isalpha(charset_info, *ptr) ||
+                       (*ptr == '-' && my_isalpha(charset_info, ptr[1])))
+                ZPUTS("NULL", result_file);
+              else if (field->type == MYSQL_TYPE_DECIMAL)
+              {
+                /* add " signs around */
+                ZPUTC('\'', result_file);
+                ZPUTS(ptr, result_file);
+                ZPUTC('\'', result_file);
+              }
+              else
+                ZPUTS(ptr, result_file);
+            }
+          }
+          else
+          {
+            /* The field value is NULL */
+              ZPUTS("NULL", result_file);
+          }
+          check_io(result_file);
+        }
+      }
+
+      if (extended_insert)
+      {
+        ulong row_length;
+        dynstr_append_checked(&extended_row,")");
+        row_length= 2 + extended_row.length;
+        if (*total_length + row_length < opt_net_buffer_length)
+        {
+          *total_length+= row_length;
+          ZPUTC(',', result_file);            /* Always row break */
+          ZPUTS(extended_row.str, result_file);
+        }
+        else
+        {
+          if (row_break)
+            ZPUTS(";\n", result_file);
+          *row_break = 1;                          /* This is first row */
+
+          ZPUTS(insert_pat.str, result_file);
+          ZPUTS(extended_row.str, result_file);
+          *total_length= row_length+*init_length;
+        }
+        check_io(result_file);
+      }
+      else
+      {
+        ZPUTS(");\n", result_file);
+        check_io(result_file);
+      }
+    } /* END: while */
+  } else {
+    while ((row= mysql_fetch_row(res)))
+    {
+      uint i;
+      ulong *lengths= mysql_fetch_lengths(res);
+      ++*rownr;
+
+      if (!extended_insert)
+      {
+        ZPUTS(insert_pat.str, result_file);
+        check_io(md_result_file);
+      }
+      mysql_field_seek(res,0);
+
+      for (i= 0; i < mysql_num_fields(res); i++)
+      {
+        int is_blob;
+        ulong length= lengths[i];
+
+        if (!(field= mysql_fetch_field(res)))
+          die(EX_CONSCHECK,
+                      "Not enough fields from table %s! Aborting.\n",
+                      result_table);
+
+        /*
+           63 is my_charset_bin. If charsetnr is not 63,
+           we have not a BLOB but a TEXT column.
+           we'll dump in hex only BLOB columns.
+        */
+        is_blob= (opt_hex_blob && field->charsetnr == 63 &&
+                  (field->type == MYSQL_TYPE_BIT ||
+                   field->type == MYSQL_TYPE_STRING ||
+                   field->type == MYSQL_TYPE_VAR_STRING ||
+                   field->type == MYSQL_TYPE_VARCHAR ||
+                   field->type == MYSQL_TYPE_BLOB ||
+                   field->type == MYSQL_TYPE_LONG_BLOB ||
+                   field->type == MYSQL_TYPE_MEDIUM_BLOB ||
+                   field->type == MYSQL_TYPE_TINY_BLOB)) ? 1 : 0;
+        if (extended_insert)
+        {
+          if (i == 0)
+            dynstr_set_checked(&extended_row,"(");
+          else
+            dynstr_append_checked(&extended_row,",");
+
+          if (row[i])
+          {
+            if (length)
+            {
+              if (!(field->flags & NUM_FLAG))
+              {
+                /*
+                  "length * 2 + 2" is OK for both HEX and non-HEX modes:
+                  - In HEX mode we need exactly 2 bytes per character
+                  plus 2 bytes for '0x' prefix.
+                  - In non-HEX mode we need up to 2 bytes per character,
+                  plus 2 bytes for leading and trailing '\'' characters.
+                  Also we need to reserve 1 byte for terminating '\0'.
+                */
+                dynstr_realloc_checked(&extended_row,length * 2 + 2 + 1);
+                if (opt_hex_blob && is_blob)
+                {
+                  dynstr_append_checked(&extended_row, "0x");
+                  extended_row.length+= mysql_hex_string(extended_row.str +
+                                                         extended_row.length,
+                                                         row[i], length);
+                  DBUG_ASSERT(extended_row.length+1 <= extended_row.max_length);
+                  /* mysql_hex_string() already terminated string by '\0' */
+                  DBUG_ASSERT(extended_row.str[extended_row.length] == '\0');
+                }
+                else
+                {
+                  dynstr_append_checked(&extended_row,"'");
+                  extended_row.length +=
+                  mysql_real_escape_string(&mysql_connection,
+                                           &extended_row.str[extended_row.length],
+                                           row[i],length);
+                  extended_row.str[extended_row.length]='\0';
+                  dynstr_append_checked(&extended_row,"'");
+                }
+              }
+              else
+              {
+                /* change any strings ("inf", "-inf", "nan") into NULL */
+                char *ptr= row[i];
+                if (my_isalpha(charset_info, *ptr) || (*ptr == '-' &&
+                    my_isalpha(charset_info, ptr[1])))
+                  dynstr_append_checked(&extended_row, "NULL");
+                else
+                {
+                  if (field->type == MYSQL_TYPE_DECIMAL)
+                  {
+                    /* add " signs around */
+                    dynstr_append_checked(&extended_row, "'");
+                    dynstr_append_checked(&extended_row, ptr);
+                    dynstr_append_checked(&extended_row, "'");
+                  }
+                  else
+                    dynstr_append_checked(&extended_row, ptr);
+                }
+              }
+            }
+            else
+              dynstr_append_checked(&extended_row,"''");
+          }
+          else
+            dynstr_append_checked(&extended_row,"NULL");
+        }
+        else
+        {
+          if (i)
+          {
+            ZPUTC(',', result_file);
+            check_io(md_result_file);
+          }
+          if (row[i])
+          {
+            if (!(field->flags & NUM_FLAG))
+            {
+              if (opt_hex_blob && is_blob && length)
+              {
+                ZPUTS("0x", result_file);
+                z_print_blob_as_hex(result_file, row[i], length);
+              }
+              else
+                z_unescape(result_file, row[i], length);
+            }
+            else
+            {
+              /* change any strings ("inf", "-inf", "nan") into NULL */
+              char *ptr= row[i];
+              if (my_isalpha(charset_info, *ptr) ||
+                       (*ptr == '-' && my_isalpha(charset_info, ptr[1])))
+                ZPUTS("NULL", result_file);
+              else if (field->type == MYSQL_TYPE_DECIMAL)
+              {
+                /* add " signs around */
+                ZPUTC('\'', result_file);
+                ZPUTS(ptr, result_file);
+                ZPUTC('\'', result_file);
+              }
+              else
+                ZPUTS(ptr, result_file);
+            }
+          }
+          else
+          {
+            /* The field value is NULL */
+              ZPUTS("NULL", result_file);
+          }
+          check_io(result_file);
+        }
+      }
+
+      if (extended_insert)
+      {
+        ulong row_length;
+        dynstr_append_checked(&extended_row,")");
+        row_length= 2 + extended_row.length;
+        if (*total_length + row_length < opt_net_buffer_length)
+        {
+          *total_length+= row_length;
+          ZPUTC(',', result_file);            /* Always row break */
+          ZPUTS(extended_row.str, result_file);
+        }
+        else
+        {
+          if (row_break)
+            ZPUTS(";\n", result_file);
+          *row_break = 1;                          /* This is first row */
+
+          ZPUTS(insert_pat.str, result_file);
+          ZPUTS(extended_row.str, result_file);
+          *total_length= row_length+*init_length;
+        }
+        check_io(result_file);
+      }
+      else
+      {
+        ZPUTS(");\n", result_file);
+        check_io(result_file);
+      }
+    } /* END: while */
+  }
+
+  DBUG_RETURN(0);
+}
+
+static void free_result_files(ZFILE **result_file_arr) {
+  DBUG_ENTER("free_result_files");
+  if (!result_file_arr) {
+    DBUG_VOID_RETURN;
+  }
+
+  ZFILE *p = *result_file_arr;
+  while (*p) {
+    my_close_zip(*p);
+    ++p;
+  }
+
+  if (*result_file_arr) {
+    my_free(*result_file_arr);
+    *result_file_arr = 0;
+  }
+
+  DBUG_VOID_RETURN;
+}
+
+/* @harryczhang: */
+static my_bool check_table_size(st_my_table_status *table_status,
+    const char *db_name, const char *table_name)
+{
+  my_bool err_ret = 1;
+  my_bool suc_ret = 0;
+  char buff[FN_REFLEN + 1024];
+  char show_name_buff[FN_REFLEN];
+  MYSQL_RES *res = NULL;
+  MYSQL_ROW row;
+  uint field_num = 0;
+
+  DBUG_ENTER("check_table_size");
+  DBUG_ASSERT(table_status != NULL);
+  DBUG_ASSERT(2 * sizeof(table_name) < sizeof(show_name_buff));
+
+  if (mysql_get_server_version(mysql) >= FIRST_INFORMATION_SCHEMA_VERSION) {
+    if (my_snprintf(buff, sizeof(buff), "select table_rows, data_length, index_length \
+        from information_schema.tables where table_schema='%s' and table_name = '%s'",
+        db_name,
+        table_name) >= sizeof(buff)) {
+      goto err;
+    }
+  } else {
+    if (my_snprintf(buff, sizeof(buff), "show table status like %s",
+          quote_for_like(table_name, show_name_buff)) >= sizeof(buff)) {
+      goto err;
+    }
+  }
+
+  if (mysql_query_with_error_report(mysql, &res, buff)) {
+    if (mysql_errno(mysql) != ER_PARSE_ERROR) {
+      /* If old MySQL version */
+      verbose_msg("-- Warning: Couldn't get status information for "
+                  "table %s (%s)\n", table_name, mysql_error(mysql));
+      goto err;
+    }
+  }
+
+  if (!(row = mysql_fetch_row(res))) {
+    fprintf(stderr,
+            "Error: Couldn't read status information for table %s (%s)\n",
+            table_name, mysql_error(mysql));
+    goto err;
+  }
+
+  field_num = mysql_num_fields(res);
+  if (field_num >= 18) {
+    /*
+               Name: t1
+             Engine: InnoDB
+            Version: 10
+         Row_format: Gcs
+               Rows: 4
+     Avg_row_length: 4096
+        Data_length: 16384
+    Max_data_length: 0
+       Index_length: 0
+          Data_free: 9437184
+     Auto_increment: NULL
+        Create_time: 2013-12-11 10:59:19
+        Update_time: NULL
+         Check_time: NULL
+          Collation: latin1_swedish_ci
+           Checksum: NULL
+     Create_options:
+            Comment:
+    */
+    table_status->table_rows = (my_ulonglong)atol(row[4]);
+    table_status->data_length = (my_ulonglong)atol(row[6]);
+    table_status->index_length = (my_ulonglong)atol(row[8]);
+  } else if (field_num == 3) {
+    /* table_rows, data_length, index_length */
+    table_status->table_rows = (my_ulonglong)atol(row[0]);
+    table_status->data_length = (my_ulonglong)atol(row[1]);
+    table_status->index_length = (my_ulonglong)atol(row[2]);
+  } else {
+    fprintf(stderr,
+                "Error: Res field count is not matched with sql statement for table %s (%s)\n",
+                table_name, mysql_error(mysql));
+    goto err;
+  }
+
+  mysql_free_result(res);
+  DBUG_RETURN(suc_ret);
+
+err:
+  mysql_free_result(res);
+  DBUG_RETURN(err_ret);
+}
 
 /*
 
@@ -3615,7 +4413,6 @@ static char *alloc_query_str(ulong size)
     void
 */
 
-
 static void dump_table(char *table, char *db)
 {
   char ignore_flag;
@@ -3630,6 +4427,10 @@ static void dump_table(char *table, char *db)
   MYSQL_FIELD   *field;
   MYSQL_ROW     row;
   my_bool    is_blob_compress_in_table =FALSE;
+  uint piece_num = split_count;                       /* harryczhang: split_count specified by --split_count option */
+  const char *table_size_theshold = largetable_size;  /* harryczhang: table size threshold to do segmentation
+                                                        specified by --largetable_size option */
+  ZFILE *result_file_arr = 0;
   DBUG_ENTER("dump_table");
 
   /*
@@ -3762,343 +4563,129 @@ static void dump_table(char *table, char *db)
   }
   else if (gzpath)
   {/*{{{*/
-    ZFILE result_file = open_sql_zip_file_for_table(db, table, "data");
-    if (result_file == NULL)
-    {
-	fprintf(stderr, "Creat data file for %s.%s failed\n", db, table);
-	exit(1);
-    }
-
-    z_write_header(result_file, db);
-
-    z_print_comment(result_file, 0,
-		"\n--\n-- Current Database: %s\n--\n", db);
-
-    z_print_comment(result_file, 0,
-                  "\n--\n-- Dumping data for table %s\n--\n",
-                  result_table);
-    if(opt_enable_compress_optimization && is_blob_compress_in_table)
-		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
-	else
-		dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ * FROM ");
-    dynstr_append_checked(&query_string, result_table);
-
-    if (where)
-    {
-      z_print_comment(result_file, 0, "-- WHERE:  %s\n", where);
-
-      dynstr_append_checked(&query_string, " WHERE ");
-      dynstr_append_checked(&query_string, where);
-    }
-    if (order_by)
-    {
-      z_print_comment(result_file, 0, "-- ORDER BY:  %s\n", order_by);
-
-      dynstr_append_checked(&query_string, " ORDER BY ");
-      dynstr_append_checked(&query_string, order_by);
-    }
-
-    if (!opt_compact)
-    {
-      ZPUTS("\n", result_file);
-#ifndef __WIN__
-      check_io(result_file);
-#endif
-    }
-    if (mysql_query_with_error_report(mysql, 0, query_string.str))
-    {
-      DB_error(mysql, "when retrieving data from server");
-      goto err;
-    }
-    if (quick)
-      res=mysql_use_result(mysql);
-    else
-      res=mysql_store_result(mysql);
-    if (!res)
-    {
-      DB_error(mysql, "when retrieving data from server");
-      goto err;
-    }
-
-    verbose_msg("-- Retrieving rows...\n");
-    if (mysql_num_fields(res) != num_fields)
-    {
-      fprintf(stderr,"%s: Error in field count for table: %s !  Aborting.\n",
-              my_progname, result_table);
-      error= EX_CONSCHECK;
-      goto err;
-    }
-
-    if (opt_lock)
-    {
-      ZPRINTF(result_file,"LOCK TABLES %s WRITE;\n", opt_quoted_table);
-#ifndef __WIN__
-      check_io(result_file);
-#endif
-    }
-    /* Moved disable keys to after lock per bug 15977 */
-    if (opt_disable_keys)
-    {
-      ZPRINTF(result_file, "/*!40000 ALTER TABLE %s DISABLE KEYS */;\n",
-	      opt_quoted_table);
-
-#ifndef __WIN__
-      check_io(result_file);
-#endif
-    }
-
-    total_length= opt_net_buffer_length;                /* Force row break */
-    row_break=0;
-    rownr=0;
-    init_length=(uint) insert_pat.length+4;
-    if (opt_autocommit)
-    {
-      ZPRINTF(result_file, "set autocommit=0;\n");
-#ifndef __WIN__
-      check_io(md_result_file);
-#endif
-    }
-
-    while ((row= mysql_fetch_row(res)))
-    {
-      uint i;
-      ulong *lengths= mysql_fetch_lengths(res);
-      rownr++;
-      if (!extended_insert)
-      {
-        ZPUTS(insert_pat.str, result_file);
-#ifndef __WIN__
-        check_io(md_result_file);
-#endif
-      }
-      mysql_field_seek(res,0);
-
-      for (i= 0; i < mysql_num_fields(res); i++)
-      {
-        int is_blob;
-        ulong length= lengths[i];
-
-        if (!(field= mysql_fetch_field(res)))
-          die(EX_CONSCHECK,
-                      "Not enough fields from table %s! Aborting.\n",
-                      result_table);
-
-        /*
-           63 is my_charset_bin. If charsetnr is not 63,
-           we have not a BLOB but a TEXT column.
-           we'll dump in hex only BLOB columns.
-        */
-        is_blob= (opt_hex_blob && field->charsetnr == 63 &&
-                  (field->type == MYSQL_TYPE_BIT ||
-                   field->type == MYSQL_TYPE_STRING ||
-                   field->type == MYSQL_TYPE_VAR_STRING ||
-                   field->type == MYSQL_TYPE_VARCHAR ||
-                   field->type == MYSQL_TYPE_BLOB ||
-                   field->type == MYSQL_TYPE_LONG_BLOB ||
-                   field->type == MYSQL_TYPE_MEDIUM_BLOB ||
-                   field->type == MYSQL_TYPE_TINY_BLOB)) ? 1 : 0;
-        if (extended_insert)
-        {
-          if (i == 0)
-            dynstr_set_checked(&extended_row,"(");
-          else
-            dynstr_append_checked(&extended_row,",");
-
-          if (row[i])
-          {
-            if (length)
-            {
-              if (!(field->flags & NUM_FLAG))
-              {
-                /*
-                  "length * 2 + 2" is OK for both HEX and non-HEX modes:
-                  - In HEX mode we need exactly 2 bytes per character
-                  plus 2 bytes for '0x' prefix.
-                  - In non-HEX mode we need up to 2 bytes per character,
-                  plus 2 bytes for leading and trailing '\'' characters.
-                  Also we need to reserve 1 byte for terminating '\0'.
-                */
-                dynstr_realloc_checked(&extended_row,length * 2 + 2 + 1);
-                if (opt_hex_blob && is_blob)
-                {
-                  dynstr_append_checked(&extended_row, "0x");
-                  extended_row.length+= mysql_hex_string(extended_row.str +
-                                                         extended_row.length,
-                                                         row[i], length);
-                  DBUG_ASSERT(extended_row.length+1 <= extended_row.max_length);
-                  /* mysql_hex_string() already terminated string by '\0' */
-                  DBUG_ASSERT(extended_row.str[extended_row.length] == '\0');
-                }
-                else
-                {
-                  dynstr_append_checked(&extended_row,"'");
-                  extended_row.length +=
-                  mysql_real_escape_string(&mysql_connection,
-                                           &extended_row.str[extended_row.length],
-                                           row[i],length);
-                  extended_row.str[extended_row.length]='\0';
-                  dynstr_append_checked(&extended_row,"'");
-                }
-              }
-              else
-              {
-                /* change any strings ("inf", "-inf", "nan") into NULL */
-                char *ptr= row[i];
-                if (my_isalpha(charset_info, *ptr) || (*ptr == '-' &&
-                    my_isalpha(charset_info, ptr[1])))
-                  dynstr_append_checked(&extended_row, "NULL");
-                else
-                {
-                  if (field->type == MYSQL_TYPE_DECIMAL)
-                  {
-                    /* add " signs around */
-                    dynstr_append_checked(&extended_row, "'");
-                    dynstr_append_checked(&extended_row, ptr);
-                    dynstr_append_checked(&extended_row, "'");
-                  }
-                  else
-                    dynstr_append_checked(&extended_row, ptr);
-                }
-              }
-            }
-            else
-              dynstr_append_checked(&extended_row,"''");
-          }
-          else
-            dynstr_append_checked(&extended_row,"NULL");
-        }
-        else
-        {
-          if (i)
-          {
-            ZPUTC(',', result_file);
-#ifndef __WIN__
-            check_io(md_result_file);
-#endif
-          }
-          if (row[i])
-          {
-            if (!(field->flags & NUM_FLAG))
-            {
-              if (opt_hex_blob && is_blob && length)
-              {
-                ZPUTS("0x", result_file);
-                z_print_blob_as_hex(result_file, row[i], length);
-              }
-              else
-                z_unescape(result_file, row[i], length);
-            }
-            else
-            {
-              /* change any strings ("inf", "-inf", "nan") into NULL */
-              char *ptr= row[i];
-              if (my_isalpha(charset_info, *ptr) ||
-                       (*ptr == '-' && my_isalpha(charset_info, ptr[1])))
-                ZPUTS("NULL", result_file);
-              else if (field->type == MYSQL_TYPE_DECIMAL)
-              {
-                /* add " signs around */
-                ZPUTC('\'', result_file);
-                ZPUTS(ptr, result_file);
-                ZPUTC('\'', result_file);
-              }
-              else
-                ZPUTS(ptr, result_file);
-            }
-          }
-          else
-          {
-            /* The field value is NULL */
-              ZPUTS("NULL", result_file);
-          }
-#ifndef __WIN__
-          check_io(result_file);
-#endif
-        }
+    if (largetable_size > 0 && split_count > 0) {
+      /* -- BEGIN multiple piece dummpping -- */
+      const size_t piece_num = split_count;
+      my_ulonglong table_size_in_bytes = get_bytes_by_str(largetable_size);
+      if (!table_size_in_bytes) {
+        fprintf(stderr, "--largetable_size option value=%s is invalid.\n", largetable_size);
+        goto err;
       }
 
-      if (extended_insert)
-      {
-        ulong row_length;
-        dynstr_append_checked(&extended_row,")");
-        row_length= 2 + extended_row.length;
-        if (total_length + row_length < opt_net_buffer_length)
-        {
-          total_length+= row_length;
-          ZPUTC(',', result_file);            /* Always row break */
-          ZPUTS(extended_row.str, result_file);
-        }
-        else
-        {
-          if (row_break)
-            ZPUTS(";\n", result_file);
-          row_break=1;                          /* This is first row */
+      st_my_table_status my_table_status;
+      if (check_table_size(&my_table_status, db, table) == 0) {
+        if (my_total_length(my_table_status.data_length, my_table_status.index_length) >= table_size_in_bytes) {
+          my_ulonglong rows_count = my_table_status.table_rows;
+          my_ulonglong lines_per_piece = (rows_count % piece_num == 0) ?
+                    rows_count / piece_num : (rows_count + piece_num) / piece_num;
 
-          ZPUTS(insert_pat.str, result_file);
-          ZPUTS(extended_row.str, result_file);
-          total_length= row_length+init_length;
-        }
-#ifndef __WIN__
-        check_io(result_file);
-#endif
-      }
-      else 
-      {
-        ZPUTS(");\n", result_file);
-#ifndef __WIN__
-        check_io(result_file);
-#endif
-      }
-    }
+          DBUG_PRINT("info",("Dump %lu lines per piece.", lines_per_piece));
 
-    /* XML - close table tag and supress regular output */
-    if (extended_insert && row_break)
-      ZPUTS(";\n", result_file);             /* If not empty table */
-#ifndef __WIN__
-    check_io(result_file);
-#endif
-    if (mysql_errno(mysql))
-    {
-      my_snprintf(buf, sizeof(buf),
-                  "%s: Error %d: %s when dumping table %s at row: %ld\n",
-                  my_progname,
-                  mysql_errno(mysql),
-                  mysql_error(mysql),
+          result_file_arr = (ZFILE *)calloc(piece_num + 1, sizeof(ZFILE));
+          if (!result_file_arr) {
+            fprintf(stderr, "Memory alloc fails during gztab dumping.\n");
+            goto err;
+          }
+
+          for (size_t i = 0; i < piece_num; ++i) {
+            result_file_arr[i] = open_sql_zip_file_for_table(db, table, table_type, i);
+          }
+
+          /* harryczhang: before content dumpping */
+          if (z_before_dump_content(&res, result_file_arr, &query_string,
+                  db, result_table, opt_quoted_table, is_blob_compress_in_table, num_fields)) {
+            goto err;
+          }
+
+          /* harryczhang: dumpping rows */
+          if (z_dump_content(
+              res,
+              &row,
+              lines_per_piece,
+              result_table,
+              result_file_arr,
+              &total_length,
+              &init_length,
+              &row_break,
+              &rownr)) {
+            goto err;
+          }
+
+          /* harryczhang: after content dumpping */
+          if (z_post_dump_content(res,
+                  result_file_arr,
+                  buf,
+                  row_break,
+                  rownr,
                   result_table,
-                  rownr);
-      fputs(buf,stderr);
-      error= EX_CONSCHECK;
-      goto err;
-    }
+                  opt_quoted_table)) {
+            goto err;
+          }
+        } else {
+          verbose_msg("Table %s size %d is not large enough to do segmentation.\n",
+              table,
+              largetable_size);
+          goto gztab;
+        }
+      } else {
+        fprintf(stderr, "check table size fails.\n");
+      }
+      /* -- END multiple piece dummpping -- */
+    } else {
+gztab:
+      /* harryczhang: common gztab dummping*/
+      result_file_arr = (ZFILE *)calloc(2, sizeof(ZFILE));
+      if (!result_file_arr) {
+        fprintf(stderr, "Memory alloc fails during gztab dumping.\n");
+        goto err;
+      }
 
-    /* Moved enable keys to before unlock per bug 15977 */
-    if (opt_disable_keys)
-    {
-      ZPRINTF(result_file,"/*!40000 ALTER TABLE %s ENABLE KEYS */;\n",
-              opt_quoted_table);
-#ifndef __WIN__
-      check_io(result_file);
-#endif
-    }
-    if (opt_lock)
-    {
-      ZPUTS("UNLOCK TABLES;\n", result_file);
-#ifndef __WIN__
-      check_io(result_file);
-#endif
-    }
-    if (opt_autocommit)
-    {
-      ZPRINTF(result_file, "commit;\n");
-#ifndef __WIN__
-      check_io(result_file);
-#endif
-    }
-    mysql_free_result(res);
+      ZFILE result_file = open_sql_zip_file_for_table(db, table, "data");
+      if (result_file == NULL)
+      {
+        fprintf(stderr, "Create data file for %s.%s failed\n", db, table);
+  //      exit(1);
+        goto err;
+      }
 
-    z_write_footer(result_file);
-    my_close_zip(result_file);
-  }/*}}}*/
+      result_file_arr[0] = result_file;
+      /* harryczhang: before content dumpping */
+      if (z_before_dump_content(&res, result_file_arr, &query_string,
+              db, result_table, opt_quoted_table, is_blob_compress_in_table, num_fields)) {
+        goto err;
+      }
+
+      total_length= opt_net_buffer_length;                /* Force row break */
+      init_length=(uint) insert_pat.length+4;
+      row_break = 0;
+      rownr = 0;
+      /* harryczhang: dumpping INSERT body here */
+      /* harryczhang: dumpping rows */
+      if (z_dump_content(
+            res,
+            &row,
+            0,
+            result_table,
+            result_file_arr,
+            &total_length,
+            &init_length,
+            &row_break,
+            &rownr)) {
+        goto err;
+      }
+
+      /* harryczhang: after content dumpping */
+      if (z_post_dump_content(res,
+              result_file_arr,
+              buf,
+              row_break,
+              rownr,
+              result_table,
+              opt_quoted_table)) {
+        goto err;
+      }
+    }
+  }/* end: if (gztab) */
   else
   {
     print_comment(md_result_file, 0,
@@ -4444,10 +5031,12 @@ static void dump_table(char *table, char *db)
     mysql_free_result(res);
   }
   dynstr_free(&query_string);
+  free_result_files(&result_file_arr);
   DBUG_VOID_RETURN;
 
 err:
   dynstr_free(&query_string);
+  free_result_files(&result_file_arr);
   maybe_exit(error);
   DBUG_VOID_RETURN;
 } /* dump_table */
@@ -4934,17 +5523,18 @@ static int dump_all_tables_in_db(char *database)
   if (opt_xml)
     print_xml_tag(md_result_file, "", "\n", "database", "name=", database, NullS);
 
-      if(gzpath)
-      {
-	sprintf(tmp_buf, "%s/%s", gzpath, database);
-	convert_dirname(tmp_path, tmp_buf, NullS);
-	if(my_mkdir(tmp_path, 0777, MYF(0)) < 0 && my_errno != 17)
-	{
-	    fprintf(stderr, "Can't create %s", tmp_path);
-	    exit(1);
-	}
-	fprintf(META, "%s\t%s\t%s\t%s\n", database, "NULL", "DATABASE", database);
-      }
+  if(gzpath)
+  {
+    sprintf(tmp_buf, "%s/%s", gzpath, database);
+    convert_dirname(tmp_path, tmp_buf, NullS);
+    if(my_mkdir(tmp_path, 0777, MYF(0)) < 0 && my_errno != 17)
+    {
+      fprintf(stderr, "Can't create %s", tmp_path);
+      DBUG_RETURN(1);
+//      exit(1);
+    }
+    fprintf(META, "%s\t%s\t%s\t%s\n", database, "NULL", "DATABASE", database);
+  }
 
 
 //  if(gzpath)
@@ -5029,11 +5619,10 @@ static int dump_all_tables_in_db(char *database)
   if (opt_routines && mysql_get_server_version(mysql) >= 50009)
   {
     DBUG_PRINT("info", ("Dumping routines for database %s", database));
-
-      if(gzpath)
-	z_dump_routines_for_db(database);
-      else
-	dump_routines_for_db(database);
+    if(gzpath)
+	    z_dump_routines_for_db(database);
+    else
+	    dump_routines_for_db(database);
   }
   if (opt_xml)
   {
@@ -5684,7 +6273,6 @@ static void print_value(FILE *file, MYSQL_RES  *result, MYSQL_ROW row,
   return;                                       /* This shouldn't happen */
 } /* print_value */
 
-
 /*
   SYNOPSIS
 
@@ -5722,11 +6310,11 @@ char check_if_ignore_table(const char *db, const char *table_name, char *table_t
 
   if ( mysql_get_server_version(mysql) >= FIRST_INFORMATION_SCHEMA_VERSION )
   {
-     my_snprintf(buff, sizeof(buff), "select table_name, engine from information_schema.tables where table_schema='%s' and table_name = '%s'", db, table_name);	
+    my_snprintf(buff, sizeof(buff), "select table_name, engine from information_schema.tables where table_schema='%s' and table_name = '%s'", db, table_name);
   }
   else 
   {
-     my_snprintf(buff, sizeof(buff), "show table status like %s",
+    my_snprintf(buff, sizeof(buff), "show table status like %s",
           quote_for_like(table_name, show_name_buff));
   }
   if (mysql_query_with_error_report(mysql, &res, buff))
@@ -6159,7 +6747,7 @@ int main(int argc, char **argv)
   int exit_code;
   char tmp_buf[FN_REFLEN];
   char tmp_path[FN_REFLEN];
-  char file_extend[FN_REFLEN];
+  char file_extend[FN_EXTLEN];
   char filename[FN_REFLEN];
   char meta_path[FN_REFLEN];
 //  char* reg_file_path =0;
@@ -6174,7 +6762,20 @@ int main(int argc, char **argv)
 //  REG_PAIR *rp_list = (REG_PAIR*)malloc(sizeof(REG_PAIR));
 //  int reg_file_line = 0;
 //  int i =0;
-  MY_INIT("mysqldump");
+/* 
+
+  @harryczhang:
+  Call my_thread_global_init before any DBUG_XXX statements. 
+  The later is rely on working thread initialization.
+  */
+  my_thread_global_init();
+
+  /* 
+  @harryczhang:
+  DBUG_PUSH default dbug options. Such as "d:t:o,e:\wokao.out"
+  */
+  DBUG_PUSH(default_dbug_option);
+  MY_INIT("tmysqldump");
 
   cmd_argc = argc;
 
@@ -6189,46 +6790,25 @@ int main(int argc, char **argv)
     exit(exit_code);
   }
 
-  if(opt_replace_into && opt_enable_compress_optimization)
+  if (opt_replace_into && opt_enable_compress_optimization)
   {
 	  fprintf(stderr, "opt_replace_into can't be use with opt_enable_compress_optimization.\n");
-	  exit(1);
+	  free_resources();
+	  exit(EX_MYSQLERR);
   }
 
-  if(opt_xml && opt_enable_compress_optimization)
+  if (opt_xml && opt_enable_compress_optimization)
   {
 	  fprintf(stderr, "opt_xml can't be use with opt_enable_compress_optimization.\n");
-	  exit(1);
+	  free_resources();
+	  exit(EX_MYSQLERR);
   }
 
-  if(path && opt_enable_compress_optimization)
+  if (path && opt_enable_compress_optimization)
   {
 	  fprintf(stderr, "path can't be use with opt_enable_compress_optimization.\n");
-	  exit(1);
-  }
-
-  if(gzpath)
-  {
-    sprintf(tmp_buf, "%s", gzpath);
-    convert_dirname(tmp_path, tmp_buf, NullS);
-    if(my_mkdir(tmp_path, 0777, MYF(0)) < 0)
-    {
-	fprintf(stderr, "Create %s failed\n", tmp_path);
-	exit(1);
-    }
-    sprintf(file_extend, ".BEGIN.sql.gz");
-    if(!(dump_begin_file = my_open_zip(fn_format(filename, "DUMP", tmp_path, file_extend, 4))))
-    {
-	fprintf(stderr, "Create %s failed\n", filename);
-	exit(1);
-    }
-    sprintf(meta_path, "%s/META", tmp_path);
-    if(!(META = my_fopen(meta_path, O_WRONLY, MYF(MY_WME))))
-    {
-	fprintf(stderr, "Create META failed\n");
-	exit(1);
-    }
-    global_buffer = (char*)malloc(sizeof(char)*GBUFF);
+	  free_resources();
+	  exit(EX_MYSQLERR);
   }
 
   /*
@@ -6239,10 +6819,63 @@ int main(int argc, char **argv)
 
   if (log_error_file)
   {
-    if(!(stderror_file= freopen(log_error_file, "a+", stderr)))
+//    if(!(stderror_file= freopen(log_error_file, "a+", stderr)))
+    if(!(stderror_file = my_freopen(log_error_file, "a+", stderr)))
     {
       free_resources();
       exit(EX_MYSQLERR);
+    }
+  }
+
+  if(gzpath)
+  {
+    if (my_snprintf(tmp_buf, sizeof(tmp_buf), "%s", gzpath) >= sizeof(tmp_buf))
+    {
+      fprintf(stderr, "gzpath specified by --gztab is too long.\n");
+      free_resources();
+      exit(EX_MYSQLERR);
+    }
+
+    convert_dirname(tmp_path, tmp_buf, NullS);
+    if(my_mkdir(tmp_path, 0777, MYF(0)) < 0)
+    {
+    	fprintf(stderr, "Create %s failed.\n", tmp_path);
+    	free_resources();
+	    exit(EX_MYSQLERR);
+    }
+
+    if (my_snprintf(file_extend, sizeof(file_extend), "%s", ".BEGIN.sql.gz") >= sizeof(file_extend))
+    {
+      fprintf(stderr, "file_extend's size is not enough for dump_begin_file.\n");
+      free_resources();
+      exit(EX_MYSQLERR);
+    }
+
+    if(!(dump_begin_file = my_open_zip(fn_format(filename, "DUMP", tmp_path, file_extend, 4))))
+    {
+      fprintf(stderr, "Create %s failed.\n", filename);
+      free_resources();
+      exit(EX_MYSQLERR);
+    }
+
+    if (my_snprintf(meta_path, sizeof(meta_path), "%s/META", tmp_path) >= sizeof(meta_path))
+    {
+      fprintf(stderr, "meta_path's size is not enough\n");
+      free_resources();
+      exit(EX_MYSQLERR);
+    }
+//    sprintf(meta_path, "%s/META", tmp_path);
+    if (!(META = my_fopen(meta_path, O_WRONLY, MYF(MY_WME))))
+    {
+      fprintf(stderr, "Create META failed.\n");
+      free_resources();
+      exit(EX_MYSQLERR);
+    }
+//    global_buffer = (char*)malloc(sizeof(char)*GBUFF);
+    global_buffer = (char*)my_malloc(sizeof(char) * GBUFF, MYF(MY_WME));
+    if (!global_buffer)
+    {
+      goto err;
     }
   }
 
@@ -6303,12 +6936,12 @@ int main(int argc, char **argv)
     if(gzpath)
     {
       if(z_add_stop_slave())
-	goto err;
+        goto err;
     }
     else
     {
       if(add_stop_slave())
-	goto err;
+        goto err;
     }
   }
   if (opt_master_data)
@@ -6316,12 +6949,12 @@ int main(int argc, char **argv)
     if(gzpath)
     {
       if(z_do_show_master_status(mysql))
-	goto err;
+        goto err;
     }
     else
     {
       if(do_show_master_status(mysql))
-	goto err;
+        goto err;
     }
   }
   if (opt_slave_data)
@@ -6329,20 +6962,20 @@ int main(int argc, char **argv)
     if(gzpath)
     {
       if(z_do_show_slave_status(mysql))
-	goto err;
+        goto err;
     }
     else
     {
       if(do_show_slave_status(mysql))
-	goto err;
+        goto err;
     }
   }
 
-  if (gzpath)
-  {
-      /* close dump_begin_file  */
-      my_close_zip(dump_begin_file);
-  }
+//  if (gzpath)
+//  {
+//      /* close dump_begin_file  */
+//      my_close_zip(dump_begin_file);
+//  }
 
   if (opt_single_transaction && do_unlock_tables(mysql)) /* unlock but no commit! */
     goto err;
@@ -6381,12 +7014,12 @@ int main(int argc, char **argv)
     if (gzpath)
     {
       if (z_add_slave_statements())
-	goto err;
+        goto err;
     }
     else
     {
       if (add_slave_statements())
-	goto err;
+        goto err;
     }
   }
 
@@ -6414,25 +7047,28 @@ err:
   dbDisconnect(current_host);
   if (!path && !gzpath)
     write_footer(md_result_file);
-  free_resources();
+//  free_resources();
 
-  if (stderror_file)
-    fclose(stderror_file);
+//  if (stderror_file)
+//    my_fclose(stderror_file, MYF(MY_WME));
 
   if(gzpath)
   {
-    sprintf(file_extend, ".END.sql.gz");
-    dump_end_file = my_open_zip(fn_format(filename, "DUMP", tmp_path, file_extend, 4));
-    if(dump_end_file == NULL)
+    if (snprintf(file_extend, sizeof(file_extend), ".END.sql.gz") >= sizeof(file_extend))
     {
-      fprintf(stderr, "Creat %s failed\n", filename);
-      exit(1);
+      fprintf(stderr, "file_extend's size is not large enough for dump_end_file\n");
     }
-    z_write_footer(dump_end_file);
-    my_close_zip(dump_end_file);
-    fclose(META);
-    free(global_buffer);
+    else
+    {
+      dump_end_file = my_open_zip(fn_format(filename, "DUMP", tmp_path, file_extend, 4));
+      if (dump_end_file)
+        z_write_footer(dump_end_file);
+      else
+        fprintf(stderr, "Create dump_end_file error.\n");
+    }
   }
+
+  free_resources();
   return(first_error);
 } /* main */
 
@@ -6453,7 +7089,7 @@ static ZFILE my_open_zip(const char* file_full_name)/*{{{*/
     DBUG_RETURN(NULL);
   }
 #else
-  sprintf(pline, "gzip >%s", file_full_name);
+  snprintf(pline, sizeof(pline), "gzip >%s", file_full_name);
   res = popen(pline, "w");
   if(!res)
   {
@@ -6475,17 +7111,44 @@ static ZFILE open_sql_zip_file_for_table(const char* db, const char* table, cons
 {
     ZFILE res;
     char for_meta_fn[FN_REFLEN];
-    char filename[FN_REFLEN], tmp_path[FN_REFLEN], path_add_db[FN_REFLEN], file_extend[FN_REFLEN];
+    char file_path[FN_REFLEN];
+    char tmp_path[FN_REFLEN];
+    char path_add_db[FN_REFLEN];
+    char file_extend[FN_EXTLEN];
 
     DBUG_ENTER("open_sql_zip_file_for_table");
     convert_dirname(tmp_path, gzpath, NullS);
-    sprintf(path_add_db, "%s/%s", tmp_path, db);
-    sprintf(file_extend, ".%s.sql.gz", type);
-    res = my_open_zip(fn_format(filename, table, path_add_db, file_extend, 4));
-    sprintf(for_meta_fn, "%s/%s.%s.sql.gz", db, table, type);
+    my_snprintf(path_add_db, sizeof(path_add_db), "%s/%s", tmp_path, db);
+    my_snprintf(file_extend, sizeof(file_extend), ".%s.sql.gz", type);
+    res = my_open_zip(fn_format(file_path, table, path_add_db, file_extend, 4));
+    snprintf(for_meta_fn, sizeof(for_meta_fn), "%s/%s.%s.sql.gz", db, table, type);
     fprintf(META, "%s\t%s\t%s\t%s\n", db, table, type, for_meta_fn);
     DBUG_RETURN(res);
 }/*}}}*/
+
+/* harryczhang: multiple splitted pieces */
+static ZFILE open_sql_zip_file_for_table(const char *db,
+    const char *table,
+    const char *type,
+    size_t piece_id)
+{
+    ZFILE res;
+    char for_meta_fn[FN_REFLEN];
+    char file_path[FN_REFLEN];
+    char tmp_path[FN_REFLEN];
+    char path_add_db[FN_REFLEN];
+    char file_extend[FN_EXTLEN];
+
+    DBUG_ENTER("open_sql_zip_file_for_table");
+    convert_dirname(tmp_path, gzpath, NullS);
+    my_snprintf(path_add_db, sizeof(path_add_db), "%s/%s", tmp_path, db);
+    my_snprintf(file_extend, sizeof(file_extend), ".%s.sql.%ud.gz", type, piece_id);
+    res = my_open_zip(fn_format(file_path, table, path_add_db, file_extend, 4));
+    snprintf(for_meta_fn, sizeof(for_meta_fn), "%s/%s.%s", db, table, file_extend);
+    fprintf(META, "%s\t%s\t%s\t%s\n", db, table, type, for_meta_fn);
+    DBUG_RETURN(res);
+}
+
 static int my_gzputc(int c, gzFile file)/*{{{*/
 {
   return gzputc(file, c);
@@ -6522,7 +7185,7 @@ int my_gzprintf(gzFile file, const char* format, ...) {/*{{{*/
     return gzwrite(file, global_buffer, (unsigned)len);
 }/*}}}*/
 
-static void z_write_header(ZFILE sql_file, char *db_name)/*{{{*/
+static void z_write_header(ZFILE sql_file, const char *db_name)/*{{{*/
 {
   if (!opt_compact)
   {
@@ -6560,9 +7223,7 @@ static void z_write_header(ZFILE sql_file, char *db_name)/*{{{*/
             "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n",
             path?"":"NO_AUTO_VALUE_ON_ZERO",compatible_mode_normal_str[0]==0?"":",",
             compatible_mode_normal_str);
-#ifndef __WIN__
     check_io(sql_file);
-#endif
   }
 } /* z_write_header *//*}}}*/
 static void z_print_comment(ZFILE sql_file, my_bool is_error, const char *format, ...)/*{{{*/
@@ -6579,9 +7240,7 @@ static void z_print_comment(ZFILE sql_file, my_bool is_error, const char *format
   va_end(args);
 
   ZPUTS(comment_buff, sql_file);
-#ifndef __WIN__
   check_io(sql_file);
-#endif
   return;
 }/*}}}*/
 static void z_write_footer(ZFILE sql_file)/*{{{*/
@@ -6613,18 +7272,17 @@ static void z_write_footer(ZFILE sql_file)/*{{{*/
     else
       z_print_comment(sql_file, 0, "-- Dump completed\n");
 
-#ifndef __WIN__
     check_io(sql_file);
-#endif
   }
 } /* z_write_footer *//*}}}*/
 static int z_add_stop_slave(void)/*{{{*/
 {
+  DBUG_ENTER("z_add_stop_slave");
   if (opt_comments)
     ZPRINTF(dump_begin_file,
             "\n--\n-- stop slave statement to make a recovery dump)\n--\n\n");
   ZPRINTF(dump_begin_file, "STOP SLAVE;\n");
-  return(0);
+  DBUG_RETURN(0);
 }/*}}}*/
 static int z_do_show_master_status(MYSQL *mysql_con)/*{{{*/
 {
@@ -6632,9 +7290,10 @@ static int z_do_show_master_status(MYSQL *mysql_con)/*{{{*/
   MYSQL_RES *master;
   const char *comment_prefix=
     (opt_master_data == MYSQL_OPT_MASTER_DATA_COMMENTED_SQL) ? "-- " : "";
+  DBUG_ENTER("z_do_show_master_status");
   if (mysql_query_with_error_report(mysql_con, &master, "SHOW MASTER STATUS"))
   {
-    return 1;
+    DBUG_RETURN(1);
   }
   else
   {
@@ -6648,9 +7307,7 @@ static int z_do_show_master_status(MYSQL *mysql_con)/*{{{*/
       ZPRINTF(dump_begin_file,
               "%sCHANGE MASTER TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
               comment_prefix, row[0], row[1]);
-#ifndef __WIN__
       check_io(dump_begin_file);
-#endif
     }
     else if (!ignore_errors)
     {
@@ -6659,17 +7316,18 @@ static int z_do_show_master_status(MYSQL *mysql_con)/*{{{*/
                       MYF(0));
       mysql_free_result(master);
       maybe_exit(EX_MYSQLERR);
-      return 1;
+      DBUG_RETURN(1);
     }
     mysql_free_result(master);
   }
-  return 0;
+  DBUG_RETURN(0);
 }/*}}}*/
 static int z_do_show_slave_status(MYSQL *mysql_con)/*{{{*/
 {
   MYSQL_RES *slave = NULL;
   const char *comment_prefix=
     (opt_slave_data == MYSQL_OPT_SLAVE_DATA_COMMENTED_SQL) ? "-- " : "";
+  DBUG_ENTER("z_do_show_slave_status");
   if (mysql_query_with_error_report(mysql_con, &slave, "SHOW SLAVE STATUS"))
   {
     if (!ignore_errors)
@@ -6678,7 +7336,7 @@ static int z_do_show_slave_status(MYSQL *mysql_con)/*{{{*/
       my_printf_error(0, "Error: Slave not set up", MYF(0));
     }
     mysql_free_result(slave);
-    return 1;
+    DBUG_RETURN(1);
   }
   else
   {
@@ -6703,21 +7361,20 @@ static int z_do_show_slave_status(MYSQL *mysql_con)/*{{{*/
       ZPRINTF(dump_begin_file,
               "MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n", row[9], row[21]);
 
-#ifndef __WIN__
       check_io(dump_begin_file);
-#endif
     }
     mysql_free_result(slave);
   }
-  return 0;
+  DBUG_RETURN(0);
 }/*}}}*/
 static int z_add_slave_statements(void)
 {
+  DBUG_ENTER("z_add_slave_statements");
   if (opt_comments)
     ZPRINTF(dump_end_file,
             "\n--\n-- start slave statement to make a recovery dump)\n--\n\n");
   ZPRINTF(dump_end_file, "START SLAVE;\n");
-  return(0);
+  DBUG_RETURN(0);
 }
 
 static uint z_dump_events_for_db(char *db)/*{{{*/
@@ -6748,7 +7405,8 @@ static uint z_dump_events_for_db(char *db)/*{{{*/
   if(sql_file == NULL)
   {
     fprintf(stderr, "Creat %s failed\n", filename);
-    exit(1);
+//    exit(1);
+    DBUG_RETURN(1);
   }
   sprintf(for_meta_fn, "events.%s.sql.gz",db);
   fprintf(META, "%s\t%s\t%s\t%s\n", db, "NULL", "events", for_meta_fn);
@@ -7004,9 +7662,9 @@ static void z_restore_cs_variables(ZFILE sql_file,
           (const char *) delimiter);
 }
 static int z_restore_db_collation(ZFILE sql_file,
-                                const char *db_name,
-                                const char *delimiter,
-                                const char *db_cl_name)
+                                  const char *db_name,
+                                  const char *delimiter,
+                                  const char *db_cl_name)
 {
   char quoted_db_buf[NAME_LEN * 2 + 3];
   char *quoted_db_name= quote_name(db_name, quoted_db_buf, FALSE);
@@ -7288,10 +7946,9 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
           write_to_file = false;
 
       my_snprintf(buff, sizeof(buff), "show create table %s", result_table);
-
-      if (switch_character_set_results(mysql, "binary") ||
-          mysql_query_with_error_report(mysql, &result, buff) ||
-          switch_character_set_results(mysql, default_charset))
+      if(switch_character_set_results(mysql,"binary")||
+          mysql_query_with_error_report(mysql,&result,buff)||
+          switch_character_set_results(mysql,default_charset))
         DBUG_RETURN(0);
 
       if (write_to_file)
@@ -7300,7 +7957,8 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
           if(sql_file == NULL)
           {
               fprintf(stderr, "Create schema file for %s.%s failed\n", db, table);
-              exit(1);
+              DBUG_RETURN(0);
+//              exit(1);
           }
           z_write_header(sql_file, db);
 
@@ -7324,9 +7982,7 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
               */
               ZPRINTF(sql_file, "DROP TABLE IF EXISTS %s;\n",
                   opt_quoted_table);
-#ifndef __WIN__
               check_io(sql_file);
-#endif
           }
       }
 
@@ -7387,9 +8043,7 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
 
             ZPRINTF(sql_file, "/*!50001 DROP VIEW IF EXISTS %s*/;\n",
                     opt_quoted_table);
-#ifndef __WIN__
             check_io(sql_file);
-#endif
           }
 
           ZPRINTF(sql_file,
@@ -7426,9 +8080,7 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
                   "\n) ENGINE=MyISAM */;\n"
                   "SET character_set_client = @saved_cs_client;\n");
 
-#ifndef __WIN__
           check_io(sql_file);
-#endif
         }
 
         mysql_free_result(result);
@@ -7449,16 +8101,14 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
               row[1]);
 
 
-#ifndef __WIN__
         check_io(sql_file);
-#endif
         ZPUTS("\n", sql_file);
         z_write_footer(sql_file);
         my_close_zip(sql_file);
       }
       if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
       {
-          /* 如果表中存在有blob/text字段，有compressed属性 */
+          /* 濡傛灉琛ㄤ腑瀛樺湪鏈塨lob/text瀛楁锛屾湁compressed灞炴� */
           *is_blob_compress_in_table = TRUE;
       }
       mysql_free_result(result);
@@ -7517,7 +8167,8 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
   {
      verbose_msg("%s: Warning: Can't set SQL_QUOTE_SHOW_CREATE option (%s)\n",
 		  my_progname, mysql_error(mysql));
-     exit(1);
+//     exit(1);
+     DBUG_RETURN(1);
   }
   
   
@@ -7536,9 +8187,7 @@ static void z_print_blob_as_hex(ZFILE output_file, const char *str, ulong len)
     const char *ptr= str, *end= ptr + len;
     for (; ptr < end ; ptr++)
       ZPRINTF(output_file, "%02X", *((uchar *)ptr));
-#ifndef __WIN__
     check_io(output_file);
-#endif
 }
 static void z_unescape(ZFILE file,char *pos,uint length)
 {
@@ -7551,9 +8200,7 @@ static void z_unescape(ZFILE file,char *pos,uint length)
   ZPUTC('\'', file);
   ZPUTS(tmp, file);
   ZPUTC('\'', file);
-#ifndef __WIN__
   check_io(file);
-#endif
   my_free(tmp);
   DBUG_VOID_RETURN;
 } /* unescape */
@@ -7725,7 +8372,8 @@ static my_bool z_get_view_structure(char *table, char* db)/*{{{*/
   if(sql_file == NULL)
   {
     fprintf(stderr, "Creat view file for %s.%s failed\n", db, table);
-    exit(1);
+//    exit(1);
+    DBUG_RETURN(1);
   }
   z_write_header(sql_file, db);
   z_print_comment(sql_file, 0,
@@ -7741,11 +8389,8 @@ static my_bool z_get_view_structure(char *table, char* db)/*{{{*/
   {
     ZPRINTF(sql_file, "/*!50001 DROP VIEW IF EXISTS %s*/;\n",
             opt_quoted_table);
-#ifndef __WIN__
     check_io(sql_file);
-#endif
   }
-
 
   my_snprintf(query, sizeof(query),
               "SELECT CHECK_OPTION, DEFINER, SECURITY_TYPE, "
@@ -7761,9 +8406,7 @@ static my_bool z_get_view_structure(char *table, char* db)/*{{{*/
      */
     row= mysql_fetch_row(table_res);
     ZPRINTF(sql_file, "/*!50001 %s */;\n", row[1]);
-#ifndef __WIN__
     check_io(sql_file);
-#endif
     mysql_free_result(table_res);
   }
   else
@@ -7860,9 +8503,7 @@ static my_bool z_get_view_structure(char *table, char* db)/*{{{*/
             (const char *) row[4],
             (const char *) ds_view.str);
 
-#ifndef __WIN__
     check_io(sql_file);
-#endif
     mysql_free_result(table_res);
     dynstr_free(&ds_view);
   }
