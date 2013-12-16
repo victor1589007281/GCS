@@ -7166,8 +7166,8 @@ static uint z_dump_events_for_db(char *db)/*{{{*/
   if(sql_file == NULL)
   {
     fprintf(stderr, "Creat %s failed\n", filename);
-//    exit(1);
-    DBUG_RETURN(1);
+    exit(1);
+//    DBUG_RETURN(1);
   }
   sprintf(for_meta_fn, "events.%s.sql.gz",db);
   fprintf(META, "%s\t%s\t%s\t%s\n", db, "NULL", "events", for_meta_fn);
@@ -7718,8 +7718,8 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
           if(sql_file == NULL)
           {
               fprintf(stderr, "Create schema file for %s.%s failed\n", db, table);
-              DBUG_RETURN(0);
-//              exit(1);
+//              DBUG_RETURN(0);
+              exit(1);
           }
           z_write_header(sql_file, db);
 
@@ -7927,9 +7927,9 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
   else
   {
      verbose_msg("%s: Warning: Can't set SQL_QUOTE_SHOW_CREATE option (%s)\n",
-		  my_progname, mysql_error(mysql));
-//     exit(1);
-     DBUG_RETURN(1);
+		 my_progname, mysql_error(mysql));
+     exit(1);
+//     DBUG_RETURN(1);
   }
   
   
@@ -8133,8 +8133,8 @@ static my_bool z_get_view_structure(char *table, char* db)/*{{{*/
   if(sql_file == NULL)
   {
     fprintf(stderr, "Creat view file for %s.%s failed\n", db, table);
-//    exit(1);
-    DBUG_RETURN(1);
+    exit(1);
+//    DBUG_RETURN(1);
   }
   z_write_header(sql_file, db);
   z_print_comment(sql_file, 0,
