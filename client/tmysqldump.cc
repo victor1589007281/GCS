@@ -3761,7 +3761,6 @@ static my_bool z_post_dump_content(MYSQL_RES *res,
     const char *opt_quoted_table,
     ZFILE result_file) {
 
-  size_t i = 0;
   DBUG_ENTER("z_post_dump_content");
   /* XML - close table tag and supress regular output */
   if (extended_insert && row_break)
@@ -3814,7 +3813,6 @@ static my_bool z_before_dump_content(
     my_bool is_blob_compress_in_table,
     uint num_fields,
     ZFILE result_file) {
-  int i = 0;
   DBUG_ENTER("z_before_dump_content");
 
   z_write_header(result_file, db);
@@ -4197,8 +4195,8 @@ static void dump_table(char *table, char *db)
   DYNAMIC_STRING query_string;
   char table_type[NAME_LEN];
   char *result_table, table_buff2[NAME_LEN*2+3], *opt_quoted_table;
-  int error= 0;
-  ulong         rownr, row_break, total_length, init_length;
+  int error = 0;
+  ulong         rownr = 0, row_break = 0, total_length = 0, init_length = 0;
   uint num_fields;
   MYSQL_RES     *res;
   MYSQL_FIELD   *field;
