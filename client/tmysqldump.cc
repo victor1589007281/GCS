@@ -4366,14 +4366,10 @@ static void dump_table(char *table, char *db)
     dynstr_append_checked(&query_string, result_table);
 
     if (where) {
-  //    z_print_comment(result_file, 0, "-- WHERE:  %s\n", where);
-
       dynstr_append_checked(&query_string, " WHERE ");
       dynstr_append_checked(&query_string, where);
     }
     if (order_by) {
-  //    z_print_comment(result_file, 0, "-- ORDER BY:  %s\n", order_by);
-
       dynstr_append_checked(&query_string, " ORDER BY ");
       dynstr_append_checked(&query_string, order_by);
     }
@@ -4397,6 +4393,7 @@ static void dump_table(char *table, char *db)
     if (mysql_num_fields(res) != num_fields) {
       fprintf(stderr,"%s: Error in field count for table: %s !  Aborting.\n",
               my_progname, result_table);
+      error= EX_CONSCHECK;
       goto err;
     }
 
@@ -6877,7 +6874,7 @@ static ZFILE open_sql_zip_file_for_table(const char* db, const char* table, cons
     char file_path[FN_REFLEN];
     char tmp_path[FN_REFLEN];
     char path_add_db[FN_REFLEN];
-    char file_extend[FN_EXTLEN];
+    char file_extend[FN_REFLEN];
 
     DBUG_ENTER("open_sql_zip_file_for_table");
     convert_dirname(tmp_path, gzpath, NullS);
@@ -6900,7 +6897,7 @@ static ZFILE open_sql_zip_file_for_table(const char *db,
     char file_path[FN_REFLEN];
     char tmp_path[FN_REFLEN];
     char path_add_db[FN_REFLEN];
-    char file_extend[FN_EXTLEN];
+    char file_extend[FN_REFLEN];
 
     DBUG_ENTER("open_sql_zip_file_for_table");
     convert_dirname(tmp_path, gzpath, NullS);
@@ -7871,7 +7868,7 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
       }
       if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
       {
-          /* 濡傛灉琛ㄤ腑瀛樺湪鏈塨lob/text瀛楁锛屾湁compressed灞炴� */
+          /* 如果表中存在有blob/text字段，有compressed属性 */
           *is_blob_compress_in_table = TRUE;
       }
       mysql_free_result(result);
