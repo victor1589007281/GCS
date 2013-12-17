@@ -672,7 +672,7 @@ static struct my_option my_long_options[] =
    &split_count, 
    0, 
    GET_UINT, 
-   REQUIRED_ARG, 1, 0, 0, 0, 0, 0},
+   REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   /* harryczhang */
 
   {"tables", OPT_TABLES, "Overrides option --databases (-B).",
