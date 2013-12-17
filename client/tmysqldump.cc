@@ -151,6 +151,10 @@ static char  *opt_password=0,*current_user=0,
 
 /* harryczhang: Variable to control the scale of recovery concurrency. */
 static uint split_count = 0; 
+
+/* harryczhang: Only if actual piece num is gt 1, this switch is ON. */
+static my_bool is_multi_piece = 0;
+
 /* harryczhang: use my_snprintf instead of sprintf */
 /*#define my_snprintf(buf, n, fmt, arg) \
     do { \
@@ -3708,7 +3712,7 @@ static char *alloc_query_str(ulong size)
 
 /*
  * harryczhang: utils for parse str of size.
- * for example: 10G/10g/10GB ==> return 10*2^30 */
+ * for example: 10G/10g ==> return 10*2^30 */
 static my_ulonglong get_bytes_by_str(const char *src) {
   if (!src) {
     return 0;
@@ -3750,7 +3754,6 @@ static my_ulonglong get_bytes_by_str(const char *src) {
   }
 
   return err_ret;
-
 }
 
 static my_bool z_post_dump_content(MYSQL_RES *res,
@@ -3780,7 +3783,7 @@ static my_bool z_post_dump_content(MYSQL_RES *res,
   }
 
   /* Moved enable keys to before unlock per bug 15977 */
-  if (opt_disable_keys)
+  if (opt_disable_keys && is_multi_piece)
   {
     ZPRINTF(result_file,"/*!40000 ALTER TABLE %s ENABLE KEYS */;\n",
             opt_quoted_table);
@@ -3798,10 +3801,7 @@ static my_bool z_post_dump_content(MYSQL_RES *res,
   }
 
   z_write_footer(result_file);
-  /* harryczhang: dont close zip file here, close all zip(s) on outer caller control. */
-  /* my_close_zip(result_file); */
 
-//  mysql_free_result(res);
   DBUG_RETURN(0);
 }
 
@@ -3844,7 +3844,7 @@ static my_bool z_before_dump_content(
     check_io(result_file);
   }
   /* Moved disable keys to after lock per bug 15977 */
-  if (opt_disable_keys)
+  if (opt_disable_keys && is_multi_piece)
   {
     ZPRINTF(result_file, "/*!40000 ALTER TABLE %s DISABLE KEYS */;\n",
       opt_quoted_table);
@@ -3864,8 +3864,8 @@ static my_bool z_dump_content(
     MYSQL_RES *res,
     MYSQL_ROW *mysql_row,
     const char *result_table,
+    ulong init_length,
     ulong *total_length,
-    ulong *init_length,
     ulong *row_break,
     ZFILE result_file) {
 
@@ -3873,10 +3873,6 @@ static my_bool z_dump_content(
   MYSQL_ROW row = *mysql_row;
 
   DBUG_ENTER("z_dump_content");
-
-  *total_length= opt_net_buffer_length;                /* Force row break */
-  *init_length=(uint) insert_pat.length+4;
-  *row_break = 0;
 
   uint i;
   ulong *lengths= mysql_fetch_lengths(res);
@@ -4041,13 +4037,13 @@ static my_bool z_dump_content(
     }
     else
     {
-      if (row_break)
+      if (*row_break == 1)
         ZPUTS(";\n", result_file);
-      *row_break = 1;                          /* This is first row */
+      *row_break = 1;                      /* This is first row */
 
       ZPUTS(insert_pat.str, result_file);
       ZPUTS(extended_row.str, result_file);
-      *total_length= row_length+*init_length;
+      *total_length = row_length + init_length;
     }
     check_io(result_file);
   }
@@ -4196,7 +4192,10 @@ static void dump_table(char *table, char *db)
   char table_type[NAME_LEN];
   char *result_table, table_buff2[NAME_LEN*2+3], *opt_quoted_table;
   int error = 0;
-  ulong         rownr = 0, row_break = 0, total_length = 0, init_length = 0;
+  ulong rownr = 0;
+  ulong row_break = 0;
+  ulong total_length = opt_net_buffer_length;
+  ulong init_length = (ulong) insert_pat.length + 4;
   uint num_fields;
   MYSQL_RES     *res;
   MYSQL_FIELD   *field;
@@ -4266,8 +4265,8 @@ static void dump_table(char *table, char *db)
     DBUG_VOID_RETURN;
   }
 
-  result_table= quote_name(table,table_buff, 1);
-  opt_quoted_table= quote_name(table, table_buff2, 0);
+  result_table = quote_name(table,table_buff, 1);
+  opt_quoted_table = quote_name(table, table_buff2, 0);
 
   verbose_msg("-- Sending SELECT query...\n");
 
@@ -4351,9 +4350,11 @@ static void dump_table(char *table, char *db)
     }
 
     if (my_total_length(my_table_status.data_length, my_table_status.index_length) >= largetable_threshold
+        /* harryczhang: table_rows >= piece_num promise lines_per_piece is gt 0 */
         && my_table_status.table_rows >= piece_num) {
       /* line_per_piece must be gt OR eq 0 */
       lines_per_piece = my_table_status.table_rows / piece_num;
+      is_multi_piece = 1;
     }
 
     DBUG_PRINT("info",("Dump %lu lines per piece.", lines_per_piece));
@@ -4399,11 +4400,10 @@ static void dump_table(char *table, char *db)
       goto err;
     }
 
-    rownr = 0;
     while ((row = mysql_fetch_row(res))) {
       if (rownr % lines_per_piece == 0) {
         if (result_file) {
-          /* harryczhang: after content dumpping */
+          /* harryczhang: after content dumpping, close previous zfile handler. */
           if (z_post_dump_content(res,
                   buf,
                   row_break,
@@ -4417,7 +4417,13 @@ static void dump_table(char *table, char *db)
           result_file = 0;
         }
 
-        result_file = open_sql_zip_file_for_table(db, table, "data", idx_counter++);
+        /* harrczhang: open next zfile handler. */
+        if (is_multi_piece) {
+          result_file = open_sql_zip_file_for_table(db, table, "data", idx_counter++);
+        } else {
+          result_file = open_sql_zip_file_for_table(db, table, "data");
+        }
+
         /* harryczhang: before content dumpping */
         if (z_before_dump_content(
               db,
@@ -4435,8 +4441,8 @@ static void dump_table(char *table, char *db)
             res,
             &row,
             result_table,
+            init_length,
             &total_length,
-            &init_length,
             &row_break,
             result_file)) {
         goto err;
@@ -4808,7 +4814,6 @@ static void dump_table(char *table, char *db)
     mysql_free_result(res);
   }
   dynstr_free(&query_string);
-//  free_result_files(&result_file_arr);
   if (result_file) {
     my_close_zip(result_file);
   }
@@ -4816,7 +4821,6 @@ static void dump_table(char *table, char *db)
 
 err:
   dynstr_free(&query_string);
-//  free_result_files(&result_file_arr);
   if (result_file) {
     my_close_zip(result_file);
   }
