@@ -152,9 +152,6 @@ static char  *opt_password=0,*current_user=0,
 /* harryczhang: Variable to control the scale of recovery concurrency. */
 static uint split_count = 0; 
 
-/* harryczhang: Only if actual piece num is gt 1, this switch is ON. */
-static my_bool is_multi_piece = 0;
-
 /* harryczhang: use my_snprintf instead of sprintf */
 /*#define my_snprintf(buf, n, fmt, arg) \
     do { \
@@ -3762,6 +3759,7 @@ static my_bool z_post_dump_content(MYSQL_RES *res,
     ulong rownr,
     const char *result_table,
     const char *opt_quoted_table,
+    my_bool is_multi_piece,
     ZFILE result_file) {
 
   DBUG_ENTER("z_post_dump_content");
@@ -3812,6 +3810,7 @@ static my_bool z_before_dump_content(
     const char *opt_quoted_table,
     my_bool is_blob_compress_in_table,
     uint num_fields,
+    my_bool is_multi_piece,
     ZFILE result_file) {
   DBUG_ENTER("z_before_dump_content");
 
@@ -4203,6 +4202,9 @@ static void dump_table(char *table, char *db)
   my_bool    is_blob_compress_in_table =FALSE;
   size_t idx_counter = 0;
   ZFILE result_file = 0;
+  /* harryczhang: Only if actual piece num is gt 1, this switch is ON. */
+  my_bool is_multi_piece = 0;
+
   DBUG_ENTER("dump_table");
 
   /*
@@ -4407,6 +4409,7 @@ static void dump_table(char *table, char *db)
                   rownr,
                   result_table,
                   opt_quoted_table,
+                  is_multi_piece,
                   result_file)) {
             goto err;
           }
@@ -4428,6 +4431,7 @@ static void dump_table(char *table, char *db)
               opt_quoted_table,
               is_blob_compress_in_table,
               num_fields,
+              is_multi_piece,
               result_file)) {
           goto err;
         }
@@ -4456,6 +4460,7 @@ static void dump_table(char *table, char *db)
               rownr,
               result_table,
               opt_quoted_table,
+              is_multi_piece,
               result_file)) {
         goto err;
       }
