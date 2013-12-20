@@ -6907,7 +6907,7 @@ static ZFILE open_sql_zip_file_for_table(const char *db,
     DBUG_ENTER("open_sql_zip_file_for_table");
     convert_dirname(tmp_path, gzpath, NullS);
     my_snprintf(path_add_db, sizeof(path_add_db), "%s/%s", tmp_path, db);
-    my_snprintf(file_extend, sizeof(file_extend), ".%s.sql.%d.gz", type, piece_id);
+    my_snprintf(file_extend, sizeof(file_extend), ".%d.%s.sql.gz", piece_id, type);
     res = my_open_zip(fn_format(file_path, table, path_add_db, file_extend, 4));
     snprintf(for_meta_fn, sizeof(for_meta_fn), "%s/%s%s", db, table, file_extend);
     fprintf(META, "%s\t%s\t%s\t%s\n", db, table, type, for_meta_fn);
