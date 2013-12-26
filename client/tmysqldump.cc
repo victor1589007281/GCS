@@ -147,6 +147,9 @@ static char  *opt_password=0,*current_user=0,
              /* harryczhang: Threshold size of tables which need to be segmented into smaller pieces for concurrency recovery. */
              *largetable_size = 0,
 
+             /* harryczhang: Setup size for every piece. */
+             *piece_size = 0,
+
              *log_error_file= NULL;
 
 /* harryczhang: Variable to control the scale of recovery concurrency. */
@@ -167,6 +170,7 @@ typedef struct {
   my_ulonglong table_rows;
   my_ulonglong data_length;
   my_ulonglong index_length;
+  my_ulonglong avg_row_length;
 //  my_ulonglong (*total_length) (my_ulonglong data_length, my_ulonglong index_length);
 } st_my_table_status;
 
@@ -657,8 +661,8 @@ static struct my_option my_long_options[] =
    0,                                       /* no short version */
                                             /* comment */
    "If a table's size is greater or equal than this option value, "
-   "as well as gztab is turned ON, then segment this table into X pieces."
-   "X is an unsigned integer, please refer to 'split_size' option.",
+   "as well as gztab is turned ON, then segment this table into X pieces OR make multiple pieces in certain size. "
+   "Please refer to --split_count OR --piece_size option respectively.",
    &largetable_size,                        /* opt variable value */
    &largetable_size,                        /* the user def. max variable value */ 
    0, 
@@ -667,13 +671,25 @@ static struct my_option my_long_options[] =
    0, 0, 0, 0, 0, 0},
   {"split_count",
    0,
-   "If a table due to be segmented into X pieces, X is assigned by this opt value."
+   "If a table due to be segmented into X pieces, X is assigned by this opt value. "
    "This option is valid when gztab & largetable_size are both provided.",
    &split_count, 
    &split_count, 
    0, 
    GET_UINT, 
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+   {"piece_size",                             /* option name */
+      0,                                       /* no short version */
+                                               /* comment */
+      "If gztab is turned ON, this option will control every piece size. "
+      "NOTE: You can't specify --split_count and --piece_size at the same time. "
+      "They are exclusive.",
+      &piece_size,                        /* opt variable value */
+      &piece_size,                        /* the user def. max variable value */
+      0,
+      GET_STR,                                 /* string type */
+      REQUIRED_ARG,                            /* required */
+      0, 0, 0, 0, 0, 0},
   /* harryczhang */
 
   {"tables", OPT_TABLES, "Overrides option --databases (-B).",
@@ -789,7 +805,7 @@ static void print_version(void)
 {
   printf("%s  Ver %s Distrib %s, for %s (%s)\n",my_progname,DUMP_VERSION,
          MYSQL_SERVER_VERSION,SYSTEM_TYPE,MACHINE_TYPE);
-  printf("%s %s Ver %s\n", my_progname, "with GZTAB support", "2.0.4");
+  printf("%s %s Ver %s\n", my_progname, "with GZTAB support since v2.0.4, and latest version support recovery big table in concurrent mode.", "2.0.5");
 } /* print_version */
 
 
@@ -1180,28 +1196,38 @@ static int get_options(int *argc, char ***argv)
   /* harryczhang: --largetable_size and --split_count must be specified together if only --gztab option is valid. */
   if (gzpath) {
       opt_notspcs = 1;
-      if ((!largetable_size && split_count) || (largetable_size && !split_count)) {
-        fprintf(stderr, "%s: --largetable_size and --split_count must be specified together.\n", my_progname);
+      if (largetable_size > 0 && !split_count && !piece_size) {
+        fprintf(stderr, "%s: --largetable_size must be used with --split_count or --piece_size option .\n", my_progname);
         return(EX_USAGE);
       }
-  } else if (largetable_size || split_count) {
-      fprintf(stderr, "%s: --largetable_size and --split_count must be used with valid --gztab option.\n", my_progname);
+
+      if (split_count > 0 && piece_size > 0) {
+        fprintf(stderr, "%s: --split_count and --piece_size is exclusive.\n", my_progname);
+        return(EX_USAGE);
+      }
+
+      if (!largetable_size && (split_count > 0 || piece_size > 0)) {
+        fprintf(stderr, "%s: --largetable_size must be valid if you want to use --split_count or --piece_size option.\n", my_progname);
+        return(EX_USAGE);
+      }
+  } else if (largetable_size || split_count || piece_size) {
+      fprintf(stderr, "%s: --largetable_size and --split_count or --piece_size must be used with --gztab option turned on.\n", my_progname);
       return(EX_USAGE);
   }
 
   /* harryczhang: cant be used with --no-data option */
-  if ((split_count || largetable_size) && opt_no_data) {
-    fprintf(stderr, "%s: --largetable_size or --split_count cant be used with --no-data.\n", my_progname);
+  if ((split_count || largetable_size || piece_size) && opt_no_data) {
+    fprintf(stderr, "%s: --largetable_size or --split_count or --piece_size cant be used with --no-data.\n", my_progname);
     return(EX_USAGE);
   }
   
   /* harryczhang: if --add-locks is on, */
-  if ((split_count || largetable_size) && opt_lock) {
-  	fprintf(stderr, "%s: --largetable_size or --split_count cant be used with --add-locks.\n", my_progname);
+  if ((split_count || largetable_size || piece_size) && opt_lock) {
+  	fprintf(stderr, "%s: --largetable_size or --split_count or --piece_size can't be used with --add-locks.\n", my_progname);
     return(EX_USAGE);
   }
 
-  if ((opt_databases || opt_alldbs ||gzpath) && path)
+  if ((opt_databases || opt_alldbs || gzpath) && path)
   {
     fprintf(stderr,
             "%s: --databases or --all-databases or --gztab can't be used with --tab.\n",
@@ -4094,7 +4120,7 @@ static my_bool check_table_size(st_my_table_status *table_status,
   DBUG_ASSERT(2 * sizeof(table_name) < sizeof(show_name_buff));
 
   if (mysql_get_server_version(mysql) >= FIRST_INFORMATION_SCHEMA_VERSION) {
-    if (my_snprintf(buff, sizeof(buff), "select table_rows, data_length, index_length \
+    if (my_snprintf(buff, sizeof(buff), "select table_rows, data_length, index_length, avg_row_length \
         from information_schema.tables where table_schema='%s' and table_name = '%s'",
         db_name,
         table_name) >= sizeof(buff)) {
@@ -4146,13 +4172,15 @@ static my_bool check_table_size(st_my_table_status *table_status,
             Comment:
     */
     table_status->table_rows = (my_ulonglong)atol(row[4]);
+    table_status->avg_row_length = (my_ulonglong)atol(row[5]);
     table_status->data_length = (my_ulonglong)atol(row[6]);
     table_status->index_length = (my_ulonglong)atol(row[8]);
-  } else if (field_num == 3) {
+  } else if (field_num == 4) {
     /* table_rows, data_length, index_length */
     table_status->table_rows = (my_ulonglong)atol(row[0]);
     table_status->data_length = (my_ulonglong)atol(row[1]);
     table_status->index_length = (my_ulonglong)atol(row[2]);
+    table_status->avg_row_length = (my_ulonglong)atol(row[3]);
   } else {
     fprintf(stderr,
                 "Error: Res field count is not matched with sql statement for table %s (%s)\n",
@@ -4341,25 +4369,40 @@ static void dump_table(char *table, char *db)
     my_ulonglong lines_per_piece = ULONGLONG_MAX;
     size_t piece_num = 1;
     my_ulonglong largetable_threshold = get_bytes_by_str(largetable_size);
-    if (largetable_threshold > 0 && split_count > 0) {
-      piece_num = split_count;
-    }
+    my_ulonglong psize = 0;
+    if (largetable_threshold > 0) {
+      if (split_count > 0) {
+        piece_num = split_count;
+      } else if (piece_size) {
+        psize = get_bytes_by_str(piece_size);
+      }
 
-    st_my_table_status my_table_status;
-    if (check_table_size(&my_table_status, db, table) != 0) {
-      fprintf(stderr, "check table %s.%s size failed.\n", db, table);
-      goto err;
-    }
+      st_my_table_status my_table_status;
+      if (check_table_size(&my_table_status, db, table) != 0) {
+        fprintf(stderr, "check table %s.%s size failed.\n", db, table);
+        goto err;
+      }
 
-    if (my_total_length(my_table_status.data_length, my_table_status.index_length) >= largetable_threshold
+      if (my_total_length(my_table_status.data_length, my_table_status.index_length) >= largetable_threshold) {
         /* harryczhang: table_rows >= piece_num promise lines_per_piece is gt 0 */
-        && my_table_status.table_rows >= piece_num) {
-      /* line_per_piece must be gt OR eq 0 */
-      lines_per_piece = my_table_status.table_rows / piece_num;
-      is_multi_piece = 1;
+        if (piece_num > 1 && my_table_status.table_rows >= piece_num) {
+          /* line_per_piece must be gt OR eq 0 */
+          lines_per_piece = my_table_status.table_rows / piece_num;
+          is_multi_piece = 1;
+        } else if (psize > 0 && my_table_status.avg_row_length > 0) {
+          lines_per_piece = psize / my_table_status.avg_row_length;
+          /* harryczhang: at least one line per piece; if each piece is not large enough to hold one row,
+           * that is to say --piece_size option is invalid, ignore it. */
+          if (lines_per_piece >= 1 && lines_per_piece < my_table_status.table_rows) {
+            is_multi_piece = 1;
+          } else {
+            lines_per_piece = ULONGLONG_MAX;
+          }
+        }
+      }
     }
 
-    DBUG_PRINT("info",("Dump %lu lines per piece.", lines_per_piece));
+    DBUG_PRINT("info",("Dump %llu lines per piece.", lines_per_piece));
 
     if(opt_enable_compress_optimization && is_blob_compress_in_table)
         dynstr_append_checked(&query_string, "SELECT /*!40001 SQL_NO_CACHE */ /*!99104 SQL_COMPRESSED */ * FROM ");
