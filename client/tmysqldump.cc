@@ -219,7 +219,7 @@ For gztab
 #include <stdarg.h>
 
 //#define GBUFF 1024*1024*64	//Only for my_gzprintf
-#define GBUFF ((my_ulonglong)1 << 26) /* harryczhang: 64MB */
+#define GBUFF ((uint)1 << 26) /* harryczhang: 64MB */
 #define TB_IN_BYTES ((my_ulonglong)1 << 40) /* harryczhang: 1t=1024*1024*1024*1024 bytes*/
 #define GB_IN_BYTES ((my_ulonglong)1 << 30) /* harryczhang: 1g=1024*1024*1024 bytes*/
 #define MB_IN_BYTES ((my_ulonglong)1 << 20) /* harryczhang: 1m=1024*1024 bytes*/
@@ -6983,7 +6983,7 @@ static int my_gzputs(const char* s, gzFile file)/*{{{*/
 }/*}}}*/
 int my_gzprintf(gzFile file, const char* format, ...) {/*{{{*/
     va_list va;
-    int len;
+    uint len;
     va_start(va, format);
 #ifdef NO_vsnprintf
 #  ifdef HAS_vsprintf_void
