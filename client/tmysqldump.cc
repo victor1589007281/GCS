@@ -100,6 +100,14 @@
 #define IGNORE_DATA 0x01 /* don't dump data for this table */
 #define IGNORE_INSERT_DELAYED 0x02 /* table doesn't support INSERT DELAYED */
 
+#include <string.h>
+
+#define SET_CHARACTER_SET_CONNECTION_STR "/*!40101 SET @saved_cs_connection     = @@character_set_connection;*/\n/*!40101 SET character_set_connection = utf8;*/\n"
+#define RESTORE_CHARACTER_SET_CONNECTION_STR "/*!40101 SET character_set_connection = @saved_cs_connection;*/\n"
+
+#define SET_CHARACTER_SET_CONNECTION_FOR_BINARY (strcasecmp(default_charset, "binary") == 0 ? SET_CHARACTER_SET_CONNECTION_STR : "")
+#define RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY (strcasecmp(default_charset, "binary") == 0 ? RESTORE_CHARACTER_SET_CONNECTION_STR : "")
+
 static void add_load_option(DYNAMIC_STRING *str, const char *option,
                              const char *option_value);
 static ulong find_set(TYPELIB *lib, const char *x, uint length,
@@ -805,7 +813,7 @@ static void print_version(void)
 {
   printf("%s  Ver %s Distrib %s, for %s (%s)\n",my_progname,DUMP_VERSION,
          MYSQL_SERVER_VERSION,SYSTEM_TYPE,MACHINE_TYPE);
-  printf("%s %s Ver %s\n", my_progname, "with GZTAB support since v2.0.4, and latest version support recovery big table in concurrent mode.", "2.0.5");
+  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.6");
 } /* print_version */
 
 
@@ -2997,7 +3005,9 @@ static uint get_table_structure(char *table, char *db, char *table_type,
           fprintf(sql_file,
                   "SET @saved_cs_client     = @@character_set_client;\n"
                   "SET character_set_client = utf8;\n"
+                  "%s"
                   "/*!50001 CREATE TABLE %s (\n",
+                  SET_CHARACTER_SET_CONNECTION_FOR_BINARY,
                   result_table);
 
           /*
@@ -3026,7 +3036,9 @@ static uint get_table_structure(char *table, char *db, char *table_type,
           */
           fprintf(sql_file,
                   "\n) ENGINE=MyISAM */;\n"
-                  "SET character_set_client = @saved_cs_client;\n");
+                  "SET character_set_client = @saved_cs_client;\n"
+                  "%s", 
+                  RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY);
 
           check_io(sql_file);
         }
@@ -3047,9 +3059,13 @@ static uint get_table_structure(char *table, char *db, char *table_type,
           fprintf(sql_file, (opt_compatible_mode & 3) ? "%s;\n" :
               "/*!40101 SET @saved_cs_client     = @@character_set_client */;\n"
               "/*!40101 SET character_set_client = utf8 */;\n"
+              "%s"
               "%s;\n"
-              "/*!40101 SET character_set_client = @saved_cs_client */;\n",
-              row[1]);
+              "/*!40101 SET character_set_client = @saved_cs_client */;\n"
+              "%s",
+              SET_CHARACTER_SET_CONNECTION_FOR_BINARY,
+              row[1],
+              RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY);
       }
 
       if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
@@ -7857,7 +7873,9 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
           ZPRINTF(sql_file,
                   "SET @saved_cs_client     = @@character_set_client;\n"
                   "SET character_set_client = utf8;\n"
+                  "%s"
                   "/*!50001 CREATE TABLE %s (\n",
+                  SET_CHARACTER_SET_CONNECTION_FOR_BINARY, 
                   result_table);
 
           /*
@@ -7886,7 +7904,9 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
           */
           ZPRINTF(sql_file,
                   "\n) ENGINE=MyISAM */;\n"
-                  "SET character_set_client = @saved_cs_client;\n");
+                  "SET character_set_client = @saved_cs_client;\n"
+                  "%s",
+                  RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY);
 
           check_io(sql_file);
         }
@@ -7904,9 +7924,13 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
           ZPRINTF(sql_file, (opt_compatible_mode & 3) ? "%s;\n" :
               "/*!40101 SET @saved_cs_client     = @@character_set_client */;\n"
               "/*!40101 SET character_set_client = utf8 */;\n"
+              "%s"
               "%s;\n"
-              "/*!40101 SET character_set_client = @saved_cs_client */;\n",
-              row[1]);
+              "/*!40101 SET character_set_client = @saved_cs_client */;\n"
+              "%s",
+              SET_CHARACTER_SET_CONNECTION_FOR_BINARY,
+              row[1],
+              RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY);
 
 
         check_io(sql_file);
