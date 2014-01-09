@@ -102,8 +102,8 @@
 
 #include <string.h>
 
-#define SET_CHARACTER_SET_CONNECTION_STR "/*!40101 SET @saved_cs_connection     = @@character_set_connection;*/\n/*!40101 SET character_set_connection = utf8;*/\n"
-#define RESTORE_CHARACTER_SET_CONNECTION_STR "/*!40101 SET character_set_connection = @saved_cs_connection;*/\n"
+#define SET_CHARACTER_SET_CONNECTION_STR "/*!40101 SET @saved_cs_connection     = @@character_set_connection*/;\n/*!40101 SET character_set_connection = utf8*/;\n"
+#define RESTORE_CHARACTER_SET_CONNECTION_STR "/*!40101 SET character_set_connection = @saved_cs_connection*/;\n"
 
 #define SET_CHARACTER_SET_CONNECTION_FOR_BINARY (strcasecmp(default_charset, "binary") == 0 ? SET_CHARACTER_SET_CONNECTION_STR : "")
 #define RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY (strcasecmp(default_charset, "binary") == 0 ? RESTORE_CHARACTER_SET_CONNECTION_STR : "")
@@ -813,7 +813,7 @@ static void print_version(void)
 {
   printf("%s  Ver %s Distrib %s, for %s (%s)\n",my_progname,DUMP_VERSION,
          MYSQL_SERVER_VERSION,SYSTEM_TYPE,MACHINE_TYPE);
-  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.6");
+  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.5");
 } /* print_version */
 
 
