@@ -105,8 +105,8 @@
 #define SET_CHARACTER_SET_CONNECTION_STR "/*!40101 SET @saved_cs_connection     = @@character_set_connection*/;\n/*!40101 SET character_set_connection = utf8*/;\n"
 #define RESTORE_CHARACTER_SET_CONNECTION_STR "/*!40101 SET character_set_connection = @saved_cs_connection*/;\n"
 
-#define SET_CHARACTER_SET_CONNECTION_FOR_BINARY (strcasecmp(default_charset, "binary") == 0 ? SET_CHARACTER_SET_CONNECTION_STR : "")
-#define RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY (strcasecmp(default_charset, "binary") == 0 ? RESTORE_CHARACTER_SET_CONNECTION_STR : "")
+#define SET_CHARACTER_SET_CONNECTION_FOR_BINARY ((strcasecmp(default_charset, "binary") == 0 && !(opt_compatible_mode & 3)) ? SET_CHARACTER_SET_CONNECTION_STR : "")
+#define RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY ((strcasecmp(default_charset, "binary") == 0 && !(opt_compatible_mode & 3)) ? RESTORE_CHARACTER_SET_CONNECTION_STR : "")
 
 static void add_load_option(DYNAMIC_STRING *str, const char *option,
                              const char *option_value);
@@ -3056,7 +3056,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
 
       if (write_to_file)
       {
-          fprintf(sql_file, (opt_compatible_mode & 3) ? "%s;\n" :
+          fprintf(sql_file, (opt_compatible_mode & 3) ? "%s%s;\n%s" :
               "/*!40101 SET @saved_cs_client     = @@character_set_client */;\n"
               "/*!40101 SET character_set_client = utf8 */;\n"
               "%s"
@@ -7921,7 +7921,7 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
 
       if (write_to_file)
       {
-          ZPRINTF(sql_file, (opt_compatible_mode & 3) ? "%s;\n" :
+          ZPRINTF(sql_file, (opt_compatible_mode & 3) ? "%s%s;\n%s" :
               "/*!40101 SET @saved_cs_client     = @@character_set_client */;\n"
               "/*!40101 SET character_set_client = utf8 */;\n"
               "%s"
