@@ -36,6 +36,18 @@
 #include <ft_global.h>
 #include <keycache.h>
 
+#define HANDLER_HAS_TOP_TABLE_FIELDS            //for vp only
+#define HANDLER_HAS_DIRECT_UPDATE_ROWS
+#define HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
+#define HANDLER_HAS_DIRECT_AGGREGATE            
+#define INFO_KIND_UPDATE_FIELDS 101     
+#define INFO_KIND_UPDATE_VALUES 102
+#define INFO_KIND_FORCE_LIMIT_BEGIN 103         //for MAX/MIN
+#define INFO_KIND_FORCE_LIMIT_END 104           //for SUM
+#define INFO_KIND_BULK_ACCESS_BEGIN 105         //no used?
+#define INFO_KIND_BULK_ACCESS_CURRENT 106
+#define INFO_KIND_BULK_ACCESS_END 107
+
 // the following is for checking tables
 
 #define HA_ADMIN_ALREADY_DONE	  1
@@ -182,6 +194,15 @@ enum enum_alter_inplace_result {
   will report ER_TABLE_NEEDS_UPGRADE, otherwise ER_TABLE_NEED_REBUILD.
 */
 #define HA_CAN_REPAIR                    (LL(1) << 37)
+
+/* ADD BY SPIDER */
+#define HA_CAN_BG_SEARCH                (LL(1) << 38)   //for merge table ?
+#define HA_CAN_BG_INSERT                (LL(1) << 39)
+#define HA_CAN_BG_UPDATE                (LL(1) << 40)
+#define HA_CAN_MULTISTEP_MERGE          (LL(1) << 41)   //for vp only
+#define HA_CAN_BULK_ACCESS              (LL(1) << 42)   //for merge/vp table only?
+#define HA_CAN_FORCE_BULK_UPDATE        (LL(1) << 43)   //no used?
+#define HA_CAN_FORCE_BULK_DELETE        (LL(1) << 44)
 
 /*Engine supports BLOB file can be compressed.
 Only innobase supports this function.
@@ -910,6 +931,9 @@ struct handlerton
 #define HTON_TEMPORARY_NOT_SUPPORTED (1 << 6) //Having temporary tables not supported
 #define HTON_SUPPORT_LOG_TABLES      (1 << 7) //Engine supports log tables
 #define HTON_NO_PARTITION            (1 << 8) //You can not partition these tables
+// ADD FROM SPIDER
+//#define HTON_CAN_MERGE               (1 << 9) //Merge type table
+//#define HTON_CAN_MULTISTEP_MERGE     (1 << 10) //You can merge mearged tables
 
 class Ha_trx_info;
 
@@ -1545,7 +1569,8 @@ public:
   /** Length of ref (1-8 or the clustered key length) */
   uint ref_length;
   FT_INFO *ft_handler;
-  enum {NONE=0, INDEX, RND} inited;
+  enum init_stat {NONE=0, INDEX, RND};
+  init_stat inited;
   bool locked;
   bool implicit_emptied;                /* Can be !=0 only if HEAP */
   const COND *pushed_cond;
@@ -1596,6 +1621,13 @@ public:
   */
   PSI_table *m_psi;
 
+  /* ADD FROM SPIDER */
+  init_stat pre_inited;
+  bool set_top_table_fields;
+  struct TABLE *top_table;
+  Field **top_table_field;
+  uint top_table_fields;
+
   handler(handlerton *ht_arg, TABLE_SHARE *share_arg)
     :table_share(share_arg), table(0),
     estimation_rows_to_insert(0), ht(ht_arg),
@@ -1605,7 +1637,10 @@ public:
     locked(FALSE), implicit_emptied(0),
     pushed_cond(0), rows_read(0), rows_changed(0), next_insert_id(0), insert_id_for_cur_row(0),
     auto_inc_intervals_count(0),
-    m_psi(NULL)
+    m_psi(NULL),
+	pre_inited(NONE),   /* ADD FROM SPIDER */ 
+	set_top_table_fields(FALSE), top_table(0),
+    top_table_field(0), top_table_fields(0)
     {
       memset(index_rows_read, 0, sizeof(index_rows_read));
     }
@@ -1613,6 +1648,7 @@ public:
   {
     DBUG_ASSERT(locked == FALSE);
     DBUG_ASSERT(inited == NONE);
+    DBUG_ASSERT(pre_inited == NONE);
   }
   virtual handler *clone(const char *name, MEM_ROOT *mem_root);
   /** This is called after create to allow us to set up cached variables */
@@ -1625,11 +1661,21 @@ public:
   int ha_open(TABLE *table, const char *name, int mode, int test_if_locked);
   int ha_index_init(uint idx, bool sorted)
   {
+    DBUG_EXECUTE_IF("ha_index_init_fail", return HA_ERR_TABLE_DEF_CHANGED;);
     int result;
     DBUG_ENTER("ha_index_init");
     DBUG_ASSERT(inited==NONE);
     if (!(result= index_init(idx, sorted)))
       inited=INDEX;
+    DBUG_RETURN(result);
+  }
+  int ha_pre_index_init(uint idx, bool sorted)
+  {
+    int result;
+    DBUG_ENTER("ha_pre_index_init");
+    DBUG_ASSERT(pre_inited==NONE);
+    if (!(result= pre_index_init(idx, sorted)))
+      pre_inited=INDEX;
     DBUG_RETURN(result);
   }
   int ha_index_end()
@@ -1639,12 +1685,28 @@ public:
     inited=NONE;
     DBUG_RETURN(index_end());
   }
+  int ha_pre_index_end()
+  {
+    DBUG_ENTER("ha_pre_index_end");
+    DBUG_ASSERT(pre_inited==INDEX);
+    pre_inited=NONE;
+    DBUG_RETURN(pre_index_end());
+  }
   int ha_rnd_init(bool scan)
   {
+    DBUG_EXECUTE_IF("ha_rnd_init_fail", return HA_ERR_TABLE_DEF_CHANGED;);
     int result;
     DBUG_ENTER("ha_rnd_init");
     DBUG_ASSERT(inited==NONE || (inited==RND && scan));
     inited= (result= rnd_init(scan)) ? NONE: RND;
+    DBUG_RETURN(result);
+  }
+  int ha_pre_rnd_init(bool scan)
+  {
+    int result;
+    DBUG_ENTER("ha_pre_rnd_init");
+    DBUG_ASSERT(pre_inited==NONE || (pre_inited==RND && scan));
+    pre_inited= (result= pre_rnd_init(scan)) ? NONE: RND;
     DBUG_RETURN(result);
   }
   int ha_rnd_end()
@@ -1654,11 +1716,23 @@ public:
     inited=NONE;
     DBUG_RETURN(rnd_end());
   }
+  int ha_pre_rnd_end()
+  {
+    DBUG_ENTER("ha_pre_rnd_end");
+    DBUG_ASSERT(pre_inited==RND);
+    pre_inited=NONE;
+    DBUG_RETURN(pre_rnd_end());
+  }
   int ha_reset();
   /* this is necessary in many places, e.g. in HANDLER command */
   int ha_index_or_rnd_end()
   {
     return inited == INDEX ? ha_index_end() : inited == RND ? ha_rnd_end() : 0;
+  }
+  int ha_pre_index_or_rnd_end()
+  {
+    return pre_inited == INDEX ? ha_pre_index_end() : pre_inited == RND ?
+      ha_pre_rnd_end() : 0;
   }
   /**
     The cached_table_flags is set at ha_open and ha_external_lock
@@ -1672,8 +1746,72 @@ public:
   */
   int ha_external_lock(THD *thd, int lock_type);
   int ha_write_row(uchar * buf);
+  int ha_pre_write_row(uchar * buf) { return pre_write_row(buf); }
   int ha_update_row(const uchar * old_data, uchar * new_data);
   int ha_delete_row(const uchar * buf);
+  int ha_direct_update_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data
+  );
+  int ha_pre_direct_update_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data
+  ) { return pre_direct_update_rows_init(mode, ranges, range_count, sorted,
+    new_data); }
+  int ha_direct_update_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data,
+    uint *update_rows
+  );
+  int ha_pre_direct_update_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data,
+    uint *update_rows
+  ) { return pre_direct_update_rows(ranges, range_count, sorted,
+    new_data, update_rows); }
+  int ha_direct_update_row_binlog(
+    const uchar *old_data,
+    uchar *new_data
+  );
+  int ha_direct_delete_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted
+  );
+  int ha_pre_direct_delete_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted
+  ) { return pre_direct_delete_rows_init(mode, ranges, range_count, sorted); }
+  int ha_direct_delete_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uint *delete_rows
+  );
+  int ha_pre_direct_delete_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uint *delete_rows
+  ) { return pre_direct_delete_rows(ranges, range_count, sorted,
+    delete_rows); }
+  int ha_direct_delete_row_binlog(
+    const uchar *buf
+  );
+  virtual void bulk_req_exec() {}
   void ha_release_auto_increment();
 
   int check_collation_compatibility();
@@ -1856,6 +1994,33 @@ public:
     DBUG_ASSERT(FALSE);
     return HA_ERR_WRONG_COMMAND;
   }
+  virtual int pre_index_read_map(const uchar *key,
+                                 key_part_map keypart_map,
+                                 enum ha_rkey_function find_flag,
+                                 bool use_parallel)
+   { return 0; }
+  virtual int pre_index_first(bool use_parallel)
+   { return 0; }
+  virtual int pre_index_last(bool use_parallel)
+   { return 0; }
+  virtual int pre_index_read_last_map(const uchar *key,
+                                      key_part_map keypart_map,
+                                      bool use_parallel)
+   { return 0; }
+  virtual int pre_read_multi_range_first(KEY_MULTI_RANGE **found_range_p,
+                                         KEY_MULTI_RANGE *ranges,
+                                         uint range_count,
+                                         bool sorted, HANDLER_BUFFER *buffer,
+                                         bool use_parallel);
+  virtual int pre_read_range_first(const key_range *start_key,
+                                   const key_range *end_key,
+                                   bool eq_range, bool sorted,
+                                   bool use_parallel)
+   { return 0; }
+  virtual int pre_ft_read(bool use_parallel)
+   { return 0; }
+  virtual int pre_rnd_next(bool use_parallel)
+   { return 0; }
   /**
      @brief
      Positions an index cursor to the index specified in the handle. Fetches the
@@ -1972,6 +2137,7 @@ public:
   virtual void try_semi_consistent_read(bool) {}
   virtual void unlock_row() {}
   virtual int start_stmt(THD *thd, thr_lock_type lock_type) {return 0;}
+  virtual bool need_info_for_auto_inc() { return 0; }
   virtual void get_auto_increment(ulonglong offset, ulonglong increment,
                                   ulonglong nb_desired_values,
                                   ulonglong *first_value,
@@ -2083,6 +2249,7 @@ public:
     return 0;
   }
   virtual void set_part_info(partition_info *part_info) {return;}
+  virtual void return_record_by_parent() {return;}
 
   virtual ulong index_flags(uint idx, uint part, bool all_parts) const =0;
 
@@ -2174,6 +2341,8 @@ public:
   virtual THR_LOCK_DATA **store_lock(THD *thd,
 				     THR_LOCK_DATA **to,
 				     enum thr_lock_type lock_type)=0;
+  virtual int additional_lock(THD *thd, enum thr_lock_type lock_type)
+  { return 0; }
 
   /** Type of table for caching query */
   virtual uint8 table_cache_type() { return HA_CACHE_TBL_NONTRANSACT; }
@@ -2264,6 +2433,30 @@ public:
    Pops the top if condition stack, if stack is not empty.
  */
  virtual void cond_pop() { return; };
+ virtual int info_push(uint info_type, void *info) { return 0; };
+ virtual int set_top_table_and_fields(TABLE *top_table,
+                                      Field **top_table_field,
+                                      uint top_table_fields)
+ {
+   if (!set_top_table_fields)
+   {
+     set_top_table_fields = TRUE;
+     this->top_table = top_table;
+     this->top_table_field = top_table_field;
+     this->top_table_fields = top_table_fields;
+   }
+   return 0;
+ }
+ virtual void clear_top_table_fields()
+ {
+   if (set_top_table_fields)
+   {
+     set_top_table_fields = FALSE;
+     top_table = NULL;
+     top_table_field = NULL;
+     top_table_fields = 0;
+   }
+ }
  virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info, Alter_inplace_info* inplae_alter,
 					 uint table_changes)
  { return COMPATIBLE_DATA_NO; }
@@ -2283,6 +2476,12 @@ public:
     return 0;
   }
 
+  /* query cache for merge table */
+  virtual int qcache_insert(Query_cache *qcache,
+                            Query_cache_block_table *block_table,
+                            TABLE_COUNTER_TYPE &n);
+  virtual TABLE_COUNTER_TYPE qcache_table_count()
+  { return 1; }
 
 /* fast alter table by engine level table name */
  virtual int inplace_alter_table(TABLE *altered_table,
@@ -2409,7 +2608,9 @@ private:
 
   virtual int open(const char *name, int mode, uint test_if_locked)=0;
   virtual int index_init(uint idx, bool sorted) { active_index= idx; return 0; }
+  virtual int pre_index_init(uint idx, bool sorted) { return 0; }
   virtual int index_end() { active_index= MAX_KEY; return 0; }
+  virtual int pre_index_end() { return 0; }
   /**
     rnd_init() can be called two times without rnd_end() in between
     (it only makes sense if scan=1).
@@ -2418,8 +2619,14 @@ private:
     to the start of the table, no need to deallocate and allocate it again
   */
   virtual int rnd_init(bool scan)= 0;
+  virtual int pre_rnd_init(bool scan) { return 0; }
   virtual int rnd_end() { return 0; }
+  virtual int pre_rnd_end() { return 0; }
   virtual int write_row(uchar *buf __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+  virtual int pre_write_row(uchar *buf __attribute__((unused)))
   {
     return HA_ERR_WRONG_COMMAND;
   }
@@ -2434,6 +2641,83 @@ private:
   {
     return HA_ERR_WRONG_COMMAND;
   }
+
+  virtual int direct_update_rows_init(
+    uint mode __attribute__((unused)),
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uchar *new_data __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int pre_direct_update_rows_init(
+    uint mode __attribute__((unused)),
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uchar *new_data __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int direct_update_rows(
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uchar *new_data __attribute__((unused)),
+    uint *update_rows __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int pre_direct_update_rows(
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uchar *new_data __attribute__((unused)),
+    uint *update_rows __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int direct_delete_rows_init(
+    uint mode __attribute__((unused)),
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int pre_direct_delete_rows_init(
+    uint mode __attribute__((unused)),
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int direct_delete_rows(
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uint *delete_rows __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int pre_direct_delete_rows(
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uint *delete_rows __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
   /**
     Reset state of file to after 'open'.
     This function is called after every statement for all tables used

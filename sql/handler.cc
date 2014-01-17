@@ -2391,7 +2391,9 @@ void **handler::ha_data(THD *thd) const
 
 THD *handler::ha_thd(void) const
 {
+/*
   DBUG_ASSERT(!table || !table->in_use || table->in_use == current_thd);
+*/
   return (table && table->in_use) ? table->in_use : current_thd;
 }
 
@@ -4976,6 +4978,25 @@ scan_it_again:
 }
 
 
+int handler::pre_read_multi_range_first(KEY_MULTI_RANGE **found_range_p,
+                                        KEY_MULTI_RANGE *ranges,
+                                        uint range_count,
+                                        bool sorted, HANDLER_BUFFER *buffer,
+                                        bool use_parallel)
+{
+  int result;
+  DBUG_ENTER("handler::pre_read_multi_range_first");
+  result = pre_read_range_first(ranges->start_key.keypart_map ?
+                                &ranges->start_key : 0,
+                                ranges->end_key.keypart_map ?
+                                &ranges->end_key : 0,
+                                test(ranges->range_flag & EQ_RANGE),
+                                sorted,
+                                use_parallel);
+  DBUG_RETURN(result);
+}
+
+
 /**
   Read first row between two ranges.
   Store ranges for future calls to read_range_next.
@@ -5546,6 +5567,104 @@ int handler::ha_delete_row(const uchar *buf)
   return 0;
 }
 
+int handler::ha_direct_update_rows_init(
+  uint mode,
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  bool sorted,
+  uchar *new_data
+) {
+  int error;
+  /*
+    Some storage engines require that the new record is in record[0]
+    (and the old record is in record[1]).
+   */
+  DBUG_ASSERT(!new_data || new_data == table->record[0]);
+
+  error=
+    direct_update_rows_init(mode, ranges, range_count, sorted, new_data);
+  return error;
+}
+
+int handler::ha_direct_update_rows(
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  bool sorted,
+  uchar *new_data,
+  uint *update_rows
+) {
+  int error;
+  /*
+    Some storage engines require that the new record is in record[0]
+    (and the old record is in record[1]).
+   */
+  DBUG_ASSERT(!new_data || new_data == table->record[0]);
+
+  MYSQL_UPDATE_ROW_START(table_share->db.str, table_share->table_name.str);
+  mark_trx_read_write();
+
+  error=
+    direct_update_rows(ranges, range_count, sorted, new_data, update_rows);
+  MYSQL_UPDATE_ROW_DONE(error);
+  return error;
+}
+
+int handler::ha_direct_update_row_binlog(
+  const uchar *old_data,
+  uchar *new_data
+) {
+  int error;
+  Log_func *log_func= Update_rows_log_event::binlog_row_logging_function;
+
+  /*
+    Some storage engines require that the new record is in record[0]
+    (and the old record is in record[1]).
+   */
+  DBUG_ASSERT(new_data == table->record[0]);
+
+  error= binlog_log_row(table, old_data, new_data, log_func);
+  return error;
+}
+
+int handler::ha_direct_delete_rows_init(
+  uint mode,
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  bool sorted
+) {
+  int error;
+  error=
+    direct_delete_rows_init(mode, ranges, range_count, sorted);
+  return error;
+}
+
+int handler::ha_direct_delete_rows(
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  bool sorted,
+  uint *delete_rows
+) {
+  int error;
+  DBUG_ASSERT(inited != NONE);
+
+  MYSQL_DELETE_ROW_START(table_share->db.str, table_share->table_name.str);
+  mark_trx_read_write();
+
+  error=
+    direct_delete_rows(ranges, range_count, sorted, delete_rows);
+  MYSQL_DELETE_ROW_DONE(error);
+  return error;
+}
+
+int handler::ha_direct_delete_row_binlog(const uchar *buf)
+{
+  int error;
+  Log_func *log_func= Delete_rows_log_event::binlog_row_logging_function;
+
+  error= binlog_log_row(table, buf, 0, log_func);
+  return 0;
+}
+
 
 
 /** @brief
@@ -5557,6 +5676,26 @@ void handler::use_hidden_primary_key()
 {
   /* fallback to use all columns in the table to identify row */
   table->use_all_columns();
+}
+
+
+int handler::qcache_insert(Query_cache *qcache,
+                           Query_cache_block_table *block_table,
+                           TABLE_COUNTER_TYPE &n)
+{
+  // ÏÈ×¢ÊÍµô
+  //(++block_table)->n= ++n;
+  ///*
+  //  There are not callback function for for MyISAM, and engine data
+  //*/
+  //if (!qcache->insert_table(table_share->table_cache_key.length,
+  //                          table_share->table_cache_key.str,
+  //                          block_table,
+  //                          table_share->db.length,
+  //                          table_cache_type(),
+  //                          0, 0))
+    return 0;
+  //return 1;
 }
 
 

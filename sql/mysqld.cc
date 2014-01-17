@@ -3084,6 +3084,12 @@ SHOW_VAR com_status_vars[]= {
   {"xa_recover",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_XA_RECOVER]),SHOW_LONG_STATUS},
   {"xa_rollback",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_XA_ROLLBACK]),SHOW_LONG_STATUS},
   {"xa_start",             (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_XA_START]),SHOW_LONG_STATUS},
+  {"hs_open",              (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_HS_OPEN]),SHOW_LONG_STATUS},
+  {"hs_close",             (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_HS_CLOSE]),SHOW_LONG_STATUS},
+  {"hs_read",              (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_HS_READ]),SHOW_LONG_STATUS},
+  {"hs_insert",            (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_HS_INSERT]),SHOW_LONG_STATUS},
+  {"hs_update",            (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_HS_UPDATE]),SHOW_LONG_STATUS},
+  {"hs_delete",            (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_HS_DELETE]),SHOW_LONG_STATUS},
   {NullS, NullS, SHOW_LONG}
 };
 

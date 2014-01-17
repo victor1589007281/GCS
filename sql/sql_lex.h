@@ -132,6 +132,7 @@ struct sys_var_with_base
   sp_get_flags_for_command (sp_head.cc) returns proper flags for the
   added SQLCOM_.
 */
+#define HS_HAS_SQLCOM
 
 enum enum_sql_command {
   SQLCOM_SELECT, SQLCOM_CREATE_TABLE, SQLCOM_CREATE_INDEX, SQLCOM_ALTER_TABLE,
@@ -198,6 +199,12 @@ enum enum_sql_command {
   // TODO(mcallaghan): update status_vars in mysqld to export these
   SQLCOM_SHOW_USER_STATS, SQLCOM_SHOW_TABLE_STATS, SQLCOM_SHOW_INDEX_STATS,
   SQLCOM_SHOW_CLIENT_STATS, SQLCOM_SHOW_THREAD_STATS,
+  SQLCOM_HS_OPEN,
+  SQLCOM_HS_CLOSE,
+  SQLCOM_HS_READ,
+  SQLCOM_HS_INSERT,
+  SQLCOM_HS_UPDATE,
+  SQLCOM_HS_DELETE,
   /* This should be the last !!! */
   SQLCOM_END
 };

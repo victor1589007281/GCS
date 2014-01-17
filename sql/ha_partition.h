@@ -30,6 +30,25 @@ enum partition_keywords
   PKW_COLUMNS
 };
 
+class ha_partition;
+struct st_partition_ft_info
+{
+  struct _ft_vft *please;
+  st_partition_ft_info *next;
+  ha_partition *file;
+  FT_INFO **part_ft_info;
+};
+
+#ifdef HA_CAN_BULK_ACCESS
+typedef struct st_partition_bulk_access_info
+{
+  uint                          sequence_num;
+  bool                          used;
+  bool                          called;
+  void                          **info;
+  st_partition_bulk_access_info *next;
+} PARTITION_BULK_ACCESS_INFO;
+#endif
 
 #define PARTITION_BYTES_IN_POS 2
 #define PARTITION_ENABLED_TABLE_FLAGS (HA_FILE_BASED | HA_REC_NOT_IN_SEQ)
@@ -38,6 +57,8 @@ enum partition_keywords
                                         HA_DUPLICATE_POS | \
                                         HA_CAN_SQL_HANDLER | \
                                         HA_CAN_INSERT_DELAYED)
+#define PARTITION_HAS_EXTRA_ATTACH_CHILDREN   //for vp only
+#define PARTITION_HAS_GET_CHILD_HANDLERS      //for vp only
 
 /* First 4 bytes in the .par file is the number of 32-bit words in the file */
 #define PAR_WORD_SIZE 4
@@ -59,7 +80,9 @@ private:
     partition_index_last= 3,
     partition_index_read_last= 4,
     partition_read_range = 5,
-    partition_no_index_scan= 6
+    partition_read_multi_range = 6,
+    partition_no_index_scan= 7,
+    partition_ft_read= 8
   };
   /* Data for the partition handler */
   int  m_mode;                          // Open mode
@@ -84,6 +107,7 @@ private:
   */
   KEY *m_curr_key_info[3];              // Current index
   uchar *m_rec0;                        // table->record[0]
+  const uchar *m_err_rec;               // record which gave error
   QUEUE m_queue;                        // Prio queue used by sorted read
   /*
     Since the partition handler is a handler on top of other handlers, it
@@ -125,6 +149,7 @@ private:
   bool m_create_handler;                 // Handler used to create table
   bool m_is_sub_partitioned;             // Is subpartitioned
   bool m_ordered_scan_ongoing;
+  bool m_rnd_init_and_first;
 
   /* 
     If set, this object was created with ha_partition::clone and doesn't
@@ -177,19 +202,44 @@ private:
   ha_rows   m_bulk_inserted_rows;
   /** used for prediction of start_bulk_insert rows */
   enum_monotonicity_info m_part_func_monotonicity_info;
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  part_id_range m_direct_update_part_spec;
+#endif
+  bool                m_pre_calling;
+  bool                m_pre_call_use_parallel;
+#ifdef HA_CAN_BULK_ACCESS
+  bool                bulk_access_started;
+  bool                bulk_access_executing;
+  bool                bulk_access_pre_called;
+  PARTITION_BULK_ACCESS_INFO *bulk_access_info_first;
+  PARTITION_BULK_ACCESS_INFO *bulk_access_info_current;
+  PARTITION_BULK_ACCESS_INFO *bulk_access_info_exec_tgt;
+  MY_BITMAP           bulk_access_exec_bitmap;
+#endif
   /** Sorted array of partition ids in descending order of number of rows. */
   uint32 *m_part_ids_sorted_by_num_of_records;
   /* Compare function for my_qsort2, for reversed order. */
   static int compare_number_of_records(ha_partition *me,
                                        const uint32 *a,
                                        const uint32 *b);
+  /** partitions that returned HA_ERR_KEY_NOT_FOUND. */
+  MY_BITMAP m_key_not_found_partitions;
+  bool m_key_not_found;
+
+  uchar *m_ref_buf;
+  uint m_ref_buf_length;
 public:
+  handler **get_child_handlers()
+  {
+    return m_file;
+  }
   handler *clone(const char *name, MEM_ROOT *mem_root);
   virtual void set_part_info(partition_info *part_info)
   {
      m_part_info= part_info;
      m_is_sub_partitioned= part_info->is_sub_partitioned();
   }
+  virtual void return_record_by_parent();
   /*
     -------------------------------------------------------------------------
     MODULE create/delete handler object
@@ -285,7 +335,7 @@ private:
     delete_table, rename_table and create uses very similar logic which
     is packed into this routine.
   */
-  uint del_ren_cre_table(const char *from, const char *to,
+  int del_ren_cre_table(const char *from, const char *to,
                          TABLE *table_arg, HA_CREATE_INFO *create_info);
   /*
     One method to create the table_name.par file containing the names of the
@@ -339,6 +389,9 @@ public:
     currently InnoDB, BDB and NDB).
     -------------------------------------------------------------------------
   */
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int additional_lock(THD *thd, enum thr_lock_type lock_type);
+#endif
   virtual THR_LOCK_DATA **store_lock(THD * thd, THR_LOCK_DATA ** to,
 				     enum thr_lock_type lock_type);
   virtual int external_lock(THD * thd, int lock_type);
@@ -385,8 +438,48 @@ public:
     number of calls to write_row.
   */
   virtual int write_row(uchar * buf);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_write_row(uchar *buf);
+#endif
+  virtual bool start_bulk_update();
+  virtual int exec_bulk_update(uint *dup_key_found);
+  virtual void end_bulk_update();
+  virtual int bulk_update_row(const uchar *old_data, uchar *new_data, uint *dup_key_found);
   virtual int update_row(const uchar * old_data, uchar * new_data);
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  virtual int direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
+    uint range_count, bool sorted, uchar *new_data);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
+    uint range_count, bool sorted, uchar *new_data);
+#endif
+  virtual int direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
+    bool sorted, uchar *new_data, uint *update_rows);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
+    bool sorted, uchar *new_data, uint *update_rows);
+#endif
+#if defined(HS_HAS_SQLCOM)
+  virtual bool check_hs_update_overlapping(key_range *key);
+#endif
+#endif
+  virtual bool start_bulk_delete();
+  virtual int end_bulk_delete();
   virtual int delete_row(const uchar * buf);
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  virtual int direct_delete_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
+    uint range_count, bool sorted);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_direct_delete_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
+    uint range_count, bool sorted);
+#endif
+  virtual int direct_delete_rows(KEY_MULTI_RANGE *ranges, uint range_count,
+    bool sorted, uint *delete_rows);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_direct_delete_rows(KEY_MULTI_RANGE *ranges, uint range_count,
+    bool sorted, uint *delete_rows);
+#endif
+#endif
   virtual int delete_all_rows(void);
   virtual int truncate();
   virtual void start_bulk_insert(ha_rows rows);
@@ -439,7 +532,13 @@ public:
     and allocate it again
   */
   virtual int rnd_init(bool scan);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_rnd_init(bool scan);
+#endif
   virtual int rnd_end();
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_rnd_end();
+#endif
   virtual int rnd_next(uchar * buf);
   virtual int rnd_pos(uchar * buf, uchar * pos);
   virtual int rnd_pos_by_record(uchar *record);
@@ -477,11 +576,38 @@ public:
     index_init initializes an index before using it and index_end does
     any end processing needed.
   */
+  virtual int pre_index_read_map(const uchar *key,
+                                 key_part_map keypart_map,
+                                 enum ha_rkey_function find_flag,
+                                 bool use_parallel);
+  virtual int pre_index_first(bool use_parallel);
+  virtual int pre_index_last(bool use_parallel);
+  virtual int pre_index_read_last_map(const uchar *key,
+                                      key_part_map keypart_map,
+                                      bool use_parallel);
+  virtual int pre_read_multi_range_first(KEY_MULTI_RANGE **found_range_p,
+                                         KEY_MULTI_RANGE *ranges,
+                                         uint range_count,
+                                         bool sorted, HANDLER_BUFFER *buffer,
+                                         bool use_parallel);
+  virtual int pre_read_range_first(const key_range *start_key,
+                                   const key_range *end_key,
+                                   bool eq_range, bool sorted,
+                                   bool use_parallel);
+  virtual int pre_ft_read(bool use_parallel);
+  virtual int pre_rnd_next(bool use_parallel);
+
   virtual int index_read_map(uchar * buf, const uchar * key,
                              key_part_map keypart_map,
                              enum ha_rkey_function find_flag);
   virtual int index_init(uint idx, bool sorted);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_index_init(uint idx, bool sorted);
+#endif
   virtual int index_end();
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_index_end();
+#endif
 
   /**
     @breif
@@ -526,10 +652,42 @@ public:
 			       bool eq_range, bool sorted);
   virtual int read_range_next();
 
+
+  MY_BITMAP m_mrr_used_partitions;
+  HANDLER_BUFFER *m_mrr_buffer;
+  KEY_MULTI_RANGE **m_part_ranges;
+  KEY_MULTI_RANGE **m_current_ranges;
+  uint *m_part_range_count;
+  uint **m_part_range_seq;
+  uint *m_stock_range_seq;
+  KEY_MULTI_RANGE *m_ranges;
+  uint m_current_range_seq;
+
+  virtual int read_multi_range_first(
+    KEY_MULTI_RANGE **found_range_p,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    HANDLER_BUFFER *buffer
+  );
+
+  virtual int read_multi_range_next(
+    KEY_MULTI_RANGE **found_range_p
+  );
+
+
 private:
+  int create_part_multi_range(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count
+  );
+  bool init_record_priority_queue();
+  void destroy_record_priority_queue();
   int common_index_read(uchar * buf, bool have_start_key);
   int common_first_last(uchar * buf);
   int partition_scan_set_up(uchar * buf, bool idx_read_flag);
+  bool check_parallel_search();
+  int handle_pre_scan(bool reverse_order, bool use_parallel);
   int handle_unordered_next(uchar * buf, bool next_same);
   int handle_unordered_scan_next_partition(uchar * buf);
   uchar *queue_buf(uint part_id)
@@ -543,6 +701,7 @@ private:
               PARTITION_BYTES_IN_POS);
     }
   int handle_ordered_index_scan(uchar * buf, bool reverse_order);
+  int handle_ordered_index_scan_key_not_found();
   int handle_ordered_next(uchar * buf, bool next_same);
   int handle_ordered_prev(uchar * buf);
   void return_top_record(uchar * buf);
@@ -629,6 +788,9 @@ public:
     The next method will never be called if you do not implement indexes.
   */
   virtual double read_time(uint index, uint ranges, ha_rows rows);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual void bulk_req_exec();
+#endif
   /*
     For the given range how many records are estimated to be in this range.
     Used by optimiser to calculate cost of using a particular index.
@@ -973,6 +1135,10 @@ public:
     auto_increment_column_changed
      -------------------------------------------------------------------------
   */
+#ifdef HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
+  bool m_need_info_for_auto_inc;
+  virtual bool need_info_for_auto_inc();
+#endif
   virtual void get_auto_increment(ulonglong offset, ulonglong increment,
                                   ulonglong nb_desired_values,
                                   ulonglong *first_value,
@@ -1062,12 +1228,25 @@ public:
     -------------------------------------------------------------------------
     Fulltext stuff not yet.
     -------------------------------------------------------------------------
+   */
     virtual int ft_init() { return HA_ERR_WRONG_COMMAND; }
     virtual FT_INFO *ft_init_ext(uint flags,uint inx,const uchar *key,
     uint keylen)
     { return NULL; }
     virtual int ft_read(uchar *buf) { return HA_ERR_WRONG_COMMAND; }
-  */
+ 
+  st_partition_ft_info *ft_first;
+  st_partition_ft_info *ft_current;
+  uint ft_current_part;
+  bool ft_init_and_first;
+  virtual float ft_find_relevance(
+    FT_INFO *handler, uchar *record, uint length);
+  virtual float ft_get_relevance(FT_INFO *handler);
+  void ft_close_search(FT_INFO *handler);
+/*  virtual int ft_init(); */
+  void ft_end();
+/*  virtual FT_INFO *ft_init_ext(uint flags,uint inx,String *key); */
+/*  virtual int ft_read(uchar *buf); */
 
   /*
      -------------------------------------------------------------------------
@@ -1123,8 +1302,30 @@ public:
     virtual bool auto_repair() const;
     virtual bool is_crashed() const;
 
+  /*
+    -------------------------------------------------------------------------
+    MODULE condition pushdown
+    -------------------------------------------------------------------------
+  */
+    virtual const COND *cond_push(const COND *cond);
+    virtual void cond_pop();
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+    virtual int info_push(uint info_type, void *info);
+#endif
+#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
+    virtual void clear_top_table_fields();
+#endif
+
     private:
     int handle_opt_partitions(THD *thd, HA_CHECK_OPT *check_opt, uint flags);
+    //int handle_opt_part(THD *thd, HA_CHECK_OPT *check_opt, uint part_id,
+    //                    uint flag);
+    /**
+      Check if the rows are placed in the correct partition.  If the given
+      argument is true, then move the rows to the correct partition.
+    */
+    int check_misplaced_rows(uint read_part_id, bool repair);
+    void append_row_to_str(String &str);
     public:
   /*
     -------------------------------------------------------------------------
@@ -1163,6 +1364,12 @@ public:
     -------------------------------------------------------------------------
     virtual void append_create_info(String *packet)
   */
+
+#ifdef HA_CAN_BULK_ACCESS
+    virtual PARTITION_BULK_ACCESS_INFO *create_bulk_access_info();
+    virtual void delete_bulk_access_info(
+      PARTITION_BULK_ACCESS_INFO *bulk_access_info);
+#endif
 };
 
 #endif /* HA_PARTITION_INCLUDED */

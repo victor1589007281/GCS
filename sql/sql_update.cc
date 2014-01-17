@@ -279,6 +279,7 @@ int mysql_update(THD *thd,
   ulonglong     id;
   List<Item> all_fields;
   THD::killed_state killed_status= THD::NOT_KILLED;
+  bool has_triggers, binlog_is_row, do_direct_update = FALSE;
   DBUG_ENTER("mysql_update");
 
   if (open_tables(thd, &table_list, &table_count, 0))
@@ -450,151 +451,198 @@ int mysql_update(THD *thd,
   { // Check if we are modifying a key that we are used to search with:
     used_key_is_modified= is_key_used(table, used_index, table->write_set);
   }
-
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-  if (used_key_is_modified || order ||
-      partition_key_modified(table, table->write_set))
-#else
-  if (used_key_is_modified || order)
-#endif
+  else if (select && select->quick)
   {
     /*
-      We can't update table directly;  We must first search after all
-      matching rows before updating the table!
+      select->quick != NULL and used_index == MAX_KEY happens for index
+      merge and should be handled in a different way.
     */
-    if (used_index < MAX_KEY && old_covering_keys.is_set(used_index))
-      table->add_read_columns_used_by_index(used_index);
-    else
+    used_key_is_modified= (!select->quick->unique_key_range() &&
+                           select->quick->is_keys_used(table->write_set));
+  }
+
+  has_triggers = (table->triggers && (
+    table->triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_BEFORE) ||
+    table->triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_AFTER)));
+  DBUG_PRINT("info", ("has_triggers = %s", has_triggers ? "TRUE" : "FALSE"));
+  binlog_is_row = (mysql_bin_log.is_open() &&
+    thd->is_current_stmt_binlog_format_row());
+  DBUG_PRINT("info", ("binlog_is_row = %s", binlog_is_row ? "TRUE" : "FALSE"));
+  if (!has_triggers && !binlog_is_row)
+  {
+    if ((thd->variables.optimizer_switch &
+      OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN) && 
+      select && select->cond && 
+      (select->cond->used_tables() & table->map) &&
+      !table->file->pushed_cond)
     {
-      table->use_all_columns();
+      if (!table->file->cond_push(select->cond))
+        table->file->pushed_cond = select->cond;
     }
 
-    /* note: We avoid sorting if we sort on the used index */
-    if (order && (need_sort || used_key_is_modified))
-    {
-      /*
-	Doing an ORDER BY;  Let filesort find and sort the rows we are going
-	to update
-        NOTE: filesort will call table->prepare_for_position()
-      */
-      uint         length= 0;
-      SORT_FIELD  *sortorder;
-      ha_rows examined_rows;
-
-      table->sort.io_cache = (IO_CACHE *) my_malloc(sizeof(IO_CACHE),
-						    MYF(MY_FAE | MY_ZEROFILL));
-      if (!(sortorder=make_unireg_sortorder(order, &length, NULL)) ||
-          (table->sort.found_records= filesort(thd, table, sortorder, length,
-                                               select, limit, 1,
-                                               &examined_rows))
-          == HA_POS_ERROR)
-      {
-	goto err;
-      }
-      thd->examined_row_count+= examined_rows;
-      /*
-	Filesort has already found and selected the rows we want to update,
-	so we don't need the where clause
-      */
-      delete select;
-      select= 0;
+    if (
+      !table->file->info_push(INFO_KIND_UPDATE_FIELDS, &fields) &&
+      !table->file->info_push(INFO_KIND_UPDATE_VALUES, &values) &&
+      !table->file->ha_direct_update_rows_init(2, NULL, 0,
+        (used_index != MAX_KEY), NULL)
+    ) {
+      do_direct_update = TRUE;
     }
-    else
+  }
+
+  if (!do_direct_update)
+  {
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+    if (used_key_is_modified || order ||
+        partition_key_modified(table, table->write_set))
+#else
+    if (used_key_is_modified || order)
+#endif
     {
       /*
-	We are doing a search on a key that is updated. In this case
-	we go trough the matching rows, save a pointer to them and
-	update these in a separate loop based on the pointer.
+        We can't update table directly;  We must first search after all
+        matching rows before updating the table!
       */
-
-      IO_CACHE tempfile;
-      if (open_cached_file(&tempfile, mysql_tmpdir,TEMP_PREFIX,
-			   DISK_BUFFER_SIZE, MYF(MY_WME)))
-	goto err;
-
-      /* If quick select is used, initialize it before retrieving rows. */
-      if (select && select->quick && select->quick->reset())
-        goto err;
-      table->file->try_semi_consistent_read(1);
-
-      /*
-        When we get here, we have one of the following options:
-        A. used_index == MAX_KEY
-           This means we should use full table scan, and start it with
-           init_read_record call
-        B. used_index != MAX_KEY
-           B.1 quick select is used, start the scan with init_read_record
-           B.2 quick select is not used, this is full index scan (with LIMIT)
-               Full index scan must be started with init_read_record_idx
-      */
-
-      if (used_index == MAX_KEY || (select && select->quick))
-        init_read_record(&info, thd, table, select, 0, 1, FALSE);
+      if (used_index < MAX_KEY && old_covering_keys.is_set(used_index))
+        table->add_read_columns_used_by_index(used_index);
       else
-        init_read_record_idx(&info, thd, table, 1, used_index, reverse);
-
-      thd_proc_info(thd, "Searching rows for update");
-      ha_rows tmp_limit= limit;
-
-      while (!(error=info.read_record(&info)) && !thd->killed)
       {
-        thd->examined_row_count++;
-        bool skip_record= FALSE;
-        if (select && select->skip_record(thd, &skip_record))
+        table->use_all_columns();
+      }
+
+      /* note: We avoid sorting if we sort on the used index */
+      if (order && (need_sort || used_key_is_modified))
+      {
+        /*
+          Doing an ORDER BY;  Let filesort find and sort the rows we are going
+          to update
+          NOTE: filesort will call table->prepare_for_position()
+        */
+        uint         length= 0;
+        SORT_FIELD  *sortorder;
+        ha_rows examined_rows;
+
+        table->sort.io_cache = (IO_CACHE *) my_malloc(sizeof(IO_CACHE),
+                                                      MYF(MY_FAE | MY_ZEROFILL));
+        if (!(sortorder=make_unireg_sortorder(order, &length, NULL)) ||
+            (table->sort.found_records= filesort(thd, table, sortorder, length,
+                                                 select, limit, 1,
+                                                 &examined_rows))
+            == HA_POS_ERROR)
         {
-          error= 1;
-          table->file->unlock_row();
-          break;
+          goto err;
         }
-        if (!skip_record)
-	{
-          if (table->file->was_semi_consistent_read())
-	    continue;  /* repeat the read of the same row if it still exists */
-
-	  table->file->position(table->record[0]);
-	  if (my_b_write(&tempfile,table->file->ref,
-			 table->file->ref_length))
-	  {
-	    error=1; /* purecov: inspected */
-	    break; /* purecov: inspected */
-	  }
-	  if (!--limit && using_limit)
-	  {
-	    error= -1;
-	    break;
-	  }
-	}
-	else
-	  table->file->unlock_row();
-      }
-      if (thd->killed && !error)
-	error= 1;				// Aborted
-      limit= tmp_limit;
-      table->file->try_semi_consistent_read(0);
-      end_read_record(&info);
-     
-      /* Change select to use tempfile */
-      if (select)
-      {
-	delete select->quick;
-	if (select->free_cond)
-	  delete select->cond;
-	select->quick=0;
-	select->cond=0;
+        thd->examined_row_count+= examined_rows;
+        /*
+          Filesort has already found and selected the rows we want to update,
+          so we don't need the where clause
+        */
+        delete select;
+        select= 0;
       }
       else
       {
-	select= new SQL_SELECT;
-	select->head=table;
+        /*
+          We are doing a search on a key that is updated. In this case
+          we go trough the matching rows, save a pointer to them and
+          update these in a separate loop based on the pointer.
+        */
+
+        IO_CACHE tempfile;
+        if (open_cached_file(&tempfile, mysql_tmpdir,TEMP_PREFIX,
+                             DISK_BUFFER_SIZE, MYF(MY_WME)))
+          goto err;
+
+        /* If quick select is used, initialize it before retrieving rows. */
+        if (select && select->quick && select->quick->reset())
+        {
+          close_cached_file(&tempfile);
+          goto err;
+        }
+        table->file->try_semi_consistent_read(1);
+
+        /*
+          When we get here, we have one of the following options:
+          A. used_index == MAX_KEY
+             This means we should use full table scan, and start it with
+             init_read_record call
+          B. used_index != MAX_KEY
+             B.1 quick select is used, start the scan with init_read_record
+             B.2 quick select is not used, this is full index scan (with LIMIT)
+                 Full index scan must be started with init_read_record_idx
+        */
+
+        if (used_index == MAX_KEY || (select && select->quick))
+          init_read_record(&info, thd, table, select, 0, 1, FALSE);
+        else
+          init_read_record_idx(&info, thd, table, 1, used_index, reverse);
+
+        thd_proc_info(thd, "Searching rows for update");
+        ha_rows tmp_limit= limit;
+
+        while (!(error=info.read_record(&info)) && !thd->killed)
+        {
+          thd->examined_row_count++;
+          bool skip_record= FALSE;
+          if (select && select->skip_record(thd, &skip_record))
+          {
+            error= 1;
+            /*
+              Don't try unlocking the row if skip_record reported an error since
+              in this case the transaction might have been rolled back already.
+            */
+            break;
+          }
+          if (!skip_record)
+          {
+            if (table->file->was_semi_consistent_read())
+              continue;  /* repeat the read of the same row if it still exists */
+
+            table->file->position(table->record[0]);
+            if (my_b_write(&tempfile,table->file->ref,
+               table->file->ref_length))
+            {
+              error=1; /* purecov: inspected */
+              break; /* purecov: inspected */
+            }
+            if (!--limit && using_limit)
+            {
+              error= -1;
+              break;
+            }
+          }
+          else
+            table->file->unlock_row();
+        }
+        if (thd->killed && !error)
+          error= 1;  // Aborted
+        limit= tmp_limit;
+        table->file->try_semi_consistent_read(0);
+        end_read_record(&info);
+
+        /* Change select to use tempfile */
+        if (select)
+        {
+          delete select->quick;
+          if (select->free_cond)
+            delete select->cond;
+          select->quick=0;
+          select->cond=0;
+        }
+        else
+        {
+          select= new SQL_SELECT;
+          select->head=table;
+        }
+        if (reinit_io_cache(&tempfile,READ_CACHE,0L,0,0))
+          error=1; /* purecov: inspected */
+        select->file=tempfile;			// Read row ptrs from this file
+        if (error >= 0)
+          goto err;
       }
-      if (reinit_io_cache(&tempfile,READ_CACHE,0L,0,0))
-	error=1; /* purecov: inspected */
-      select->file=tempfile;			// Read row ptrs from this file
-      if (error >= 0)
-	goto err;
+      if (table->key_read)
+        table->restore_column_maps_after_mark_index();
     }
-    if (table->key_read)
-      table->restore_column_maps_after_mark_index();
   }
 
   if (ignore)
@@ -619,7 +667,18 @@ int mysql_update(THD *thd,
                               (thd->variables.sql_mode &
                                (MODE_STRICT_TRANS_TABLES |
                                 MODE_STRICT_ALL_TABLES)));
+  if (do_direct_update)
+  {
+    uint update_rows = 0;
+    error = table->file->ha_direct_update_rows(NULL, 0,
+      (used_index != MAX_KEY), NULL, &update_rows);
+    updated = update_rows;
+    found = update_rows;
+    if (!error)
+      error = -1;
+  } else {
   if (table->triggers &&
+        !(table->file->ha_table_flags() & HA_CAN_FORCE_BULK_UPDATE) &&
       table->triggers->has_triggers(TRG_EVENT_UPDATE,
                                     TRG_ACTION_AFTER))
   {
@@ -789,8 +848,17 @@ int mysql_update(THD *thd,
         }
       }
     }
-    else
+    /*
+      Don't try unlocking the row if skip_record reported an error since in
+      this case the transaction might have been rolled back already.
+    */
+    else if (!thd->is_error())
       table->file->unlock_row();
+    else
+    {
+      error= 1;
+      break;
+    }
     thd->warning_info->inc_current_row_for_warning();
     if (thd->is_error())
     {
@@ -838,6 +906,7 @@ int mysql_update(THD *thd,
     updated-= dup_key_found;
   if (will_batch)
     table->file->end_bulk_update();
+  }
   table->file->try_semi_consistent_read(0);
 
   if (!transactional_table && updated > 0)
@@ -2031,7 +2100,8 @@ int multi_update::do_updates()
     org_updated= updated;
     tmp_table= tmp_tables[cur_table->shared];
     tmp_table->file->extra(HA_EXTRA_CACHE);	// Change to read cache
-    (void) table->file->ha_rnd_init(0);
+    if ((local_error= table->file->ha_rnd_init(0)))
+      goto err;
     table->file->extra(HA_EXTRA_NO_CACHE);
 
     check_opt_it.rewind();
@@ -2156,11 +2226,16 @@ err:
   }
 
 err2:
-  (void) table->file->ha_rnd_end();
-  (void) tmp_table->file->ha_rnd_end();
+  if (table->file->inited)
+    (void) table->file->ha_rnd_end();
+  if (tmp_table->file->inited)
+    (void) tmp_table->file->ha_rnd_end();
   check_opt_it.rewind();
   while (TABLE *tbl= check_opt_it++)
-      tbl->file->ha_rnd_end();
+  {
+    if (tbl->file->inited)
+      (void) tbl->file->ha_rnd_end();
+  }
 
   if (updated != org_updated)
   {
