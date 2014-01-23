@@ -159,16 +159,18 @@ typedef st_spider_result SPIDER_RESULT;
 #define SPIDER_SQL_LCL_NAME_QUOTE_STR "`"
 #define SPIDER_SQL_LCL_NAME_QUOTE_LEN (sizeof(SPIDER_SQL_LCL_NAME_QUOTE_STR) - 1)
 
+/* 连接类型 */
 #define SPIDER_CONN_KIND_MYSQL (1 << 0)
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #define SPIDER_CONN_KIND_HS_READ (1 << 2)
 #define SPIDER_CONN_KIND_HS_WRITE (1 << 3)
 #endif
 
-#define SPIDER_SQL_KIND_SQL (1 << 0)
-#define SPIDER_SQL_KIND_HANDLER (1 << 1)
+/* 访问类型 */
+#define SPIDER_SQL_KIND_SQL (1 << 0)                        /* SQL STATEMENTS */
+#define SPIDER_SQL_KIND_HANDLER (1 << 1)                    /* Handler Syntax */
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
-#define SPIDER_SQL_KIND_HS (1 << 2)
+#define SPIDER_SQL_KIND_HS (1 << 2)                         /* HandlerSocket */
 #endif
 
 #define SPIDER_SQL_TYPE_SELECT_SQL (1 << 0)
@@ -866,7 +868,7 @@ public:
     XID *xid,
     int *need_mon
   ) = 0;
-  virtual bool set_trx_isolation_in_bulk_sql() = 0;
+  virtual bool set_trx_isolation_in_bulk_sql() = 0;     // **in_bulk_sql表示该类操作可以在批量SQL中 "***:***;"单次执行
   virtual int set_trx_isolation(
     int trx_isolation,
     int *need_mon
@@ -1601,8 +1603,8 @@ typedef struct st_spider_result_list
   longlong                split_read;
   int                     multi_split_read;
   int                     max_order;
-  int                     quick_mode;
-  longlong                quick_page_size;
+  int                     quick_mode;                   /* 获取结果集的模式  */
+  longlong                quick_page_size;              /* 一次获取结果集的行数 */
   int                     low_mem_read;
   int                     bulk_update_mode;
   int                     bulk_update_size;
@@ -1628,7 +1630,7 @@ typedef struct st_spider_result_list
   /* 0:nomal 1:store 2:store end */
   volatile
 #endif
-    int                   quick_phase;
+    int                   quick_phase;                          /* 0: normal; 1: quick_mode=2, in before query to store result; 2: quick_mode=2, store result already */
   bool                    keyread;
   int                     lock_type;
   TABLE                   *table;

@@ -93,7 +93,7 @@ int spider_free_trx_conn(
   roop_count = 0;
   if (
     trx_free ||
-    spider_param_conn_recycle_mode(trx->thd) != 2
+    spider_param_conn_recycle_mode(trx->thd) != 2                   /* 释放or放到spider_open_connections */
   ) {
     while ((conn = (SPIDER_CONN*) my_hash_element(&trx->trx_conn_hash,
       roop_count)))
@@ -107,7 +107,7 @@ int spider_free_trx_conn(
         spider_free_conn_from_trx(trx, conn, FALSE, trx_free, &roop_count);
     }
     trx->trx_conn_adjustment++;
-  } else {
+  } else {                                                          /* 本会话重用 */
     while ((conn = (SPIDER_CONN*) my_hash_element(&trx->trx_conn_hash,
       roop_count)))
     {

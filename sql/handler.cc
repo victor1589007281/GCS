@@ -5587,11 +5587,11 @@ int handler::ha_direct_update_rows_init(
 }
 
 int handler::ha_direct_update_rows(
-  KEY_MULTI_RANGE *ranges,
-  uint range_count,
-  bool sorted,
-  uchar *new_data,
-  uint *update_rows
+  KEY_MULTI_RANGE *ranges,  /* always NULL? */
+  uint range_count,         /* always 0? */
+  bool sorted,              /* TRUE: use index */
+  uchar *new_data,          /* always NULL? */
+  uint *update_rows         /* OUT: update row count */
 ) {
   int error;
   /*

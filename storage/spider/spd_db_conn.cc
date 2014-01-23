@@ -288,7 +288,7 @@ int spider_db_conn_queue_action(
       conn->db_conn->set_net_timeout();
       conn->queued_net_timeout = FALSE;
     }
-    if (
+    if (        // 拼语句 *****; start transactions;
       (
         conn->queued_trx_isolation &&
         !conn->queued_semi_trx_isolation &&
@@ -583,7 +583,7 @@ int spider_db_query(
   SPIDER_CONN *conn,
   const char *query,
   uint length,
-  int quick_mode,
+  int quick_mode,       // see spider_quick_mode
   int *need_mon
 ) {
   int error_num;
@@ -3427,6 +3427,7 @@ int spider_db_store_result(
       DBUG_RETURN(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM);
     }
     db_conn = conn->db_conn;
+    /* 分配result_list所需的空间 */
     if (!result_list->current)
     {
       if (!result_list->first)
@@ -3533,6 +3534,7 @@ int spider_db_store_result(
 
     if (result_list->quick_mode == 0)
     {
+      /* Get all the result by mysql_store_result */
       if (spider_bit_is_set(spider->db_request_phase, link_idx))
       {
         spider_clear_bit(spider->db_request_phase, link_idx);
@@ -3727,6 +3729,7 @@ int spider_db_store_result(
         result_list->limit_num > roop_count &&
         (row = current->result->fetch_row())
       ) {
+        /* Get all the result to temporary table when quick_mode = 3  */
         THD *thd = current_thd;
         char buf[MAX_FIELD_WIDTH];
         spider_string tmp_str(buf, MAX_FIELD_WIDTH, &my_charset_bin);
@@ -6283,12 +6286,14 @@ int spider_db_direct_update(
       ) {
         DBUG_RETURN(error_num);
       }
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       if (
         (spider->direct_update_kinds & SPIDER_SQL_KIND_HS) &&
         (error_num = spider->append_direct_update_set_hs_part())
       ) {
         DBUG_RETURN(error_num);
       }
+#endif
     }
 #endif
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -6323,6 +6328,7 @@ int spider_db_direct_update(
       DBUG_RETURN(error_num);
     }
   }
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (spider->direct_update_kinds & SPIDER_SQL_KIND_HS)
   {
     if (
@@ -6337,6 +6343,7 @@ int spider_db_direct_update(
       DBUG_RETURN(error_num);
     }
   }
+#endif
 
   for (
     roop_count = spider_conn_link_idx_next(share->link_statuses,
@@ -6455,9 +6462,9 @@ int spider_db_direct_update(
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       if (!spider_bit_is_set(spider->do_hs_direct_update, roop_count))
       {
+#endif
         if (!counted)
         {
-#endif
           *update_rows = spider->conns[roop_count]->db_conn->affected_rows();
           DBUG_PRINT("info", ("spider update_rows = %u", *update_rows));
           counted = TRUE;
@@ -6559,9 +6566,9 @@ int spider_db_bulk_direct_update(
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     if (!spider_bit_is_set(spider->do_hs_direct_update, roop_count))
     {
+#endif
       if (!counted)
       {
-#endif
         *update_rows = spider->conns[roop_count]->db_conn->affected_rows();
         DBUG_PRINT("info", ("spider update_rows = %u", *update_rows));
         counted = TRUE;
@@ -6747,6 +6754,7 @@ int spider_db_direct_delete(
       DBUG_RETURN(error_num);
     }
   }
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (spider->direct_update_kinds & SPIDER_SQL_KIND_HS)
   {
     if (
@@ -6761,6 +6769,7 @@ int spider_db_direct_delete(
       DBUG_RETURN(error_num);
     }
   }
+#endif
 
   for (
     roop_count = spider_conn_link_idx_next(share->link_statuses,
@@ -6926,6 +6935,7 @@ int spider_db_direct_delete(
     if ((error_num = spider->reset_sql_sql(SPIDER_SQL_TYPE_DELETE_SQL)))
       error_num2 = error_num;
   }
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (spider->direct_update_kinds & SPIDER_SQL_KIND_HS)
   {
     if ((error_num = spider->reset_hs_sql(SPIDER_SQL_TYPE_DELETE_HS)))
@@ -6933,6 +6943,7 @@ int spider_db_direct_delete(
     if ((error_num = spider->reset_hs_keys(SPIDER_SQL_TYPE_DELETE_HS)))
       error_num2 = error_num;
   }
+#endif
   DBUG_RETURN(error_num2);
 }
 #endif

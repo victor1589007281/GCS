@@ -3719,17 +3719,20 @@ bool spider_conn_use_handler(
 #endif
     DBUG_RETURN(TRUE);
   }
+#endif
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
   if (spider->do_direct_update)
   {
     spider->sql_kinds |= SPIDER_SQL_KIND_SQL;
     spider->sql_kind[link_idx] = SPIDER_SQL_KIND_SQL;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     if (spider_bit_is_set(spider->do_hs_direct_update, link_idx))
     {
       spider->direct_update_kinds |= SPIDER_SQL_KIND_HS;
       DBUG_PRINT("info",("spider TRUE by using HS direct_update"));
       DBUG_RETURN(TRUE);
     } else
+#endif
       spider->direct_update_kinds |= SPIDER_SQL_KIND_SQL;
     if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_MYSQL)
     {
@@ -3740,7 +3743,6 @@ bool spider_conn_use_handler(
       DBUG_RETURN(TRUE);
     }
   }
-#endif
 #endif
   if (spider->use_spatial_index)
   {

@@ -58,7 +58,7 @@ public:
   THR_LOCK_DATA      lock;
   SPIDER_SHARE       *share;
   SPIDER_TRX         *trx;
-  ulonglong          spider_thread_id;
+  ulonglong          spider_thread_id;                          /* 内部ID */
   ulonglong          trx_conn_adjustment;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   ulonglong          trx_hs_r_conn_adjustment;
@@ -74,7 +74,7 @@ public:
   uint               conn_kinds;
   uint               *conn_kind;
   char               *conn_keys_first_ptr;
-  char               **conn_keys;
+  char               **conn_keys;                               /* conn_keys数组，个数取决于share->all_link_count,大部分情况下为1 */
   SPIDER_CONN        **conns;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   char               **hs_r_conn_keys;
@@ -90,7 +90,7 @@ public:
   void               **quick_targets;
   int                *need_mons;
   query_id_t         search_link_query_id;
-  int                search_link_idx;
+  int                search_link_idx;                           /* 只用于负载均衡模式，对于普通情况都是0 */
   int                result_link_idx;
   SPIDER_RESULT_LIST result_list;
   SPIDER_CONDITION   *condition;
@@ -845,7 +845,6 @@ public:
   int append_direct_update_set_hs_part();
 #endif
 #endif
-#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   int append_dup_update_pushdown_sql_part(
     const char *alias,
     uint alias_length
@@ -855,7 +854,6 @@ public:
     uint alias_length
   );
   int check_update_columns_sql_part();
-#endif
   int append_delete_sql_part();
   int append_select_sql_part(
     ulong sql_type

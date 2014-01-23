@@ -50,7 +50,7 @@ const char **spd_defaults_extra_file;
 const char **spd_defaults_file;
 
 handlerton *spider_hton_ptr;
-SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
+SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];       //mysql, handlersocket, oracle
 extern SPIDER_DBTON spider_dbton_mysql;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 extern SPIDER_DBTON spider_dbton_handlersocket;
@@ -229,7 +229,7 @@ extern const char *spider_mon_table_cache_func_name;
 extern const char *spider_mon_table_cache_file_name;
 extern ulong spider_mon_table_cache_line_no;
 
-HASH spider_open_tables;
+HASH spider_open_tables;                                    /* HASH table of SPIDER_SHARE */
 uint spider_open_tables_id;
 const char *spider_open_tables_func_name;
 const char *spider_open_tables_file_name;
@@ -246,7 +246,7 @@ extern pthread_mutex_t spider_thread_id_mutex;
 extern pthread_mutex_t spider_conn_id_mutex;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-HASH spider_open_pt_share;
+HASH spider_open_pt_share;                                  /* HASH table of SPIDER_PARTITION_SHARE, share by SPIDER_SHARE */
 uint spider_open_pt_share_id;
 const char *spider_open_pt_share_func_name;
 const char *spider_open_pt_share_file_name;
@@ -1682,7 +1682,7 @@ int spider_parse_connect_info(
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   partition_info *part_info,
 #endif
-  uint create_table
+  uint create_table                 /* 是否建表操作 */
 ) {
   int error_num = 0;
   char *connect_string = NULL;
@@ -1692,8 +1692,8 @@ int spider_parse_connect_info(
   int title_length;
   SPIDER_ALTER_TABLE *share_alter;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-  partition_element *part_elem;
-  partition_element *sub_elem;
+  partition_element *part_elem;         /* 分区信息 */
+  partition_element *sub_elem;          /* 子分区信息 */
 #endif
   DBUG_ENTER("spider_parse_connect_info");
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -1711,6 +1711,7 @@ int spider_parse_connect_info(
   DBUG_PRINT("info",
     ("spider s->normalized_path=%s", table_share->normalized_path.str));
 #ifdef WITH_PARTITION_STORAGE_ENGINE
+  /* 解析分区/子分区信息 */
   spider_get_partition_info(share->table_name, share->table_name_length,
     table_share, part_info, &part_elem, &sub_elem);
 #endif
@@ -1804,7 +1805,7 @@ int spider_parse_connect_info(
     switch (roop_count)
     {
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-      case 4:
+      case 4:       /* 子分区 */
         if (!sub_elem || !sub_elem->part_comment)
           continue;
         DBUG_PRINT("info",("spider create sub comment string"));
@@ -1818,7 +1819,7 @@ int spider_parse_connect_info(
         }
         DBUG_PRINT("info",("spider sub comment string=%s", connect_string));
         break;
-      case 3:
+      case 3:       /* 分区 */
         if (!part_elem || !part_elem->part_comment)
           continue;
         DBUG_PRINT("info",("spider create part comment string"));
@@ -1833,7 +1834,7 @@ int spider_parse_connect_info(
         DBUG_PRINT("info",("spider part comment string=%s", connect_string));
         break;
 #endif
-      case 2:
+      case 2:       /* table comment */
         if (table_share->comment.length == 0)
           continue;
         DBUG_PRINT("info",("spider create comment string"));
@@ -1847,7 +1848,7 @@ int spider_parse_connect_info(
         }
         DBUG_PRINT("info",("spider comment string=%s", connect_string));
         break;
-      default:
+      default:      /* table connection */
         if (table_share->connect_string.length == 0)
           continue;
         DBUG_PRINT("info",("spider create connect_string string"));
@@ -1866,6 +1867,7 @@ int spider_parse_connect_info(
     sprit_ptr[0] = connect_string;
     while (sprit_ptr[0])
     {
+      /* 分词 */
       if ((sprit_ptr[1] = strchr(sprit_ptr[0], ',')))
       {
         *sprit_ptr[1] = '\0';
@@ -1891,6 +1893,7 @@ int spider_parse_connect_info(
         start_ptr++;
       }
 
+      /* 关键字解析 */
       switch (title_length)
       {
         case 0:
@@ -2811,6 +2814,7 @@ int spider_parse_connect_info(
   share_alter->tmp_link_statuses_length = share->link_statuses_length;
   /* copy for tables end */
 
+  /* 设置参数默认值 */
   if ((error_num = spider_set_connect_info_default(
     share,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -2823,6 +2827,7 @@ int spider_parse_connect_info(
 
   if (create_table)
   {
+    /* 建表的合法性校验 */
     for (roop_count = 0; roop_count < (int) share->all_link_count;
       roop_count++)
     {
@@ -3672,6 +3677,7 @@ int spider_create_conn_keys(
 
   for (roop_count = 0; roop_count < (int) share->all_link_count; roop_count++)
   {
+    /* 设置conn_key */
     share->conn_keys[roop_count] = tmp_name;
     *tmp_name = '0';
     DBUG_PRINT("info",("spider tgt_wrappers[%d]=%s", roop_count,
@@ -3819,6 +3825,7 @@ int spider_create_conn_keys(
 #endif
 #endif
 
+    /* 设置sql_dbton_ids和hs_dbton_ids */
     bool get_sql_id = FALSE;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     bool get_nosql_id = FALSE;
@@ -3918,6 +3925,7 @@ SPIDER_SHARE *spider_create_share(
   longlong *tmp_cardinality;
   uchar *tmp_cardinality_upd;
   DBUG_ENTER("spider_create_share");
+  /* 1.分配SPIDER_SHARE所需要的空间 */
   length = (uint) strlen(table_name);
   bitmap_size = spider_bitmap_size(table_share->fields);
   if (!(share = (SPIDER_SHARE *)
@@ -3962,6 +3970,7 @@ SPIDER_SHARE *spider_create_share(
     share->key_hint[roop_count].init_calc_mem(95);
   DBUG_PRINT("info",("spider share->key_hint=%p", share->key_hint));
 
+  /* 2.解析表的连接信息，填充SPIDER_SHAER结构 */
   if ((*error_num = spider_parse_connect_info(share, table_share,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
     part_info,
@@ -3976,12 +3985,14 @@ SPIDER_SHARE *spider_create_share(
   else
     share->access_charset = system_charset_info;
 
+  /* 3.创建连接串的key 0mysql\0[host]\0[port]\0[sock]\0[user]\0[pwd]\0[SSL...] */
   if ((*error_num = spider_create_conn_keys(share)))
     goto error_create_conn_keys;
 
   if (share->table_count_mode)
     share->additional_table_flags |= HA_STATS_RECORDS_IS_EXACT;
 
+  /* 4.创建相应metex和lock */
 #if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&share->mutex, MY_MUTEX_INIT_FAST))
 #else
@@ -4029,11 +4040,13 @@ SPIDER_SHARE *spider_create_share(
   thr_lock_init(&share->lock);
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
+  /* 5.获取或创建partition_share */
   if (!(share->partition_share =
     spider_get_pt_share(share, table_share, error_num)))
     goto error_get_pt_share;
 #endif
 
+  /* 6.创建和初始化spider_mysql_share */
   for (roop_count = 0; roop_count < SPIDER_DBTON_SIZE; roop_count++)
   {
     if (spider_bit_is_set(share->dbton_bitmap, roop_count))
@@ -4142,7 +4155,8 @@ SPIDER_SHARE *spider_get_share(
   if (!(share = (SPIDER_SHARE*) my_hash_search(&spider_open_tables,
     (uchar*) table_name, length)))
 #endif
-  {
+  { /* 1.1 根据表名找不到可重用SPIDER_SHARE对象 */
+    /* 1.1.1 创建SPIDER_SHAER对象，并加入hash表spider_open_tables */
     if (!(share = spider_create_share(
       table_name, table_share,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -4181,7 +4195,8 @@ SPIDER_SHARE *spider_get_share(
     share->use_count++;
     pthread_mutex_unlock(&spider_tbl_mutex);
 
-    if (!share->link_status_init)
+    /* 1.1.2 从系统表spider_tables获得该表的相应信息 */
+    if (!share->link_status_init)           /* always 0?? */
     {
       pthread_mutex_lock(&share->mutex);
       if (!share->link_status_init)
@@ -4237,6 +4252,7 @@ SPIDER_SHARE *spider_get_share(
     else
       first_byte = '0';
 
+    /* 1.1.3 创建spider->trx对象 */
     if (!(spider->trx = spider_get_trx(thd, TRUE, error_num)))
     {
       share->init_error = TRUE;
@@ -4247,6 +4263,7 @@ SPIDER_SHARE *spider_get_share(
     }
     spider->set_error_mode();
 
+    /* 1.1.4 创建monitor线程 */
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     if (
       sql_command != SQLCOM_DROP_TABLE &&
@@ -4262,6 +4279,7 @@ SPIDER_SHARE *spider_get_share(
     }
 #endif
 
+    /* 1.1.5 创建spider->conn_keys, copy from spider_share->conn_keys */
     if (!(spider->conn_keys = (char **)
       spider_bulk_alloc_mem(spider_current_trx, 47,
         __func__, __FILE__, __LINE__, MYF(MY_WME | MY_ZEROFILL),
@@ -4320,10 +4338,12 @@ SPIDER_SHARE *spider_get_share(
         &result_list->tmp_table_created,
           sizeof(uchar) * share->link_bitmap_size,
 #ifdef HA_CAN_BULK_ACCESS
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
         &result_list->hs_r_bulk_open_index,
           sizeof(uchar) * share->link_bitmap_size,
         &result_list->hs_w_bulk_open_index,
           sizeof(uchar) * share->link_bitmap_size,
+#endif
 #endif
         &result_list->sql_kind_backup, sizeof(uint) * share->link_count,
         &spider->dbton_handler,
@@ -4370,6 +4390,7 @@ SPIDER_SHARE *spider_get_share(
     }
     spider_trx_set_link_idx_for_all(spider);
 
+    /* 1.1.6 创建和初始化spider_mysql_handler结构 */
     for (roop_count = 0; roop_count < (int) share->use_dbton_count;
       roop_count++)
     {
@@ -4400,6 +4421,7 @@ SPIDER_SHARE *spider_get_share(
       goto error_but_no_delete;
     }
 
+    /* 1.1.7 创建连接对象及根据实际需要ping table */
     if (
       sql_command != SQLCOM_DROP_TABLE &&
       sql_command != SQLCOM_ALTER_TABLE &&
@@ -4448,6 +4470,7 @@ SPIDER_SHARE *spider_get_share(
         spider->conns[roop_count]->error_mode &= spider->error_mode;
       }
     }
+    /* 1.1.8 负载均衡，确定search_link_idx，这里总认为是0 */
     search_link_idx = spider_conn_first_link_idx(thd,
       share->link_statuses, share->access_balances, spider->conn_link_idx,
       share->link_count, SPIDER_LINK_STATUS_OK);
@@ -4491,12 +4514,13 @@ SPIDER_SHARE *spider_get_share(
     }
     spider->search_link_idx = search_link_idx;
 
+    /* 1.1.9 show table status and show index from ** if needed */
     if (
       sql_command != SQLCOM_DROP_TABLE &&
       sql_command != SQLCOM_ALTER_TABLE &&
       sql_command != SQLCOM_SHOW_CREATE &&
       !spider->error_mode &&
-      !spider_param_same_server_link(thd)
+      !spider_param_same_server_link(thd)               /* 这里要求不允许相同表link到同一个spider server */
     ) {
       SPIDER_INIT_ERROR_TABLE *spider_init_error_table;
       sts_interval = spider_param_sts_interval(thd, share->sts_interval);
@@ -4616,7 +4640,7 @@ SPIDER_SHARE *spider_get_share(
     }
 
     share->init = TRUE;
-  } else {
+  } else {              /* 1.2 有可重用SPIDER_SHARE对象 */
     share->use_count++;
     pthread_mutex_unlock(&spider_tbl_mutex);
 
@@ -4677,7 +4701,7 @@ SPIDER_SHARE *spider_get_share(
       share->semi_table_lock_conn);
     if (semi_table_lock_conn)
       first_byte = '0' +
-        spider_param_semi_table_lock(thd, share->semi_table_lock);
+        spider_param_semi_table_lock(thd, share->semi_table_lock);          /* 重用连接根据这个参数却分 */
     else
       first_byte = '0';
 
@@ -4759,10 +4783,12 @@ SPIDER_SHARE *spider_get_share(
         &result_list->tmp_table_created,
           sizeof(uchar) * share->link_bitmap_size,
 #ifdef HA_CAN_BULK_ACCESS
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
         &result_list->hs_r_bulk_open_index,
           sizeof(uchar) * share->link_bitmap_size,
         &result_list->hs_w_bulk_open_index,
           sizeof(uchar) * share->link_bitmap_size,
+#endif
 #endif
         &result_list->sql_kind_backup, sizeof(uint) * share->link_count,
         &spider->dbton_handler,

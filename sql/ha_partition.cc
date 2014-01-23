@@ -9062,7 +9062,7 @@ int ha_partition::direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
   TABLE_LIST *table_list= table->pos_in_table_list;
   DBUG_ENTER("ha_partition::direct_update_rows_init");
   if (
-    bitmap_is_overlapping(&m_part_info->full_part_field_set,
+    bitmap_is_overlapping(&m_part_info->full_part_field_set,  // 判断分区键和被更新字段是否有重合
                           table->write_set)
 #if defined(HS_HAS_SQLCOM)
     && (

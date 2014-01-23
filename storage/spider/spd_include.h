@@ -577,8 +577,8 @@ typedef struct st_spider_share
 {
   char               *table_name;
   uint               table_name_length;
-  uint               use_count;
-  uint               link_count;
+  uint               use_count;                         /* 引用计数 */
+  uint               link_count;                        /* when bigger than 1? */
   uint               all_link_count;
   uint               link_bitmap_size;
   pthread_mutex_t    mutex;
@@ -740,7 +740,7 @@ typedef struct st_spider_share
   int                bka_engine_length;
 
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
-  my_hash_value_type *conn_keys_hash_value;
+  my_hash_value_type *conn_keys_hash_value;             /* conn_keys的hash值 */
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   my_hash_value_type *hs_read_conn_keys_hash_value;
   my_hash_value_type *hs_write_conn_keys_hash_value;
@@ -753,7 +753,7 @@ typedef struct st_spider_share
   char               **tgt_usernames;
   char               **tgt_passwords;
   char               **tgt_sockets;
-  char               **tgt_wrappers;
+  char               **tgt_wrappers;                    /* mysql/oracle/handlersocket */
   char               **tgt_ssl_cas;
   char               **tgt_ssl_capaths;
   char               **tgt_ssl_certs;
@@ -762,8 +762,8 @@ typedef struct st_spider_share
   char               **tgt_default_files;
   char               **tgt_default_groups;
   char               **tgt_pk_names;
-  char               **tgt_sequence_names;
-  char               **conn_keys;
+  char               **tgt_sequence_names;              /* For oracle sequence objects */
+  char               **conn_keys;                       /* 连接重用标识串, 0mysql\0[host]\0[port]\0[sock]\0[user]\0[pwd]\0[SSL...]  */
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   char               **hs_read_socks;
   char               **hs_write_socks;
@@ -819,7 +819,7 @@ typedef struct st_spider_share
   uint               *hs_read_conn_keys_lengths;
   uint               *hs_write_conn_keys_lengths;
 #endif
-  uint               *sql_dbton_ids;
+  uint               *sql_dbton_ids;                                /* 使用sql的dbton(mysql)的序号，如不使用sql（如hs)设为SPIDER_DBTON_SIZE */
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   uint               *hs_dbton_ids;
 #endif
@@ -841,7 +841,7 @@ typedef struct st_spider_share
   uint               tgt_default_groups_charlen;
   uint               tgt_pk_names_charlen;
   uint               tgt_sequence_names_charlen;
-  uint               conn_keys_charlen;
+  uint               conn_keys_charlen;                             /* conn_keys数组共占用的存储空间 */
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   uint               hs_read_socks_charlen;
   uint               hs_write_socks_charlen;
@@ -899,10 +899,10 @@ typedef struct st_spider_share
   uint               access_balances_length;
 
   /* for dbton */
-  uchar              dbton_bitmap[spider_bitmap_size(SPIDER_DBTON_SIZE)];
+  uchar              dbton_bitmap[spider_bitmap_size(SPIDER_DBTON_SIZE)];       /* each bit for spider_dbton */
   spider_db_share    *dbton_share[SPIDER_DBTON_SIZE];
-  uint               use_dbton_count;
-  uint               use_dbton_ids[SPIDER_DBTON_SIZE];
+  uint               use_dbton_count;                                           /* 使用dbton的个数 */
+  uint               use_dbton_ids[SPIDER_DBTON_SIZE];                          /* 对应dbton的序号（in spider_dbton) */
   uint               dbton_id_to_seq[SPIDER_DBTON_SIZE];
   uint               use_sql_dbton_count;
   uint               use_sql_dbton_ids[SPIDER_DBTON_SIZE];
@@ -915,7 +915,7 @@ typedef struct st_spider_share
 
   SPIDER_ALTER_TABLE alter_table;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-  SPIDER_PARTITION_SHARE *partition_share;
+  SPIDER_PARTITION_SHARE *partition_share;                                      /* 多个子表共享 */
 #endif
 } SPIDER_SHARE;
 

@@ -813,7 +813,9 @@ int ha_spider::check_access_kind(
   sql_command = thd_sql_command(thd);
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
   do_direct_update = FALSE;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   maybe_do_hs_direct_update = FALSE;
+#endif
 #endif
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
@@ -1986,14 +1988,14 @@ int ha_spider::index_read_map_internal(
     my_error(ER_QUERY_INTERRUPTED, MYF(0));
     DBUG_RETURN(ER_QUERY_INTERRUPTED);
   }
-#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
   if (do_direct_update)
   {
     direct_update_kinds = SPIDER_SQL_KIND_SQL;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     memset(do_hs_direct_update, 0, share->link_bitmap_size);
-  }
 #endif
+  }
 #endif
   if (
     find_flag >= HA_READ_MBR_CONTAIN &&
@@ -8670,7 +8672,7 @@ ulonglong ha_spider::table_flags() const
     HA_BINLOG_STMT_CAPABLE |
     HA_HAS_RECORDS |
     HA_PARTIAL_COLUMN_READ |
-#ifdef HA_CAN_BULK_ACCESS
+#if defined(HA_CAN_BULK_ACCESS) && defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     (support_bulk_access_hs() ? HA_CAN_BULK_ACCESS : 0) |
 #endif
     SPIDER_CAN_BG_SEARCH |
@@ -9331,11 +9333,7 @@ int ha_spider::direct_update_rows_init(
 
   DBUG_PRINT("info",("spider offset_limit=%lld", offset_limit));
   DBUG_PRINT("info",("spider mode=%u", mode));
-  DBUG_PRINT("info",("spider maybe_do_hs_direct_update=%s",
-    maybe_do_hs_direct_update ? "TRUE" : "FALSE"));
   DBUG_PRINT("info",("spider sql_command=%u", sql_command));
-  DBUG_PRINT("info",("spider hs_pushed_ret_fields_num=%zu",
-    hs_pushed_ret_fields_num));
   DBUG_PRINT("info",("spider do_direct_update=%s",
     do_direct_update ? "TRUE" : "FALSE"));
   if (
@@ -10554,8 +10552,10 @@ int ha_spider::info_push(
   if (
     info_type != INFO_KIND_BULK_ACCESS_BEGIN &&
     info_type != INFO_KIND_BULK_ACCESS_CURRENT &&
-    info_type != INFO_KIND_BULK_ACCESS_END &&
-    info_type != INFO_KIND_HS_RET_FIELDS
+    info_type != INFO_KIND_BULK_ACCESS_END 
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+    && info_type != INFO_KIND_HS_RET_FIELDS
+#endif
   ) {
     if (!is_bulk_access_clone)
     {
@@ -10734,12 +10734,14 @@ int ha_spider::info_push(
       ) {
         DBUG_RETURN(error_num);
       }
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       memset(
         bulk_access_link_current->spider->result_list.hs_r_bulk_open_index, 0,
         share->link_bitmap_size);
       memset(
         bulk_access_link_current->spider->result_list.hs_w_bulk_open_index, 0,
         share->link_bitmap_size);
+#endif
 /*
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       if ((error_num = bulk_access_link_current->spider->reset_hs_strs_pos(
@@ -12002,10 +12004,8 @@ int ha_spider::sync_from_clone_source(
       share->link_bitmap_size);
 #endif
 #endif
-#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     conn_kinds = spider->conn_kinds;
     memcpy(conn_kind, spider->conn_kind, sizeof(uint) * share->link_count);
-#endif
     result_list.lock_type = spider->result_list.lock_type;
     lock_type = spider->lock_type;
     selupd_lock_mode = spider->selupd_lock_mode;
@@ -12016,10 +12016,12 @@ int ha_spider::sync_from_clone_source(
     low_priority = spider->low_priority;
     memcpy(conns, spider->conns,
       sizeof(SPIDER_CONN *) * share->link_count);
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     memcpy(hs_r_conns, spider->hs_r_conns,
       sizeof(SPIDER_CONN *) * share->link_count);
     memcpy(hs_w_conns, spider->hs_w_conns,
       sizeof(SPIDER_CONN *) * share->link_count);
+#endif
     spider_thread_id = spider->spider_thread_id;
     trx_conn_adjustment = spider->trx_conn_adjustment;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -12051,10 +12053,8 @@ int ha_spider::sync_from_clone_source(
       share->link_bitmap_size);
 #endif
 #endif
-#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     conn_kinds = spider->conn_kinds;
     memcpy(conn_kind, spider->conn_kind, sizeof(uint) * share->link_count);
-#endif
     result_list.lock_type = spider->result_list.lock_type;
     lock_type = spider->lock_type;
     selupd_lock_mode = spider->selupd_lock_mode;
@@ -12072,6 +12072,7 @@ int ha_spider::sync_from_clone_source(
     external_lock_cnt = spider->external_lock_cnt;
   }
 
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (spider->hs_pushed_ret_fields_num < MAX_FIELDS)
   {
     SPIDER_HS_UINT32_INFO tmp_info;
@@ -12082,6 +12083,7 @@ int ha_spider::sync_from_clone_source(
       DBUG_RETURN(error_num);
     }
   }
+#endif
   DBUG_PRINT("info",("spider bulk_access_link->spider->dbton_handler=%p",
     dbton_handler));
   DBUG_PRINT("info",("spider ptr bulk_access_link->spider->dbton_handler=%p",
@@ -12531,7 +12533,6 @@ int ha_spider::append_direct_update_set_hs_part()
 #endif
 #endif
 
-#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 int ha_spider::append_dup_update_pushdown_sql_part(
   const char *alias,
   uint alias_length
@@ -12597,7 +12598,6 @@ int ha_spider::check_update_columns_sql_part()
   }
   DBUG_RETURN(0);
 }
-#endif
 
 int ha_spider::append_delete_sql_part()
 {

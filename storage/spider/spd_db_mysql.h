@@ -419,22 +419,22 @@ public:
 class spider_mysql_share: public spider_db_share
 {
 public:
-  spider_string      *table_select;
-  int                table_select_pos;
-  spider_string      *key_select;
-  int                *key_select_pos;
+  spider_string      *table_select;             /* `col1`,`col2`... from `db`.`tbl[0]` (1个) */
+  int                table_select_pos;          /* 表名的位置, in table_select，记录表名的位置用于替换 */
+  spider_string      *key_select;               /* `key_field[0~n_keys-1]` from `db`.`tbl[0]` (第一个表n_keys个) */
+  int                *key_select_pos;           /* 表名的位置, in key_select[i] */
   spider_string      *key_hint;
-  spider_string      *show_table_status;
-  spider_string      *show_records;
-  spider_string      *show_index;
-  spider_string      *table_names_str;
-  spider_string      *db_names_str;
-  spider_string      *db_table_str;
+  spider_string      *show_table_status;        /* (all_link_count * 2个）show table status/select *** from information_schema where table_schema=** and table_name=*** */
+  spider_string      *show_records;             /* (all_link_count个）select count(*) from `db`.`tbl` */
+  spider_string      *show_index;               /* (all_link_count * 2个）show index from 语句/select `column_name`,`cardinality` from `information_schema`.`statistics` where `table_schema` = */
+  spider_string      *table_names_str;          /* (all_link_count个）表名 */
+  spider_string      *db_names_str;             /* (all_link_count个）库名 */
+  spider_string      *db_table_str;             /* (all_link_count个）库名.表名 */
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
   my_hash_value_type *db_table_str_hash_value;
 #endif
-  uint               table_nm_max_length;
-  uint               db_nm_max_length;
+  uint               table_nm_max_length;       /* 最长的table名 */
+  uint               db_nm_max_length;          /* 最长的db名 */
   spider_string      *column_name_str;
   bool               same_db_table_name;
   int                first_all_link_idx;
