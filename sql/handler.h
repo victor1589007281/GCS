@@ -200,9 +200,9 @@ enum enum_alter_inplace_result {
 #define HA_CAN_BG_INSERT                (LL(1) << 39)
 #define HA_CAN_BG_UPDATE                (LL(1) << 40)
 #define HA_CAN_MULTISTEP_MERGE          (LL(1) << 41)   //for vp only
-#define HA_CAN_BULK_ACCESS              (LL(1) << 42)   //for merge/vp table only?
-#define HA_CAN_FORCE_BULK_UPDATE        (LL(1) << 43)   //no used?
-#define HA_CAN_FORCE_BULK_DELETE        (LL(1) << 44)
+//#define HA_CAN_BULK_ACCESS              (LL(1) << 42)   //for merge/vp table only?
+//#define HA_CAN_FORCE_BULK_UPDATE        (LL(1) << 43)   //no used?
+//#define HA_CAN_FORCE_BULK_DELETE        (LL(1) << 44)
 
 /*Engine supports BLOB file can be compressed.
 Only innobase supports this function.

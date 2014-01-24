@@ -4495,7 +4495,9 @@ int ha_partition::rnd_next(uchar *buf)
   if (m_rnd_init_and_first)
   {
     m_rnd_init_and_first = FALSE;
+#ifdef HA_CAN_BULK_ACCESS
     if (!bulk_access_executing)
+#endif
     {
       if (check_parallel_search())
         error= handle_pre_scan(FALSE, TRUE);
@@ -5167,7 +5169,9 @@ int ha_partition::common_index_read(uchar *buf, bool have_start_key)
     */
     DBUG_PRINT("info", ("doing unordered scan"));
     m_ordered_scan_ongoing= FALSE;
+#ifdef HA_CAN_BULK_ACCESS
 	if (!bulk_access_executing)
+#endif
     {
       error= handle_pre_scan(FALSE, FALSE);
       if (m_pre_calling || error)
@@ -5265,7 +5269,9 @@ int ha_partition::common_first_last(uchar *buf)
   if (!m_ordered_scan_ongoing &&
       m_index_scan_type != partition_index_last)
   {
+#ifdef HA_CAN_BULK_ACCESS
     if (!bulk_access_executing)
+#endif
     {
       if (check_parallel_search())
         error= handle_pre_scan(FALSE, TRUE);
@@ -6152,8 +6158,10 @@ int ha_partition::handle_pre_scan(bool reverse_order, bool use_parallel)
     if (error)
       DBUG_RETURN(error);
   }
+#ifdef HA_CAN_BULK_ACCESS
   if (bulk_access_started)
     bulk_access_info_current->called = TRUE;
+#endif
   table->status = 0;
   DBUG_RETURN(0);
 }
@@ -6370,7 +6378,9 @@ int ha_partition::handle_ordered_index_scan(uchar *buf, bool reverse_order)
   int saved_error= HA_ERR_END_OF_FILE;
   DBUG_ENTER("ha_partition::handle_ordered_index_scan");
 
+#ifdef HA_CAN_BULK_ACCESS
   if (!bulk_access_executing)
+#endif
   {
     if (m_pre_calling)
       error = handle_pre_scan(reverse_order, m_pre_call_use_parallel);
@@ -9555,7 +9565,6 @@ int ha_partition::pre_direct_delete_rows(KEY_MULTI_RANGE *ranges,
 int ha_partition::info_push(uint info_type, void *info)
 {
   int error= 0;
-  uint i;
   handler **file= m_file;
   DBUG_ENTER("ha_partition::info_push");
 
@@ -9563,6 +9572,7 @@ int ha_partition::info_push(uint info_type, void *info)
   switch (info_type)
   {
     case INFO_KIND_BULK_ACCESS_BEGIN:
+      uint i;
       DBUG_PRINT("info",("partition INFO_KIND_BULK_ACCESS_BEGIN"));
       if (bulk_access_started)
       {
@@ -9632,6 +9642,7 @@ int ha_partition::info_push(uint info_type, void *info)
 }
 
 
+#ifdef HA_CAN_BULK_ACCESS
 void ha_partition::bulk_req_exec()
 {
   uint i;
@@ -9648,6 +9659,7 @@ void ha_partition::bulk_req_exec()
   bitmap_clear_all(&bulk_access_exec_bitmap);
   DBUG_VOID_RETURN;
 }
+#endif
 #endif
 
 

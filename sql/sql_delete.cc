@@ -308,7 +308,9 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
   if (!do_direct_update)
   {
     if (table->triggers &&
+#ifdef HA_CAN_BULK_ACCESS
         !(table->file->ha_table_flags() & HA_CAN_FORCE_BULK_DELETE) &&
+#endif
         table->triggers->has_triggers(TRG_EVENT_DELETE,
                                       TRG_ACTION_AFTER))
     {

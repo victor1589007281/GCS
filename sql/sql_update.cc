@@ -678,7 +678,9 @@ int mysql_update(THD *thd,
       error = -1;
   } else {
   if (table->triggers &&
+#ifdef HA_CAN_BULK_ACCESS
         !(table->file->ha_table_flags() & HA_CAN_FORCE_BULK_UPDATE) &&
+#endif
       table->triggers->has_triggers(TRG_EVENT_UPDATE,
                                     TRG_ACTION_AFTER))
   {
