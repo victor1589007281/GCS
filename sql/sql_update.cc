@@ -256,682 +256,682 @@ int mysql_update(THD *thd,
                  uint order_num, ORDER *order,
 		 ha_rows limit,
 		 enum enum_duplicates handle_duplicates, bool ignore,
-                 ha_rows *found_return, ha_rows *updated_return)
+         ha_rows *found_return, ha_rows *updated_return)
 {
-  bool		using_limit= limit != HA_POS_ERROR;
-  bool		safe_update= test(thd->variables.option_bits & OPTION_SAFE_UPDATES);
-  bool          used_key_is_modified= FALSE, transactional_table, will_batch;
-  int           res;
-  int		error, loc_error;
-  uint          used_index, dup_key_found;
-  bool          need_sort= TRUE;
-  bool          reverse= FALSE;
+    bool		using_limit= limit != HA_POS_ERROR;
+    bool		safe_update= test(thd->variables.option_bits & OPTION_SAFE_UPDATES);
+    bool          used_key_is_modified= FALSE, transactional_table, will_batch=FALSE;
+    int           res;
+    int		error, loc_error;
+    uint          used_index, dup_key_found;
+    bool          need_sort= TRUE;
+    bool          reverse= FALSE;
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
-  uint		want_privilege;
+    uint		want_privilege;
 #endif
-  uint          table_count= 0;
-  ha_rows	updated, found;
-  key_map	old_covering_keys;
-  TABLE		*table;
-  SQL_SELECT	*select;
-  READ_RECORD	info;
-  SELECT_LEX    *select_lex= &thd->lex->select_lex;
-  ulonglong     id;
-  List<Item> all_fields;
-  THD::killed_state killed_status= THD::NOT_KILLED;
-  bool has_triggers, binlog_is_row, do_direct_update = FALSE;
-  DBUG_ENTER("mysql_update");
+    uint          table_count= 0;
+    ha_rows	updated, found;
+    key_map	old_covering_keys;
+    TABLE		*table;
+    SQL_SELECT	*select;
+    READ_RECORD	info;
+    SELECT_LEX    *select_lex= &thd->lex->select_lex;
+    ulonglong     id;
+    List<Item> all_fields;
+    THD::killed_state killed_status= THD::NOT_KILLED;
+    bool has_triggers, binlog_is_row, do_direct_update = FALSE;
+    DBUG_ENTER("mysql_update");
 
-  if (open_tables(thd, &table_list, &table_count, 0))
-    DBUG_RETURN(1);
+    if (open_tables(thd, &table_list, &table_count, 0))
+        DBUG_RETURN(1);
 
-  if (table_list->multitable_view)
-  {
-    DBUG_ASSERT(table_list->view != 0);
-    DBUG_PRINT("info", ("Switch to multi-update"));
-    /* pass counter value */
-    thd->lex->table_count= table_count;
-    /* convert to multiupdate */
-    DBUG_RETURN(2);
-  }
-  if (lock_tables(thd, table_list, table_count, 0))
-    DBUG_RETURN(1);
-
-  if (mysql_handle_derived(thd->lex, &mysql_derived_prepare))
-    DBUG_RETURN(1);
-
-  if (thd->fill_derived_tables() &&
-      mysql_handle_derived(thd->lex, &mysql_derived_filling))
-  {
-    mysql_handle_derived(thd->lex, &mysql_derived_cleanup);
-    DBUG_RETURN(1);
-  }
-  mysql_handle_derived(thd->lex, &mysql_derived_cleanup);
-
-  thd_proc_info(thd, "init");
-  table= table_list->table;
-
-  /* Calculate "table->covering_keys" based on the WHERE */
-  table->covering_keys= table->s->keys_in_use;
-  table->quick_keys.clear_all();
-
-#ifndef NO_EMBEDDED_ACCESS_CHECKS
-  /* Force privilege re-checking for views after they have been opened. */
-  want_privilege= (table_list->view ? UPDATE_ACL :
-                   table_list->grant.want_privilege);
-#endif
-  if (mysql_prepare_update(thd, table_list, &conds, order_num, order))
-    DBUG_RETURN(1);
-
-  old_covering_keys= table->covering_keys;		// Keys used in WHERE
-  /* Check the fields we are going to modify */
-#ifndef NO_EMBEDDED_ACCESS_CHECKS
-  table_list->grant.want_privilege= table->grant.want_privilege= want_privilege;
-  table_list->register_want_access(want_privilege);
-#endif
-  if (setup_fields_with_no_wrap(thd, 0, fields, MARK_COLUMNS_WRITE, 0, 0))
-    DBUG_RETURN(1);                     /* purecov: inspected */
-  if (table_list->view && check_fields(thd, fields))
-  {
-    DBUG_RETURN(1);
-  }
-  if (!table_list->updatable || check_key_in_view(thd, table_list))
-  {
-    my_error(ER_NON_UPDATABLE_TABLE, MYF(0), table_list->alias, "UPDATE");
-    DBUG_RETURN(1);
-  }
-  if (table->timestamp_field)
-  {
-    // Don't set timestamp column if this is modified
-    if (bitmap_is_set(table->write_set,
-                      table->timestamp_field->field_index))
-      table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
-    else
+    if (table_list->multitable_view)
     {
-      if (table->timestamp_field_type == TIMESTAMP_AUTO_SET_ON_UPDATE ||
-          table->timestamp_field_type == TIMESTAMP_AUTO_SET_ON_BOTH)
-        bitmap_set_bit(table->write_set,
-                       table->timestamp_field->field_index);
+        DBUG_ASSERT(table_list->view != 0);
+        DBUG_PRINT("info", ("Switch to multi-update"));
+        /* pass counter value */
+        thd->lex->table_count= table_count;
+        /* convert to multiupdate */
+        DBUG_RETURN(2);
     }
-  }
+    if (lock_tables(thd, table_list, table_count, 0))
+        DBUG_RETURN(1);
+
+    if (mysql_handle_derived(thd->lex, &mysql_derived_prepare))
+        DBUG_RETURN(1);
+
+    if (thd->fill_derived_tables() &&
+        mysql_handle_derived(thd->lex, &mysql_derived_filling))
+    {
+        mysql_handle_derived(thd->lex, &mysql_derived_cleanup);
+        DBUG_RETURN(1);
+    }
+    mysql_handle_derived(thd->lex, &mysql_derived_cleanup);
+
+    thd_proc_info(thd, "init");
+    table= table_list->table;
+
+    /* Calculate "table->covering_keys" based on the WHERE */
+    table->covering_keys= table->s->keys_in_use;
+    table->quick_keys.clear_all();
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
-  /* Check values */
-  table_list->grant.want_privilege= table->grant.want_privilege=
-    (SELECT_ACL & ~table->grant.privilege);
+    /* Force privilege re-checking for views after they have been opened. */
+    want_privilege= (table_list->view ? UPDATE_ACL :
+        table_list->grant.want_privilege);
 #endif
-  if (setup_fields(thd, 0, values, MARK_COLUMNS_READ, 0, 0))
-  {
-    free_underlaid_joins(thd, select_lex);
-    DBUG_RETURN(1);				/* purecov: inspected */
-  }
+    if (mysql_prepare_update(thd, table_list, &conds, order_num, order))
+        DBUG_RETURN(1);
 
-  if (select_lex->inner_refs_list.elements &&
-    fix_inner_refs(thd, all_fields, select_lex, select_lex->ref_pointer_array))
-    DBUG_RETURN(1);
+    old_covering_keys= table->covering_keys;		// Keys used in WHERE
+    /* Check the fields we are going to modify */
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+    table_list->grant.want_privilege= table->grant.want_privilege= want_privilege;
+    table_list->register_want_access(want_privilege);
+#endif
+    if (setup_fields_with_no_wrap(thd, 0, fields, MARK_COLUMNS_WRITE, 0, 0))
+        DBUG_RETURN(1);                     /* purecov: inspected */
+    if (table_list->view && check_fields(thd, fields))
+    {
+        DBUG_RETURN(1);
+    }
+    if (!table_list->updatable || check_key_in_view(thd, table_list))
+    {
+        my_error(ER_NON_UPDATABLE_TABLE, MYF(0), table_list->alias, "UPDATE");
+        DBUG_RETURN(1);
+    }
+    if (table->timestamp_field)
+    {
+        // Don't set timestamp column if this is modified
+        if (bitmap_is_set(table->write_set,
+            table->timestamp_field->field_index))
+            table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
+        else
+        {
+            if (table->timestamp_field_type == TIMESTAMP_AUTO_SET_ON_UPDATE ||
+                table->timestamp_field_type == TIMESTAMP_AUTO_SET_ON_BOTH)
+                bitmap_set_bit(table->write_set,
+                table->timestamp_field->field_index);
+        }
+    }
 
-  if (conds)
-  {
-    Item::cond_result cond_value;
-    conds= remove_eq_conds(thd, conds, &cond_value);
-    if (cond_value == Item::COND_FALSE)
-      limit= 0;                                   // Impossible WHERE
-  }
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+    /* Check values */
+    table_list->grant.want_privilege= table->grant.want_privilege=
+        (SELECT_ACL & ~table->grant.privilege);
+#endif
+    if (setup_fields(thd, 0, values, MARK_COLUMNS_READ, 0, 0))
+    {
+        free_underlaid_joins(thd, select_lex);
+        DBUG_RETURN(1);				/* purecov: inspected */
+    }
 
-  /*
+    if (select_lex->inner_refs_list.elements &&
+        fix_inner_refs(thd, all_fields, select_lex, select_lex->ref_pointer_array))
+        DBUG_RETURN(1);
+
+    if (conds)
+    {
+        Item::cond_result cond_value;
+        conds= remove_eq_conds(thd, conds, &cond_value);
+        if (cond_value == Item::COND_FALSE)
+            limit= 0;                                   // Impossible WHERE
+    }
+
+    /*
     If a timestamp field settable on UPDATE is present then to avoid wrong
     update force the table handler to retrieve write-only fields to be able
     to compare records and detect data change.
-  */
-  if (table->file->ha_table_flags() & HA_PARTIAL_COLUMN_READ &&
-      table->timestamp_field &&
-      (table->timestamp_field_type == TIMESTAMP_AUTO_SET_ON_UPDATE ||
-       table->timestamp_field_type == TIMESTAMP_AUTO_SET_ON_BOTH))
-    bitmap_union(table->read_set, table->write_set);
-  // Don't count on usage of 'only index' when calculating which key to use
-  table->covering_keys.clear_all();
+    */
+    if (table->file->ha_table_flags() & HA_PARTIAL_COLUMN_READ &&
+        table->timestamp_field &&
+        (table->timestamp_field_type == TIMESTAMP_AUTO_SET_ON_UPDATE ||
+        table->timestamp_field_type == TIMESTAMP_AUTO_SET_ON_BOTH))
+        bitmap_union(table->read_set, table->write_set);
+    // Don't count on usage of 'only index' when calculating which key to use
+    table->covering_keys.clear_all();
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-  if (prune_partitions(thd, table, conds))
-  {
-    free_underlaid_joins(thd, select_lex);
-    my_ok(thd);				// No matching records
-    DBUG_RETURN(0);
-  }
+    if (prune_partitions(thd, table, conds))
+    {
+        free_underlaid_joins(thd, select_lex);
+        my_ok(thd);				// No matching records
+        DBUG_RETURN(0);
+    }
 #endif
-  /* Update the table->file->stats.records number */
-  table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);
+    /* Update the table->file->stats.records number */
+    table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);
 
-  select= make_select(table, 0, 0, conds, 0, &error);
-  if (error || !limit ||
-      (select && select->check_quick(thd, safe_update, limit)))
-  {
-    delete select;
-    free_underlaid_joins(thd, select_lex);
-    /*
-      There was an error or the error was already sent by
-      the quick select evaluation.
-      TODO: Add error code output parameter to Item::val_xxx() methods.
-      Currently they rely on the user checking DA for
-      errors when unwinding the stack after calling Item::val_xxx().
-    */
-    if (error || thd->is_error())
+    select= make_select(table, 0, 0, conds, 0, &error);
+    if (error || !limit ||
+        (select && select->check_quick(thd, safe_update, limit)))
     {
-      DBUG_RETURN(1);				// Error in where
-    }
-    my_ok(thd);				// No matching records
-    DBUG_RETURN(0);
-  }
-
-  /* If running in safe sql mode, don't allow updates without keys */
-  if (table->quick_keys.is_clear_all())
-  {
-    thd->server_status|=SERVER_QUERY_NO_INDEX_USED;
-    if (safe_update && !using_limit)
-    {
-      my_message(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE,
-		 ER(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE), MYF(0));
-      goto err;
-    }
-  }
-  init_ftfuncs(thd, select_lex, 1);
-
-  table->mark_columns_needed_for_update();
-
-  table->update_const_key_parts(conds);
-  order= simple_remove_const(order, conds);
-        
-  used_index= get_index_for_order(order, table, select, limit,
-                                  &need_sort, &reverse);
-  if (need_sort)
-  { // Assign table scan index to check below for modified key fields:
-    used_index= table->file->key_used_on_scan;
-  }
-  if (used_index != MAX_KEY)
-  { // Check if we are modifying a key that we are used to search with:
-    used_key_is_modified= is_key_used(table, used_index, table->write_set);
-  }
-  else if (select && select->quick)
-  {
-    /*
-      select->quick != NULL and used_index == MAX_KEY happens for index
-      merge and should be handled in a different way.
-    */
-    used_key_is_modified= (!select->quick->unique_key_range() &&
-                           select->quick->is_keys_used(table->write_set));
-  }
-
-  has_triggers = (table->triggers && (
-    table->triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_BEFORE) ||
-    table->triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_AFTER)));
-  DBUG_PRINT("info", ("has_triggers = %s", has_triggers ? "TRUE" : "FALSE"));
-  binlog_is_row = (mysql_bin_log.is_open() &&
-    thd->is_current_stmt_binlog_format_row());
-  DBUG_PRINT("info", ("binlog_is_row = %s", binlog_is_row ? "TRUE" : "FALSE"));
-  if (!has_triggers && !binlog_is_row)
-  {
-    if ((thd->variables.optimizer_switch &
-      OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN) && 
-      select && select->cond && 
-      (select->cond->used_tables() & table->map) &&
-      !table->file->pushed_cond)
-    {
-      if (!table->file->cond_push(select->cond))
-        table->file->pushed_cond = select->cond;
-    }
-
-    if (
-      !table->file->info_push(INFO_KIND_UPDATE_FIELDS, &fields) &&
-      !table->file->info_push(INFO_KIND_UPDATE_VALUES, &values) &&
-      !table->file->ha_direct_update_rows_init(2, NULL, 0,
-        (used_index != MAX_KEY), NULL)
-    ) {
-      do_direct_update = TRUE;
-    }
-  }
-
-  if (!do_direct_update)
-  {
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-    if (used_key_is_modified || order ||
-        partition_key_modified(table, table->write_set))
-#else
-    if (used_key_is_modified || order)
-#endif
-    {
-      /*
-        We can't update table directly;  We must first search after all
-        matching rows before updating the table!
-      */
-      if (used_index < MAX_KEY && old_covering_keys.is_set(used_index))
-        table->add_read_columns_used_by_index(used_index);
-      else
-      {
-        table->use_all_columns();
-      }
-
-      /* note: We avoid sorting if we sort on the used index */
-      if (order && (need_sort || used_key_is_modified))
-      {
-        /*
-          Doing an ORDER BY;  Let filesort find and sort the rows we are going
-          to update
-          NOTE: filesort will call table->prepare_for_position()
-        */
-        uint         length= 0;
-        SORT_FIELD  *sortorder;
-        ha_rows examined_rows;
-
-        table->sort.io_cache = (IO_CACHE *) my_malloc(sizeof(IO_CACHE),
-                                                      MYF(MY_FAE | MY_ZEROFILL));
-        if (!(sortorder=make_unireg_sortorder(order, &length, NULL)) ||
-            (table->sort.found_records= filesort(thd, table, sortorder, length,
-                                                 select, limit, 1,
-                                                 &examined_rows))
-            == HA_POS_ERROR)
-        {
-          goto err;
-        }
-        thd->examined_row_count+= examined_rows;
-        /*
-          Filesort has already found and selected the rows we want to update,
-          so we don't need the where clause
-        */
         delete select;
-        select= 0;
-      }
-      else
-      {
+        free_underlaid_joins(thd, select_lex);
         /*
-          We are doing a search on a key that is updated. In this case
-          we go trough the matching rows, save a pointer to them and
-          update these in a separate loop based on the pointer.
+        There was an error or the error was already sent by
+        the quick select evaluation.
+        TODO: Add error code output parameter to Item::val_xxx() methods.
+        Currently they rely on the user checking DA for
+        errors when unwinding the stack after calling Item::val_xxx().
         */
-
-        IO_CACHE tempfile;
-        if (open_cached_file(&tempfile, mysql_tmpdir,TEMP_PREFIX,
-                             DISK_BUFFER_SIZE, MYF(MY_WME)))
-          goto err;
-
-        /* If quick select is used, initialize it before retrieving rows. */
-        if (select && select->quick && select->quick->reset())
+        if (error || thd->is_error())
         {
-          close_cached_file(&tempfile);
-          goto err;
+            DBUG_RETURN(1);				// Error in where
         }
-        table->file->try_semi_consistent_read(1);
+        my_ok(thd);				// No matching records
+        DBUG_RETURN(0);
+    }
+
+    /* If running in safe sql mode, don't allow updates without keys */
+    if (table->quick_keys.is_clear_all())
+    {
+        thd->server_status|=SERVER_QUERY_NO_INDEX_USED;
+        if (safe_update && !using_limit)
+        {
+            my_message(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE,
+                ER(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE), MYF(0));
+            goto err;
+        }
+    }
+    init_ftfuncs(thd, select_lex, 1);
+
+    table->mark_columns_needed_for_update();
+
+    table->update_const_key_parts(conds);
+    order= simple_remove_const(order, conds);
+
+    used_index= get_index_for_order(order, table, select, limit,
+        &need_sort, &reverse);
+    if (need_sort)
+    { // Assign table scan index to check below for modified key fields:
+        used_index= table->file->key_used_on_scan;
+    }
+    if (used_index != MAX_KEY)
+    { // Check if we are modifying a key that we are used to search with:
+        used_key_is_modified= is_key_used(table, used_index, table->write_set);
+    }
+    else if (select && select->quick)
+    {
+        /*
+        select->quick != NULL and used_index == MAX_KEY happens for index
+        merge and should be handled in a different way.
+        */
+        used_key_is_modified= (!select->quick->unique_key_range() &&
+            select->quick->is_keys_used(table->write_set));
+    }
+
+    has_triggers = (table->triggers && (
+        table->triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_BEFORE) ||
+        table->triggers->has_triggers(TRG_EVENT_UPDATE, TRG_ACTION_AFTER)));
+    DBUG_PRINT("info", ("has_triggers = %s", has_triggers ? "TRUE" : "FALSE"));
+    binlog_is_row = (mysql_bin_log.is_open() &&
+        thd->is_current_stmt_binlog_format_row());
+    DBUG_PRINT("info", ("binlog_is_row = %s", binlog_is_row ? "TRUE" : "FALSE"));
+    if (!has_triggers && !binlog_is_row)
+    {
+        if ((thd->variables.optimizer_switch &
+            OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN) && 
+            select && select->cond && 
+            (select->cond->used_tables() & table->map) &&
+            !table->file->pushed_cond)
+        {
+            if (!table->file->cond_push(select->cond))
+                table->file->pushed_cond = select->cond;
+        }
+
+        if (
+            !table->file->info_push(INFO_KIND_UPDATE_FIELDS, &fields) &&
+            !table->file->info_push(INFO_KIND_UPDATE_VALUES, &values) &&
+            !table->file->ha_direct_update_rows_init(2, NULL, 0,
+            (used_index != MAX_KEY), NULL)
+            ) {
+                do_direct_update = TRUE;
+        }
+    }
+
+    if (!do_direct_update)
+    {
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+        if (used_key_is_modified || order ||
+            partition_key_modified(table, table->write_set))
+#else
+        if (used_key_is_modified || order)
+#endif
+        {
+            /*
+            We can't update table directly;  We must first search after all
+            matching rows before updating the table!
+            */
+            if (used_index < MAX_KEY && old_covering_keys.is_set(used_index))
+                table->add_read_columns_used_by_index(used_index);
+            else
+            {
+                table->use_all_columns();
+            }
+
+            /* note: We avoid sorting if we sort on the used index */
+            if (order && (need_sort || used_key_is_modified))
+            {
+                /*
+                Doing an ORDER BY;  Let filesort find and sort the rows we are going
+                to update
+                NOTE: filesort will call table->prepare_for_position()
+                */
+                uint         length= 0;
+                SORT_FIELD  *sortorder;
+                ha_rows examined_rows;
+
+                table->sort.io_cache = (IO_CACHE *) my_malloc(sizeof(IO_CACHE),
+                    MYF(MY_FAE | MY_ZEROFILL));
+                if (!(sortorder=make_unireg_sortorder(order, &length, NULL)) ||
+                    (table->sort.found_records= filesort(thd, table, sortorder, length,
+                    select, limit, 1,
+                    &examined_rows))
+                    == HA_POS_ERROR)
+                {
+                    goto err;
+                }
+                thd->examined_row_count+= examined_rows;
+                /*
+                Filesort has already found and selected the rows we want to update,
+                so we don't need the where clause
+                */
+                delete select;
+                select= 0;
+            }
+            else
+            {
+                /*
+                We are doing a search on a key that is updated. In this case
+                we go trough the matching rows, save a pointer to them and
+                update these in a separate loop based on the pointer.
+                */
+
+                IO_CACHE tempfile;
+                if (open_cached_file(&tempfile, mysql_tmpdir,TEMP_PREFIX,
+                    DISK_BUFFER_SIZE, MYF(MY_WME)))
+                    goto err;
+
+                /* If quick select is used, initialize it before retrieving rows. */
+                if (select && select->quick && select->quick->reset())
+                {
+                    close_cached_file(&tempfile);
+                    goto err;
+                }
+                table->file->try_semi_consistent_read(1);
+
+                /*
+                When we get here, we have one of the following options:
+                A. used_index == MAX_KEY
+                This means we should use full table scan, and start it with
+                init_read_record call
+                B. used_index != MAX_KEY
+                B.1 quick select is used, start the scan with init_read_record
+                B.2 quick select is not used, this is full index scan (with LIMIT)
+                Full index scan must be started with init_read_record_idx
+                */
+
+                if (used_index == MAX_KEY || (select && select->quick))
+                    init_read_record(&info, thd, table, select, 0, 1, FALSE);
+                else
+                    init_read_record_idx(&info, thd, table, 1, used_index, reverse);
+
+                thd_proc_info(thd, "Searching rows for update");
+                ha_rows tmp_limit= limit;
+
+                while (!(error=info.read_record(&info)) && !thd->killed)
+                {
+                    thd->examined_row_count++;
+                    bool skip_record= FALSE;
+                    if (select && select->skip_record(thd, &skip_record))
+                    {
+                        error= 1;
+                        /*
+                        Don't try unlocking the row if skip_record reported an error since
+                        in this case the transaction might have been rolled back already.
+                        */
+                        break;
+                    }
+                    if (!skip_record)
+                    {
+                        if (table->file->was_semi_consistent_read())
+                            continue;  /* repeat the read of the same row if it still exists */
+
+                        table->file->position(table->record[0]);
+                        if (my_b_write(&tempfile,table->file->ref,
+                            table->file->ref_length))
+                        {
+                            error=1; /* purecov: inspected */
+                            break; /* purecov: inspected */
+                        }
+                        if (!--limit && using_limit)
+                        {
+                            error= -1;
+                            break;
+                        }
+                    }
+                    else
+                        table->file->unlock_row();
+                }
+                if (thd->killed && !error)
+                    error= 1;  // Aborted
+                limit= tmp_limit;
+                table->file->try_semi_consistent_read(0);
+                end_read_record(&info);
+
+                /* Change select to use tempfile */
+                if (select)
+                {
+                    delete select->quick;
+                    if (select->free_cond)
+                        delete select->cond;
+                    select->quick=0;
+                    select->cond=0;
+                }
+                else
+                {
+                    select= new SQL_SELECT;
+                    select->head=table;
+                }
+                if (reinit_io_cache(&tempfile,READ_CACHE,0L,0,0))
+                    error=1; /* purecov: inspected */
+                select->file=tempfile;			// Read row ptrs from this file
+                if (error >= 0)
+                    goto err;
+            }
+            if (table->key_read)
+                table->restore_column_maps_after_mark_index();
+        }
+    }
+
+    if (ignore)
+        table->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
+
+    if (select && select->quick && select->quick->reset())
+        goto err;
+    table->file->try_semi_consistent_read(1);
+    init_read_record(&info, thd, table, select, 0, 1, FALSE);
+
+    updated= found= 0;
+    /*
+    Generate an error (in TRADITIONAL mode) or warning
+    when trying to set a NOT NULL field to NULL.
+    */
+    thd->count_cuted_fields= CHECK_FIELD_WARN;
+    thd->cuted_fields=0L;
+    thd_proc_info(thd, "Updating");
+
+    transactional_table= table->file->has_transactions();
+    thd->abort_on_warning= test(!ignore &&
+        (thd->variables.sql_mode &
+        (MODE_STRICT_TRANS_TABLES |
+        MODE_STRICT_ALL_TABLES)));
+    if (do_direct_update)
+    {
+        uint update_rows = 0;
+        error = table->file->ha_direct_update_rows(NULL, 0,
+            (used_index != MAX_KEY), NULL, &update_rows);
+        updated = update_rows;
+        found = update_rows;
+        if (!error)
+            error = -1;
+    } else {
+        if (table->triggers &&
+#ifdef HA_CAN_BULK_ACCESS
+            !(table->file->ha_table_flags() & HA_CAN_FORCE_BULK_UPDATE) &&
+#endif
+            table->triggers->has_triggers(TRG_EVENT_UPDATE,
+            TRG_ACTION_AFTER))
+        {
+            /*
+            The table has AFTER UPDATE triggers that might access to subject 
+            table and therefore might need update to be done immediately. 
+            So we turn-off the batching.
+            */ 
+            (void) table->file->extra(HA_EXTRA_UPDATE_CANNOT_BATCH);
+            will_batch= FALSE;
+        }
+        else
+            will_batch= !table->file->start_bulk_update();
 
         /*
-          When we get here, we have one of the following options:
-          A. used_index == MAX_KEY
-             This means we should use full table scan, and start it with
-             init_read_record call
-          B. used_index != MAX_KEY
-             B.1 quick select is used, start the scan with init_read_record
-             B.2 quick select is not used, this is full index scan (with LIMIT)
-                 Full index scan must be started with init_read_record_idx
+        Assure that we can use position()
+        if we need to create an error message.
         */
-
-        if (used_index == MAX_KEY || (select && select->quick))
-          init_read_record(&info, thd, table, select, 0, 1, FALSE);
-        else
-          init_read_record_idx(&info, thd, table, 1, used_index, reverse);
-
-        thd_proc_info(thd, "Searching rows for update");
-        ha_rows tmp_limit= limit;
+        if (table->file->ha_table_flags() & HA_PARTIAL_COLUMN_READ)
+            table->prepare_for_position();
 
         while (!(error=info.read_record(&info)) && !thd->killed)
         {
-          thd->examined_row_count++;
-          bool skip_record= FALSE;
-          if (select && select->skip_record(thd, &skip_record))
-          {
-            error= 1;
+            thd->examined_row_count++;
+            bool skip_record;
+            if (!select || (!select->skip_record(thd, &skip_record) && !skip_record))
+            {
+                if (table->file->was_semi_consistent_read())
+                    continue;  /* repeat the read of the same row if it still exists */
+
+                store_record(table,record[1]);
+                if (fill_record_n_invoke_before_triggers(thd, fields, values, 0,
+                    table->triggers,
+                    TRG_EVENT_UPDATE))
+                    break; /* purecov: inspected */
+
+                found++;
+
+                if (!records_are_comparable(table) || compare_records(table))
+                {
+                    if ((res= table_list->view_check_option(thd, ignore)) !=
+                        VIEW_CHECK_OK)
+                    {
+                        found--;
+                        if (res == VIEW_CHECK_SKIP)
+                            continue;
+                        else if (res == VIEW_CHECK_ERROR)
+                        {
+                            error= 1;
+                            break;
+                        }
+                    }
+                    if (will_batch)
+                    {
+                        /*
+                        Typically a batched handler can execute the batched jobs when:
+                        1) When specifically told to do so
+                        2) When it is not a good idea to batch anymore
+                        3) When it is necessary to send batch for other reasons
+                        (One such reason is when READ's must be performed)
+
+                        1) is covered by exec_bulk_update calls.
+                        2) and 3) is handled by the bulk_update_row method.
+
+                        bulk_update_row can execute the updates including the one
+                        defined in the bulk_update_row or not including the row
+                        in the call. This is up to the handler implementation and can
+                        vary from call to call.
+
+                        The dup_key_found reports the number of duplicate keys found
+                        in those updates actually executed. It only reports those if
+                        the extra call with HA_EXTRA_IGNORE_DUP_KEY have been issued.
+                        If this hasn't been issued it returns an error code and can
+                        ignore this number. Thus any handler that implements batching
+                        for UPDATE IGNORE must also handle this extra call properly.
+
+                        If a duplicate key is found on the record included in this
+                        call then it should be included in the count of dup_key_found
+                        and error should be set to 0 (only if these errors are ignored).
+                        */
+                        error= table->file->ha_bulk_update_row(table->record[1],
+                            table->record[0],
+                            &dup_key_found);
+                        limit+= dup_key_found;
+                        updated-= dup_key_found;
+                    }
+                    else
+                    {
+                        /* Non-batched update */
+                        error= table->file->ha_update_row(table->record[1],
+                            table->record[0]);
+                    }
+                    if (!error || error == HA_ERR_RECORD_IS_THE_SAME)
+                    {
+                        if (error != HA_ERR_RECORD_IS_THE_SAME)
+                            updated++;
+                        else
+                            error= 0;
+                    }
+                    else if (!ignore ||
+                        table->file->is_fatal_error(error, HA_CHECK_DUP_KEY))
+                    {
+                        /*
+                        If (ignore && error is ignorable) we don't have to
+                        do anything; otherwise...
+                        */
+                        myf flags= 0;
+
+                        if (table->file->is_fatal_error(error, HA_CHECK_DUP_KEY))
+                            flags|= ME_FATALERROR; /* Other handler errors are fatal */
+
+                        prepare_record_for_error_message(error, table);
+                        table->file->print_error(error,MYF(flags));
+                        error= 1;
+                        break;
+                    }
+                }
+
+                if (table->triggers &&
+                    table->triggers->process_triggers(thd, TRG_EVENT_UPDATE,
+                    TRG_ACTION_AFTER, TRUE))
+                {
+                    error= 1;
+                    break;
+                }
+
+                if (!--limit && using_limit)
+                {
+                    /*
+                    We have reached end-of-file in most common situations where no
+                    batching has occurred and if batching was supposed to occur but
+                    no updates were made and finally when the batch execution was
+                    performed without error and without finding any duplicate keys.
+                    If the batched updates were performed with errors we need to
+                    check and if no error but duplicate key's found we need to
+                    continue since those are not counted for in limit.
+                    */
+                    if (will_batch &&
+                        ((error= table->file->exec_bulk_update(&dup_key_found)) ||
+                        dup_key_found))
+                    {
+                        if (error)
+                        {
+                            /* purecov: begin inspected */
+                            /*
+                            The handler should not report error of duplicate keys if they
+                            are ignored. This is a requirement on batching handlers.
+                            */
+                            prepare_record_for_error_message(error, table);
+                            table->file->print_error(error,MYF(0));
+                            error= 1;
+                            break;
+                            /* purecov: end */
+                        }
+                        /*
+                        Either an error was found and we are ignoring errors or there
+                        were duplicate keys found. In both cases we need to correct
+                        the counters and continue the loop.
+                        */
+                        limit= dup_key_found; //limit is 0 when we get here so need to +
+                        updated-= dup_key_found;
+                    }
+                    else
+                    {
+                        error= -1;				// Simulate end of file
+                        break;
+                    }
+                }
+            }
             /*
-              Don't try unlocking the row if skip_record reported an error since
-              in this case the transaction might have been rolled back already.
+            Don't try unlocking the row if skip_record reported an error since in
+            this case the transaction might have been rolled back already.
             */
-            break;
-          }
-          if (!skip_record)
-          {
-            if (table->file->was_semi_consistent_read())
-              continue;  /* repeat the read of the same row if it still exists */
-
-            table->file->position(table->record[0]);
-            if (my_b_write(&tempfile,table->file->ref,
-               table->file->ref_length))
+            else if (!thd->is_error())
+                table->file->unlock_row();
+            else
             {
-              error=1; /* purecov: inspected */
-              break; /* purecov: inspected */
+                error= 1;
+                break;
             }
-            if (!--limit && using_limit)
+            thd->warning_info->inc_current_row_for_warning();
+            if (thd->is_error())
             {
-              error= -1;
-              break;
+                error= 1;
+                break;
             }
-          }
-          else
-            table->file->unlock_row();
         }
-        if (thd->killed && !error)
-          error= 1;  // Aborted
-        limit= tmp_limit;
-        table->file->try_semi_consistent_read(0);
-        end_read_record(&info);
-
-        /* Change select to use tempfile */
-        if (select)
-        {
-          delete select->quick;
-          if (select->free_cond)
-            delete select->cond;
-          select->quick=0;
-          select->cond=0;
-        }
-        else
-        {
-          select= new SQL_SELECT;
-          select->head=table;
-        }
-        if (reinit_io_cache(&tempfile,READ_CACHE,0L,0,0))
-          error=1; /* purecov: inspected */
-        select->file=tempfile;			// Read row ptrs from this file
-        if (error >= 0)
-          goto err;
-      }
-      if (table->key_read)
-        table->restore_column_maps_after_mark_index();
-    }
-  }
-
-  if (ignore)
-    table->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
-  
-  if (select && select->quick && select->quick->reset())
-    goto err;
-  table->file->try_semi_consistent_read(1);
-  init_read_record(&info, thd, table, select, 0, 1, FALSE);
-
-  updated= found= 0;
-  /*
-    Generate an error (in TRADITIONAL mode) or warning
-    when trying to set a NOT NULL field to NULL.
-  */
-  thd->count_cuted_fields= CHECK_FIELD_WARN;
-  thd->cuted_fields=0L;
-  thd_proc_info(thd, "Updating");
-
-  transactional_table= table->file->has_transactions();
-  thd->abort_on_warning= test(!ignore &&
-                              (thd->variables.sql_mode &
-                               (MODE_STRICT_TRANS_TABLES |
-                                MODE_STRICT_ALL_TABLES)));
-  if (do_direct_update)
-  {
-    uint update_rows = 0;
-    error = table->file->ha_direct_update_rows(NULL, 0,
-      (used_index != MAX_KEY), NULL, &update_rows);
-    updated = update_rows;
-    found = update_rows;
-    if (!error)
-      error = -1;
-  } else {
-  if (table->triggers &&
-#ifdef HA_CAN_BULK_ACCESS
-        !(table->file->ha_table_flags() & HA_CAN_FORCE_BULK_UPDATE) &&
-#endif
-      table->triggers->has_triggers(TRG_EVENT_UPDATE,
-                                    TRG_ACTION_AFTER))
-  {
-    /*
-      The table has AFTER UPDATE triggers that might access to subject 
-      table and therefore might need update to be done immediately. 
-      So we turn-off the batching.
-    */ 
-    (void) table->file->extra(HA_EXTRA_UPDATE_CANNOT_BATCH);
-    will_batch= FALSE;
-  }
-  else
-    will_batch= !table->file->start_bulk_update();
-
-  /*
-    Assure that we can use position()
-    if we need to create an error message.
-  */
-  if (table->file->ha_table_flags() & HA_PARTIAL_COLUMN_READ)
-    table->prepare_for_position();
-
-  while (!(error=info.read_record(&info)) && !thd->killed)
-  {
-    thd->examined_row_count++;
-    bool skip_record;
-    if (!select || (!select->skip_record(thd, &skip_record) && !skip_record))
-    {
-      if (table->file->was_semi_consistent_read())
-        continue;  /* repeat the read of the same row if it still exists */
-
-      store_record(table,record[1]);
-      if (fill_record_n_invoke_before_triggers(thd, fields, values, 0,
-                                               table->triggers,
-                                               TRG_EVENT_UPDATE))
-        break; /* purecov: inspected */
-
-      found++;
-
-      if (!records_are_comparable(table) || compare_records(table))
-      {
-        if ((res= table_list->view_check_option(thd, ignore)) !=
-            VIEW_CHECK_OK)
-        {
-          found--;
-          if (res == VIEW_CHECK_SKIP)
-            continue;
-          else if (res == VIEW_CHECK_ERROR)
-          {
-            error= 1;
-            break;
-          }
-        }
-        if (will_batch)
-        {
-          /*
-            Typically a batched handler can execute the batched jobs when:
-            1) When specifically told to do so
-            2) When it is not a good idea to batch anymore
-            3) When it is necessary to send batch for other reasons
-               (One such reason is when READ's must be performed)
-
-            1) is covered by exec_bulk_update calls.
-            2) and 3) is handled by the bulk_update_row method.
-            
-            bulk_update_row can execute the updates including the one
-            defined in the bulk_update_row or not including the row
-            in the call. This is up to the handler implementation and can
-            vary from call to call.
-
-            The dup_key_found reports the number of duplicate keys found
-            in those updates actually executed. It only reports those if
-            the extra call with HA_EXTRA_IGNORE_DUP_KEY have been issued.
-            If this hasn't been issued it returns an error code and can
-            ignore this number. Thus any handler that implements batching
-            for UPDATE IGNORE must also handle this extra call properly.
-
-            If a duplicate key is found on the record included in this
-            call then it should be included in the count of dup_key_found
-            and error should be set to 0 (only if these errors are ignored).
-          */
-          error= table->file->ha_bulk_update_row(table->record[1],
-                                                 table->record[0],
-                                                 &dup_key_found);
-          limit+= dup_key_found;
-          updated-= dup_key_found;
-        }
-        else
-        {
-          /* Non-batched update */
-	  error= table->file->ha_update_row(table->record[1],
-                                            table->record[0]);
-        }
-        if (!error || error == HA_ERR_RECORD_IS_THE_SAME)
-	{
-          if (error != HA_ERR_RECORD_IS_THE_SAME)
-            updated++;
-          else
-            error= 0;
-	}
- 	else if (!ignore ||
-                 table->file->is_fatal_error(error, HA_CHECK_DUP_KEY))
-	{
-          /*
-            If (ignore && error is ignorable) we don't have to
-            do anything; otherwise...
-          */
-          myf flags= 0;
-
-          if (table->file->is_fatal_error(error, HA_CHECK_DUP_KEY))
-            flags|= ME_FATALERROR; /* Other handler errors are fatal */
-
-          prepare_record_for_error_message(error, table);
-	  table->file->print_error(error,MYF(flags));
-	  error= 1;
-	  break;
-	}
-      }
-
-      if (table->triggers &&
-          table->triggers->process_triggers(thd, TRG_EVENT_UPDATE,
-                                            TRG_ACTION_AFTER, TRUE))
-      {
-        error= 1;
-        break;
-      }
-
-      if (!--limit && using_limit)
-      {
+        table->auto_increment_field_not_null= FALSE;
+        dup_key_found= 0;
         /*
-          We have reached end-of-file in most common situations where no
-          batching has occurred and if batching was supposed to occur but
-          no updates were made and finally when the batch execution was
-          performed without error and without finding any duplicate keys.
-          If the batched updates were performed with errors we need to
-          check and if no error but duplicate key's found we need to
-          continue since those are not counted for in limit.
+        Caching the killed status to pass as the arg to query event constuctor;
+        The cached value can not change whereas the killed status can
+        (externally) since this point and change of the latter won't affect
+        binlogging.
+        It's assumed that if an error was set in combination with an effective 
+        killed status then the error is due to killing.
         */
-        if (will_batch &&
-            ((error= table->file->exec_bulk_update(&dup_key_found)) ||
-             dup_key_found))
+        killed_status= thd->killed; // get the status of the volatile 
+        // simulated killing after the loop must be ineffective for binlogging
+        DBUG_EXECUTE_IF("simulate_kill_bug27571",
         {
- 	  if (error)
-          {
-            /* purecov: begin inspected */
+            thd->killed= THD::KILL_QUERY;
+        };);
+        error= (killed_status == THD::NOT_KILLED)?  error : 1;
+
+        if (error &&
+            will_batch &&
+            (loc_error= table->file->exec_bulk_update(&dup_key_found)))
             /*
-              The handler should not report error of duplicate keys if they
-              are ignored. This is a requirement on batching handlers.
+            An error has occurred when a batched update was performed and returned
+            an error indication. It cannot be an allowed duplicate key error since
+            we require the batching handler to treat this as a normal behavior.
+
+            Otherwise we simply remove the number of duplicate keys records found
+            in the batched update.
             */
-            prepare_record_for_error_message(error, table);
-            table->file->print_error(error,MYF(0));
+        {
+            /* purecov: begin inspected */
+            prepare_record_for_error_message(loc_error, table);
+            table->file->print_error(loc_error,MYF(ME_FATALERROR));
             error= 1;
-            break;
             /* purecov: end */
-          }
-          /*
-            Either an error was found and we are ignoring errors or there
-            were duplicate keys found. In both cases we need to correct
-            the counters and continue the loop.
-          */
-          limit= dup_key_found; //limit is 0 when we get here so need to +
-          updated-= dup_key_found;
         }
         else
-        {
-	  error= -1;				// Simulate end of file
-	  break;
-        }
-      }
+            updated-= dup_key_found;
+        if (will_batch)
+            table->file->end_bulk_update();
     }
+    table->file->try_semi_consistent_read(0);
+
+    if (!transactional_table && updated > 0)
+        thd->transaction.stmt.modified_non_trans_table= TRUE;
+
+    end_read_record(&info);
+    delete select;
+    thd_proc_info(thd, "end");
+    (void) table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
+
     /*
-      Don't try unlocking the row if skip_record reported an error since in
-      this case the transaction might have been rolled back already.
-    */
-    else if (!thd->is_error())
-      table->file->unlock_row();
-    else
-    {
-      error= 1;
-      break;
-    }
-    thd->warning_info->inc_current_row_for_warning();
-    if (thd->is_error())
-    {
-      error= 1;
-      break;
-    }
-  }
-  table->auto_increment_field_not_null= FALSE;
-  dup_key_found= 0;
-  /*
-    Caching the killed status to pass as the arg to query event constuctor;
-    The cached value can not change whereas the killed status can
-    (externally) since this point and change of the latter won't affect
-    binlogging.
-    It's assumed that if an error was set in combination with an effective 
-    killed status then the error is due to killing.
-  */
-  killed_status= thd->killed; // get the status of the volatile 
-  // simulated killing after the loop must be ineffective for binlogging
-  DBUG_EXECUTE_IF("simulate_kill_bug27571",
-                  {
-                    thd->killed= THD::KILL_QUERY;
-                  };);
-  error= (killed_status == THD::NOT_KILLED)?  error : 1;
-  
-  if (error &&
-      will_batch &&
-      (loc_error= table->file->exec_bulk_update(&dup_key_found)))
-    /*
-      An error has occurred when a batched update was performed and returned
-      an error indication. It cannot be an allowed duplicate key error since
-      we require the batching handler to treat this as a normal behavior.
-
-      Otherwise we simply remove the number of duplicate keys records found
-      in the batched update.
-    */
-  {
-    /* purecov: begin inspected */
-    prepare_record_for_error_message(loc_error, table);
-    table->file->print_error(loc_error,MYF(ME_FATALERROR));
-    error= 1;
-    /* purecov: end */
-  }
-  else
-    updated-= dup_key_found;
-  if (will_batch)
-    table->file->end_bulk_update();
-  }
-  table->file->try_semi_consistent_read(0);
-
-  if (!transactional_table && updated > 0)
-    thd->transaction.stmt.modified_non_trans_table= TRUE;
-
-  end_read_record(&info);
-  delete select;
-  thd_proc_info(thd, "end");
-  (void) table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
-
-  /*
     Invalidate the table in the query cache if something changed.
     This must be before binlog writing and ha_autocommit_...
-  */
-  if (updated)
-  {
-    query_cache_invalidate3(thd, table_list, 1);
-  }
-  
-  if (thd->transaction.stmt.modified_non_trans_table)
-      thd->transaction.all.modified_non_trans_table= TRUE;
+    */
+    if (updated)
+    {
+        query_cache_invalidate3(thd, table_list, 1);
+    }
 
-  /*
+    if (thd->transaction.stmt.modified_non_trans_table)
+        thd->transaction.all.modified_non_trans_table= TRUE;
+
+    /*
     error < 0 means really no error at all: we processed all rows until the
     last one without error. error > 0 means an error (e.g. unique key
     violation and no IGNORE or REPLACE). error == 0 is also an error (if
@@ -939,56 +939,56 @@ int mysql_update(THD *thd,
     ha_autocommit_or_rollback(error>=0) and DBUG_RETURN(error>=0) below.
     Sometimes we want to binlog even if we updated no rows, in case user used
     it to be sure master and slave are in same state.
-  */
-  if ((error < 0) || thd->transaction.stmt.modified_non_trans_table)
-  {
-    if (mysql_bin_log.is_open())
+    */
+    if ((error < 0) || thd->transaction.stmt.modified_non_trans_table)
     {
-      int errcode= 0;
-      if (error < 0)
-        thd->clear_error();
-      else
-        errcode= query_error_code(thd, killed_status == THD::NOT_KILLED);
+        if (mysql_bin_log.is_open())
+        {
+            int errcode= 0;
+            if (error < 0)
+                thd->clear_error();
+            else
+                errcode= query_error_code(thd, killed_status == THD::NOT_KILLED);
 
-      if (thd->binlog_query(THD::ROW_QUERY_TYPE,
-                            thd->query(), thd->query_length(),
-                            transactional_table, FALSE, FALSE, errcode))
-      {
-        error=1;				// Rollback update
-      }
+            if (thd->binlog_query(THD::ROW_QUERY_TYPE,
+                thd->query(), thd->query_length(),
+                transactional_table, FALSE, FALSE, errcode))
+            {
+                error=1;				// Rollback update
+            }
+        }
     }
-  }
-  DBUG_ASSERT(transactional_table || !updated || thd->transaction.stmt.modified_non_trans_table);
-  free_underlaid_joins(thd, select_lex);
+    DBUG_ASSERT(transactional_table || !updated || thd->transaction.stmt.modified_non_trans_table);
+    free_underlaid_joins(thd, select_lex);
 
-  /* If LAST_INSERT_ID(X) was used, report X */
-  id= thd->arg_of_last_insert_id_function ?
-    thd->first_successful_insert_id_in_prev_stmt : 0;
+    /* If LAST_INSERT_ID(X) was used, report X */
+    id= thd->arg_of_last_insert_id_function ?
+        thd->first_successful_insert_id_in_prev_stmt : 0;
 
-  if (error < 0)
-  {
-    char buff[MYSQL_ERRMSG_SIZE];
-    my_snprintf(buff, sizeof(buff), ER(ER_UPDATE_INFO), (ulong) found,
-                (ulong) updated,
-                (ulong) thd->warning_info->statement_warn_count());
-    ha_rows row_count=
-      (thd->client_capabilities & CLIENT_FOUND_ROWS) ? found : updated;
-    my_ok(thd, row_count, id, buff);
-    thd->updated_row_count += row_count;
-    DBUG_PRINT("info",("%ld records updated", (long) updated));
-  }
-  thd->count_cuted_fields= CHECK_FIELD_IGNORE;		/* calc cuted fields */
-  thd->abort_on_warning= 0;
-  *found_return= found;
-  *updated_return= updated;
-  DBUG_RETURN((error >= 0 || thd->is_error()) ? 1 : 0);
+    if (error < 0)
+    {
+        char buff[MYSQL_ERRMSG_SIZE];
+        my_snprintf(buff, sizeof(buff), ER(ER_UPDATE_INFO), (ulong) found,
+            (ulong) updated,
+            (ulong) thd->warning_info->statement_warn_count());
+        ha_rows row_count=
+            (thd->client_capabilities & CLIENT_FOUND_ROWS) ? found : updated;
+        my_ok(thd, row_count, id, buff);
+        thd->updated_row_count += row_count;
+        DBUG_PRINT("info",("%ld records updated", (long) updated));
+    }
+    thd->count_cuted_fields= CHECK_FIELD_IGNORE;		/* calc cuted fields */
+    thd->abort_on_warning= 0;
+    *found_return= found;
+    *updated_return= updated;
+    DBUG_RETURN((error >= 0 || thd->is_error()) ? 1 : 0);
 
 err:
-  delete select;
-  free_underlaid_joins(thd, select_lex);
-  table->set_keyread(FALSE);
-  thd->abort_on_warning= 0;
-  DBUG_RETURN(1);
+    delete select;
+    free_underlaid_joins(thd, select_lex);
+    table->set_keyread(FALSE);
+    thd->abort_on_warning= 0;
+    DBUG_RETURN(1);
 }
 
 /*

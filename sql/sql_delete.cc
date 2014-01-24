@@ -49,423 +49,423 @@
 bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
                   SQL_I_List<ORDER> *order_list, ha_rows limit, ulonglong options)
 {
-  bool          will_batch;
-  int		error, loc_error;
-  TABLE		*table;
-  SQL_SELECT	*select=0;
-  READ_RECORD	info;
-  bool          using_limit=limit != HA_POS_ERROR;
-  bool		transactional_table, safe_update, const_cond;
-  bool          const_cond_result;
-  ha_rows	deleted= 0;
-  bool          reverse= FALSE;
-  bool          skip_record;
-  ORDER *order= (ORDER *) ((order_list && order_list->elements) ?
-                           order_list->first : NULL);
-  uint usable_index= MAX_KEY;
-  SELECT_LEX   *select_lex= &thd->lex->select_lex;
-  THD::killed_state killed_status= THD::NOT_KILLED;
-  THD::enum_binlog_query_type query_type= THD::ROW_QUERY_TYPE;
-  bool has_triggers, binlog_is_row, do_direct_update = FALSE;
-  DBUG_ENTER("mysql_delete");
+    bool          will_batch=FALSE;
+    int		error, loc_error;
+    TABLE		*table;
+    SQL_SELECT	*select=0;
+    READ_RECORD	info;
+    bool          using_limit=limit != HA_POS_ERROR;
+    bool		transactional_table, safe_update, const_cond;
+    bool          const_cond_result;
+    ha_rows	deleted= 0;
+    bool          reverse= FALSE;
+    bool          skip_record;
+    ORDER *order= (ORDER *) ((order_list && order_list->elements) ?
+        order_list->first : NULL);
+    uint usable_index= MAX_KEY;
+    SELECT_LEX   *select_lex= &thd->lex->select_lex;
+    THD::killed_state killed_status= THD::NOT_KILLED;
+    THD::enum_binlog_query_type query_type= THD::ROW_QUERY_TYPE;
+    bool has_triggers, binlog_is_row, do_direct_update = FALSE;
+    DBUG_ENTER("mysql_delete");
 
-  if (open_and_lock_tables(thd, table_list, TRUE, 0))
-    DBUG_RETURN(TRUE);
-  if (!(table= table_list->table))
-  {
-    my_error(ER_VIEW_DELETE_MERGE_VIEW, MYF(0),
-	     table_list->view_db.str, table_list->view_name.str);
-    DBUG_RETURN(TRUE);
-  }
-  thd_proc_info(thd, "init");
-  table->map=1;
-
-  if (mysql_prepare_delete(thd, table_list, &conds))
-    DBUG_RETURN(TRUE);
-
-  /* check ORDER BY even if it can be ignored */
-  if (order)
-  {
-    TABLE_LIST   tables;
-    List<Item>   fields;
-    List<Item>   all_fields;
-
-    bzero((char*) &tables,sizeof(tables));
-    tables.table = table;
-    tables.alias = table_list->alias;
-
-      if (select_lex->setup_ref_array(thd, order_list->elements) ||
-	  setup_order(thd, select_lex->ref_pointer_array, &tables,
-                    fields, all_fields, order))
+    if (open_and_lock_tables(thd, table_list, TRUE, 0))
+        DBUG_RETURN(TRUE);
+    if (!(table= table_list->table))
     {
-      delete select;
-      free_underlaid_joins(thd, &thd->lex->select_lex);
-      DBUG_RETURN(TRUE);
+        my_error(ER_VIEW_DELETE_MERGE_VIEW, MYF(0),
+            table_list->view_db.str, table_list->view_name.str);
+        DBUG_RETURN(TRUE);
     }
-  }
+    thd_proc_info(thd, "init");
+    table->map=1;
 
-  const_cond= (!conds || conds->const_item());
-  safe_update=test(thd->variables.option_bits & OPTION_SAFE_UPDATES);
-  if (safe_update && const_cond)
-  {
-    my_message(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE,
-               ER(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE), MYF(0));
-    DBUG_RETURN(TRUE);
-  }
+    if (mysql_prepare_delete(thd, table_list, &conds))
+        DBUG_RETURN(TRUE);
 
-  select_lex->no_error= thd->lex->ignore;
+    /* check ORDER BY even if it can be ignored */
+    if (order)
+    {
+        TABLE_LIST   tables;
+        List<Item>   fields;
+        List<Item>   all_fields;
 
-  const_cond_result= const_cond && (!conds || conds->val_int());
-  if (thd->is_error())
-  {
-    /* Error evaluating val_int(). */
-    DBUG_RETURN(TRUE);
-  }
+        bzero((char*) &tables,sizeof(tables));
+        tables.table = table;
+        tables.alias = table_list->alias;
 
-  /*
+        if (select_lex->setup_ref_array(thd, order_list->elements) ||
+            setup_order(thd, select_lex->ref_pointer_array, &tables,
+            fields, all_fields, order))
+        {
+            delete select;
+            free_underlaid_joins(thd, &thd->lex->select_lex);
+            DBUG_RETURN(TRUE);
+        }
+    }
+
+    const_cond= (!conds || conds->const_item());
+    safe_update=test(thd->variables.option_bits & OPTION_SAFE_UPDATES);
+    if (safe_update && const_cond)
+    {
+        my_message(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE,
+            ER(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE), MYF(0));
+        DBUG_RETURN(TRUE);
+    }
+
+    select_lex->no_error= thd->lex->ignore;
+
+    const_cond_result= const_cond && (!conds || conds->val_int());
+    if (thd->is_error())
+    {
+        /* Error evaluating val_int(). */
+        DBUG_RETURN(TRUE);
+    }
+
+    /*
     Test if the user wants to delete all rows and deletion doesn't have
     any side-effects (because of triggers), so we can use optimized
     handler::delete_all_rows() method.
 
     We can use delete_all_rows() if and only if:
     - We allow new functions (not using option --skip-new), and are
-      not in safe mode (not using option --safe-mode)
+    not in safe mode (not using option --safe-mode)
     - There is no limit clause
     - The condition is constant
     - If there is a condition, then it it produces a non-zero value
     - If the current command is DELETE FROM with no where clause, then:
-      - We should not be binlogging this statement in row-based, and
-      - there should be no delete triggers associated with the table.
-  */
-  if (!using_limit && const_cond_result &&
-      !(specialflag & (SPECIAL_NO_NEW_FUNC | SPECIAL_SAFE_MODE)) &&
-       (!thd->is_current_stmt_binlog_format_row() &&
+    - We should not be binlogging this statement in row-based, and
+    - there should be no delete triggers associated with the table.
+    */
+    if (!using_limit && const_cond_result &&
+        !(specialflag & (SPECIAL_NO_NEW_FUNC | SPECIAL_SAFE_MODE)) &&
+        (!thd->is_current_stmt_binlog_format_row() &&
         !(table->triggers && table->triggers->has_delete_triggers())))
-  {
-    /* Update the table->file->stats.records number */
-    table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);
-    ha_rows const maybe_deleted= table->file->stats.records;
-    DBUG_PRINT("debug", ("Trying to use delete_all_rows()"));
-    if (!(error=table->file->ha_delete_all_rows()))
     {
-      /*
-        If delete_all_rows() is used, it is not possible to log the
-        query in row format, so we have to log it in statement format.
-      */
-      query_type= THD::STMT_QUERY_TYPE;
-      error= -1;
-      deleted= maybe_deleted;
-      goto cleanup;
+        /* Update the table->file->stats.records number */
+        table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);
+        ha_rows const maybe_deleted= table->file->stats.records;
+        DBUG_PRINT("debug", ("Trying to use delete_all_rows()"));
+        if (!(error=table->file->ha_delete_all_rows()))
+        {
+            /*
+            If delete_all_rows() is used, it is not possible to log the
+            query in row format, so we have to log it in statement format.
+            */
+            query_type= THD::STMT_QUERY_TYPE;
+            error= -1;
+            deleted= maybe_deleted;
+            goto cleanup;
+        }
+        if (error != HA_ERR_WRONG_COMMAND)
+        {
+            table->file->print_error(error,MYF(0));
+            error=0;
+            goto cleanup;
+        }
+        /* Handler didn't support fast delete; Delete rows one by one */
     }
-    if (error != HA_ERR_WRONG_COMMAND)
+    if (conds)
     {
-      table->file->print_error(error,MYF(0));
-      error=0;
-      goto cleanup;
+        Item::cond_result result;
+        conds= remove_eq_conds(thd, conds, &result);
+        if (result == Item::COND_FALSE)             // Impossible where
+            limit= 0;
     }
-    /* Handler didn't support fast delete; Delete rows one by one */
-  }
-  if (conds)
-  {
-    Item::cond_result result;
-    conds= remove_eq_conds(thd, conds, &result);
-    if (result == Item::COND_FALSE)             // Impossible where
-      limit= 0;
-  }
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-  if (prune_partitions(thd, table, conds))
-  {
-    free_underlaid_joins(thd, select_lex);
-    // No matching record
-    my_ok(thd, 0);
-    DBUG_RETURN(0);
-  }
+    if (prune_partitions(thd, table, conds))
+    {
+        free_underlaid_joins(thd, select_lex);
+        // No matching record
+        my_ok(thd, 0);
+        DBUG_RETURN(0);
+    }
 #endif
-  /* Update the table->file->stats.records number */
-  table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);
+    /* Update the table->file->stats.records number */
+    table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);
 
-  table->covering_keys.clear_all();
-  table->quick_keys.clear_all();		// Can't use 'only index'
+    table->covering_keys.clear_all();
+    table->quick_keys.clear_all();		// Can't use 'only index'
 
-  select=make_select(table, 0, 0, conds, 0, &error);
-  if (error)
-    DBUG_RETURN(TRUE);
-  if ((select && select->check_quick(thd, safe_update, limit)) || !limit)
-  {
-    delete select;
-    free_underlaid_joins(thd, select_lex);
-    /* 
-      Error was already created by quick select evaluation (check_quick()).
-      TODO: Add error code output parameter to Item::val_xxx() methods.
-      Currently they rely on the user checking DA for
-      errors when unwinding the stack after calling Item::val_xxx().
-    */
-    if (thd->is_error())
-      DBUG_RETURN(TRUE);
-    my_ok(thd, 0);
-    DBUG_RETURN(0);				// Nothing to delete
-  }
-
-  /* If running in safe sql mode, don't allow updates without keys */
-  if (table->quick_keys.is_clear_all())
-  {
-    thd->server_status|=SERVER_QUERY_NO_INDEX_USED;
-    if (safe_update && !using_limit)
+    select=make_select(table, 0, 0, conds, 0, &error);
+    if (error)
+        DBUG_RETURN(TRUE);
+    if ((select && select->check_quick(thd, safe_update, limit)) || !limit)
     {
-      delete select;
-      free_underlaid_joins(thd, select_lex);
-      my_message(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE,
-                 ER(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE), MYF(0));
-      DBUG_RETURN(TRUE);
-    }
-  }
-  if (options & OPTION_QUICK)
-    (void) table->file->extra(HA_EXTRA_QUICK);
-
-  has_triggers = (table->triggers && (table->triggers->has_delete_triggers()));
-  DBUG_PRINT("info", ("has_triggers = %s", has_triggers ? "TRUE" : "FALSE"));
-  binlog_is_row = (mysql_bin_log.is_open() &&
-    thd->is_current_stmt_binlog_format_row());
-  DBUG_PRINT("info", ("binlog_is_row = %s", binlog_is_row ? "TRUE" : "FALSE"));
-  if (!has_triggers && !binlog_is_row)
-  {
-    if ((thd->variables.optimizer_switch &
-      OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN) && 
-      select && select->cond && 
-      (select->cond->used_tables() & table->map) &&
-      !table->file->pushed_cond)
-    {
-      if (!table->file->cond_push(select->cond))
-        table->file->pushed_cond = select->cond;
-    }
-
-    if (
-      !table->file->ha_direct_delete_rows_init(2, NULL, 0,
-        order)
-    ) {
-      do_direct_update = TRUE;
-    }
-  }
-
-  if (!do_direct_update)
-  {
-    if (order)
-    {
-      uint         length= 0;
-      SORT_FIELD  *sortorder;
-      ha_rows examined_rows;
-      
-      table->update_const_key_parts(conds);
-      order= simple_remove_const(order, conds);
-
-      bool need_sort;
-      usable_index= get_index_for_order(order, table, select, limit,
-                                        &need_sort, &reverse);
-      if (need_sort)
-      {
-        DBUG_ASSERT(usable_index == MAX_KEY);
-        table->sort.io_cache= (IO_CACHE *) my_malloc(sizeof(IO_CACHE),
-                                                     MYF(MY_FAE | MY_ZEROFILL));
-      
-        if (!(sortorder= make_unireg_sortorder(order, &length, NULL)) ||
-            (table->sort.found_records = filesort(thd, table, sortorder, length,
-                                                  select, HA_POS_ERROR, 1,
-                                                  &examined_rows))
-            == HA_POS_ERROR)
-        {
-          delete select;
-          free_underlaid_joins(thd, &thd->lex->select_lex);
-          DBUG_RETURN(TRUE);
-        }
-        thd->examined_row_count+= examined_rows;
-        /*
-          Filesort has already found and selected the rows we want to delete,
-          so we don't need the where clause
-        */
         delete select;
         free_underlaid_joins(thd, select_lex);
-        select= 0;
-      }
+        /* 
+        Error was already created by quick select evaluation (check_quick()).
+        TODO: Add error code output parameter to Item::val_xxx() methods.
+        Currently they rely on the user checking DA for
+        errors when unwinding the stack after calling Item::val_xxx().
+        */
+        if (thd->is_error())
+            DBUG_RETURN(TRUE);
+        my_ok(thd, 0);
+        DBUG_RETURN(0);				// Nothing to delete
     }
-  }
 
-  /* If quick select is used, initialize it before retrieving rows. */
-  if (select && select->quick && select->quick->reset())
-  {
-    delete select;
-    free_underlaid_joins(thd, select_lex);
-    DBUG_RETURN(TRUE);
-  }
-  if (usable_index==MAX_KEY || (select && select->quick))
-    init_read_record(&info, thd, table, select, 1, 1, FALSE);
-  else
-    init_read_record_idx(&info, thd, table, 1, usable_index, reverse);
-
-  init_ftfuncs(thd, select_lex, 1);
-  thd_proc_info(thd, "updating");
-
-  if (!do_direct_update)
-  {
-    if (table->triggers &&
-#ifdef HA_CAN_BULK_ACCESS
-        !(table->file->ha_table_flags() & HA_CAN_FORCE_BULK_DELETE) &&
-#endif
-        table->triggers->has_triggers(TRG_EVENT_DELETE,
-                                      TRG_ACTION_AFTER))
+    /* If running in safe sql mode, don't allow updates without keys */
+    if (table->quick_keys.is_clear_all())
     {
-      /*
-        The table has AFTER DELETE triggers that might access to subject table
-        and therefore might need delete to be done immediately. So we turn-off
-        the batching.
-      */
-      (void) table->file->extra(HA_EXTRA_DELETE_CANNOT_BATCH);
-      will_batch= FALSE;
-    }
-    else
-      will_batch= !table->file->start_bulk_delete();
-  }
-
-  table->mark_columns_needed_for_delete();
-
-  if (do_direct_update)
-  {
-    uint delete_rows = 0;
-    error = table->file->ha_direct_delete_rows(NULL, 0,
-      order, &delete_rows);
-    deleted = delete_rows; 
-    if (!error)
-      error = -1;
-  } else {
-    while (!(error=info.read_record(&info)) && !thd->killed &&
-           ! thd->is_error())
-    {
-      thd->examined_row_count++;
-      // thd->is_error() is tested to disallow delete row on error
-      if (!select || (!select->skip_record(thd, &skip_record) && !skip_record))
-      {
-
-        if (table->triggers &&
-            table->triggers->process_triggers(thd, TRG_EVENT_DELETE,
-                                              TRG_ACTION_BEFORE, FALSE))
+        thd->server_status|=SERVER_QUERY_NO_INDEX_USED;
+        if (safe_update && !using_limit)
         {
-          error= 1;
-          break;
+            delete select;
+            free_underlaid_joins(thd, select_lex);
+            my_message(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE,
+                ER(ER_UPDATE_WITHOUT_KEY_IN_SAFE_MODE), MYF(0));
+            DBUG_RETURN(TRUE);
+        }
+    }
+    if (options & OPTION_QUICK)
+        (void) table->file->extra(HA_EXTRA_QUICK);
+
+    has_triggers = (table->triggers && (table->triggers->has_delete_triggers()));
+    DBUG_PRINT("info", ("has_triggers = %s", has_triggers ? "TRUE" : "FALSE"));
+    binlog_is_row = (mysql_bin_log.is_open() &&
+        thd->is_current_stmt_binlog_format_row());
+    DBUG_PRINT("info", ("binlog_is_row = %s", binlog_is_row ? "TRUE" : "FALSE"));
+    if (!has_triggers && !binlog_is_row)
+    {
+        if ((thd->variables.optimizer_switch &
+            OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN) && 
+            select && select->cond && 
+            (select->cond->used_tables() & table->map) &&
+            !table->file->pushed_cond)
+        {
+            if (!table->file->cond_push(select->cond))
+                table->file->pushed_cond = select->cond;
         }
 
-        if (!(error= table->file->ha_delete_row(table->record[0])))
+        if (
+            !table->file->ha_direct_delete_rows_init(2, NULL, 0,
+            order)
+            ) {
+                do_direct_update = TRUE;
+        }
+    }
+
+    if (!do_direct_update)
+    {
+        if (order)
         {
-          deleted++;
-          if (table->triggers &&
-              table->triggers->process_triggers(thd, TRG_EVENT_DELETE,
-                                                TRG_ACTION_AFTER, FALSE))
-          {
-            error= 1;
-            break;
-          }
-          if (!--limit && using_limit)
-          {
-            error= -1;
-            break;
-          }
+            uint         length= 0;
+            SORT_FIELD  *sortorder;
+            ha_rows examined_rows;
+
+            table->update_const_key_parts(conds);
+            order= simple_remove_const(order, conds);
+
+            bool need_sort;
+            usable_index= get_index_for_order(order, table, select, limit,
+                &need_sort, &reverse);
+            if (need_sort)
+            {
+                DBUG_ASSERT(usable_index == MAX_KEY);
+                table->sort.io_cache= (IO_CACHE *) my_malloc(sizeof(IO_CACHE),
+                    MYF(MY_FAE | MY_ZEROFILL));
+
+                if (!(sortorder= make_unireg_sortorder(order, &length, NULL)) ||
+                    (table->sort.found_records = filesort(thd, table, sortorder, length,
+                    select, HA_POS_ERROR, 1,
+                    &examined_rows))
+                    == HA_POS_ERROR)
+                {
+                    delete select;
+                    free_underlaid_joins(thd, &thd->lex->select_lex);
+                    DBUG_RETURN(TRUE);
+                }
+                thd->examined_row_count+= examined_rows;
+                /*
+                Filesort has already found and selected the rows we want to delete,
+                so we don't need the where clause
+                */
+                delete select;
+                free_underlaid_joins(thd, select_lex);
+                select= 0;
+            }
+        }
+    }
+
+    /* If quick select is used, initialize it before retrieving rows. */
+    if (select && select->quick && select->quick->reset())
+    {
+        delete select;
+        free_underlaid_joins(thd, select_lex);
+        DBUG_RETURN(TRUE);
+    }
+    if (usable_index==MAX_KEY || (select && select->quick))
+        init_read_record(&info, thd, table, select, 1, 1, FALSE);
+    else
+        init_read_record_idx(&info, thd, table, 1, usable_index, reverse);
+
+    init_ftfuncs(thd, select_lex, 1);
+    thd_proc_info(thd, "updating");
+
+    if (!do_direct_update)
+    {
+        if (table->triggers &&
+#ifdef HA_CAN_BULK_ACCESS
+            !(table->file->ha_table_flags() & HA_CAN_FORCE_BULK_DELETE) &&
+#endif
+            table->triggers->has_triggers(TRG_EVENT_DELETE,
+            TRG_ACTION_AFTER))
+        {
+            /*
+            The table has AFTER DELETE triggers that might access to subject table
+            and therefore might need delete to be done immediately. So we turn-off
+            the batching.
+            */
+            (void) table->file->extra(HA_EXTRA_DELETE_CANNOT_BATCH);
+            will_batch= FALSE;
         }
         else
-        {
-          table->file->print_error(error,MYF(0));
-          /*
-            In < 4.0.14 we set the error number to 0 here, but that
-            was not sensible, because then MySQL would not roll back the
-            failed DELETE, and also wrote it to the binlog. For MyISAM
-            tables a DELETE probably never should fail (?), but for
-            InnoDB it can fail in a FOREIGN KEY error or an
-            out-of-tablespace error.
-          */
-           error= 1;
-          break;
-        }
-      }
-      /*
-        Don't try unlocking the row if skip_record reported an error since in
-        this case the transaction might have been rolled back already.
-      */
-      else if (!thd->is_error())
-        table->file->unlock_row();  // Row failed selection, release lock on it
-      else
-        break;
+            will_batch= !table->file->start_bulk_delete();
     }
-  }
-  killed_status= thd->killed;
-  if (killed_status != THD::NOT_KILLED || thd->is_error())
-    error= 1;                                        // Aborted
-  if (!do_direct_update)
-  {
-    if (will_batch && (loc_error= table->file->end_bulk_delete()))
+
+    table->mark_columns_needed_for_delete();
+
+    if (do_direct_update)
     {
-      if (error != 1)
-        table->file->print_error(loc_error,MYF(0));
-      error=1;
+        uint delete_rows = 0;
+        error = table->file->ha_direct_delete_rows(NULL, 0,
+            order, &delete_rows);
+        deleted = delete_rows; 
+        if (!error)
+            error = -1;
+    } else {
+        while (!(error=info.read_record(&info)) && !thd->killed &&
+            ! thd->is_error())
+        {
+            thd->examined_row_count++;
+            // thd->is_error() is tested to disallow delete row on error
+            if (!select || (!select->skip_record(thd, &skip_record) && !skip_record))
+            {
+
+                if (table->triggers &&
+                    table->triggers->process_triggers(thd, TRG_EVENT_DELETE,
+                    TRG_ACTION_BEFORE, FALSE))
+                {
+                    error= 1;
+                    break;
+                }
+
+                if (!(error= table->file->ha_delete_row(table->record[0])))
+                {
+                    deleted++;
+                    if (table->triggers &&
+                        table->triggers->process_triggers(thd, TRG_EVENT_DELETE,
+                        TRG_ACTION_AFTER, FALSE))
+                    {
+                        error= 1;
+                        break;
+                    }
+                    if (!--limit && using_limit)
+                    {
+                        error= -1;
+                        break;
+                    }
+                }
+                else
+                {
+                    table->file->print_error(error,MYF(0));
+                    /*
+                    In < 4.0.14 we set the error number to 0 here, but that
+                    was not sensible, because then MySQL would not roll back the
+                    failed DELETE, and also wrote it to the binlog. For MyISAM
+                    tables a DELETE probably never should fail (?), but for
+                    InnoDB it can fail in a FOREIGN KEY error or an
+                    out-of-tablespace error.
+                    */
+                    error= 1;
+                    break;
+                }
+            }
+            /*
+            Don't try unlocking the row if skip_record reported an error since in
+            this case the transaction might have been rolled back already.
+            */
+            else if (!thd->is_error())
+                table->file->unlock_row();  // Row failed selection, release lock on it
+            else
+                break;
+        }
     }
-  }
-  thd_proc_info(thd, "end");
-  end_read_record(&info);
-  if (options & OPTION_QUICK)
-    (void) table->file->extra(HA_EXTRA_NORMAL);
+    killed_status= thd->killed;
+    if (killed_status != THD::NOT_KILLED || thd->is_error())
+        error= 1;                                        // Aborted
+    if (!do_direct_update)
+    {
+        if (will_batch && (loc_error= table->file->end_bulk_delete()))
+        {
+            if (error != 1)
+                table->file->print_error(loc_error,MYF(0));
+            error=1;
+        }
+    }
+    thd_proc_info(thd, "end");
+    end_read_record(&info);
+    if (options & OPTION_QUICK)
+        (void) table->file->extra(HA_EXTRA_NORMAL);
 
 cleanup:
-  /*
+    /*
     Invalidate the table in the query cache if something changed. This must
     be before binlog writing and ha_autocommit_...
-  */
-  if (deleted)
-  {
-    query_cache_invalidate3(thd, table_list, 1);
-  }
-
-  delete select;
-  transactional_table= table->file->has_transactions();
-
-  if (!transactional_table && deleted > 0)
-    thd->transaction.stmt.modified_non_trans_table=
-      thd->transaction.all.modified_non_trans_table= TRUE;
-  
-  /* See similar binlogging code in sql_update.cc, for comments */
-  if ((error < 0) || thd->transaction.stmt.modified_non_trans_table)
-  {
-    if (mysql_bin_log.is_open())
+    */
+    if (deleted)
     {
-      int errcode= 0;
-      if (error < 0)
-        thd->clear_error();
-      else
-        errcode= query_error_code(thd, killed_status == THD::NOT_KILLED);
-
-      /*
-        [binlog]: If 'handler::delete_all_rows()' was called and the
-        storage engine does not inject the rows itself, we replicate
-        statement-based; otherwise, 'ha_delete_row()' was used to
-        delete specific rows which we might log row-based.
-      */
-      int log_result= thd->binlog_query(query_type,
-                                        thd->query(), thd->query_length(),
-                                        transactional_table, FALSE, FALSE,
-                                        errcode);
-
-      if (log_result)
-      {
-	error=1;
-      }
+        query_cache_invalidate3(thd, table_list, 1);
     }
-  }
-  DBUG_ASSERT(transactional_table || !deleted || thd->transaction.stmt.modified_non_trans_table);
-  free_underlaid_joins(thd, select_lex);
-  if (error < 0 || 
-      (thd->lex->ignore && !thd->is_error() && !thd->is_fatal_error))
-  {
-    my_ok(thd, deleted);
-    DBUG_PRINT("info",("%ld records deleted",(long) deleted));
-  }
-  thd->updated_row_count+= deleted;
-  DBUG_RETURN(error >= 0 || thd->is_error());
+
+    delete select;
+    transactional_table= table->file->has_transactions();
+
+    if (!transactional_table && deleted > 0)
+        thd->transaction.stmt.modified_non_trans_table=
+        thd->transaction.all.modified_non_trans_table= TRUE;
+
+    /* See similar binlogging code in sql_update.cc, for comments */
+    if ((error < 0) || thd->transaction.stmt.modified_non_trans_table)
+    {
+        if (mysql_bin_log.is_open())
+        {
+            int errcode= 0;
+            if (error < 0)
+                thd->clear_error();
+            else
+                errcode= query_error_code(thd, killed_status == THD::NOT_KILLED);
+
+            /*
+            [binlog]: If 'handler::delete_all_rows()' was called and the
+            storage engine does not inject the rows itself, we replicate
+            statement-based; otherwise, 'ha_delete_row()' was used to
+            delete specific rows which we might log row-based.
+            */
+            int log_result= thd->binlog_query(query_type,
+                thd->query(), thd->query_length(),
+                transactional_table, FALSE, FALSE,
+                errcode);
+
+            if (log_result)
+            {
+                error=1;
+            }
+        }
+    }
+    DBUG_ASSERT(transactional_table || !deleted || thd->transaction.stmt.modified_non_trans_table);
+    free_underlaid_joins(thd, select_lex);
+    if (error < 0 || 
+        (thd->lex->ignore && !thd->is_error() && !thd->is_fatal_error))
+    {
+        my_ok(thd, deleted);
+        DBUG_PRINT("info",("%ld records deleted",(long) deleted));
+    }
+    thd->updated_row_count+= deleted;
+    DBUG_RETURN(error >= 0 || thd->is_error());
 }
 
 
