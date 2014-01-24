@@ -36,7 +36,7 @@
 #include <ft_global.h>
 #include <keycache.h>
 
-#define HANDLER_HAS_TOP_TABLE_FIELDS            //for vp only
+//#define HANDLER_HAS_TOP_TABLE_FIELDS            //for vp only
 #define HANDLER_HAS_DIRECT_UPDATE_ROWS
 #define HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
 //#define HANDLER_HAS_DIRECT_AGGREGATE            
@@ -44,9 +44,9 @@
 #define INFO_KIND_UPDATE_VALUES 102
 #define INFO_KIND_FORCE_LIMIT_BEGIN 103         //for MAX/MIN
 #define INFO_KIND_FORCE_LIMIT_END 104           //for SUM
-#define INFO_KIND_BULK_ACCESS_BEGIN 105         //no used?
-#define INFO_KIND_BULK_ACCESS_CURRENT 106
-#define INFO_KIND_BULK_ACCESS_END 107
+//#define INFO_KIND_BULK_ACCESS_BEGIN 105         //no used?
+//#define INFO_KIND_BULK_ACCESS_CURRENT 106
+//#define INFO_KIND_BULK_ACCESS_END 107
 
 // the following is for checking tables
 
@@ -196,10 +196,10 @@ enum enum_alter_inplace_result {
 #define HA_CAN_REPAIR                    (LL(1) << 37)
 
 /* ADD BY SPIDER */
-#define HA_CAN_BG_SEARCH                (LL(1) << 38)   //for merge table ?
-#define HA_CAN_BG_INSERT                (LL(1) << 39)
-#define HA_CAN_BG_UPDATE                (LL(1) << 40)
-#define HA_CAN_MULTISTEP_MERGE          (LL(1) << 41)   //for vp only
+//#define HA_CAN_BG_SEARCH                (LL(1) << 38)   //for merge table ?
+//#define HA_CAN_BG_INSERT                (LL(1) << 39)
+//#define HA_CAN_BG_UPDATE                (LL(1) << 40)
+//#define HA_CAN_MULTISTEP_MERGE          (LL(1) << 41)   //for vp only
 //#define HA_CAN_BULK_ACCESS              (LL(1) << 42)   //for merge/vp table only?
 //#define HA_CAN_FORCE_BULK_UPDATE        (LL(1) << 43)   //no used?
 //#define HA_CAN_FORCE_BULK_DELETE        (LL(1) << 44)
@@ -1622,11 +1622,13 @@ public:
   PSI_table *m_psi;
 
   /* ADD FROM SPIDER */
-  init_stat pre_inited;
+#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
   bool set_top_table_fields;
   struct TABLE *top_table;
   Field **top_table_field;
   uint top_table_fields;
+#endif
+  init_stat pre_inited;
 
   handler(handlerton *ht_arg, TABLE_SHARE *share_arg)
     :table_share(share_arg), table(0),
@@ -1638,9 +1640,11 @@ public:
     pushed_cond(0), rows_read(0), rows_changed(0), next_insert_id(0), insert_id_for_cur_row(0),
     auto_inc_intervals_count(0),
     m_psi(NULL),
-	pre_inited(NONE),   /* ADD FROM SPIDER */ 
+#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
 	set_top_table_fields(FALSE), top_table(0),
-    top_table_field(0), top_table_fields(0)
+    top_table_field(0), top_table_fields(0),
+#endif
+	pre_inited(NONE)   /* ADD FROM SPIDER */ 
     {
       memset(index_rows_read, 0, sizeof(index_rows_read));
     }
@@ -2434,6 +2438,7 @@ public:
  */
  virtual void cond_pop() { return; };
  virtual int info_push(uint info_type, void *info) { return 0; };
+#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
  virtual int set_top_table_and_fields(TABLE *top_table,
                                       Field **top_table_field,
                                       uint top_table_fields)
@@ -2457,6 +2462,7 @@ public:
      top_table_fields = 0;
    }
  }
+#endif
  virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info, Alter_inplace_info* inplae_alter,
 					 uint table_changes)
  { return COMPATIBLE_DATA_NO; }
