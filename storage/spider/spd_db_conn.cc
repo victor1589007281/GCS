@@ -82,7 +82,11 @@ int spider_db_connect(
   THD* thd = current_thd;
   longlong connect_retry_interval;
   DBUG_ENTER("spider_db_connect");
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   DBUG_ASSERT(conn->conn_kind != SPIDER_CONN_KIND_MYSQL || conn->need_mon);
+#else
+  DBUG_ASSERT(conn->need_mon);
+#endif
   DBUG_PRINT("info",("spider link_idx=%d", link_idx));
 
   if (thd)
@@ -234,7 +238,6 @@ void spider_db_disconnect(
 ) {
   DBUG_ENTER("spider_db_disconnect");
   DBUG_PRINT("info",("spider conn=%p", conn));
-  DBUG_PRINT("info",("spider conn->conn_kind=%u", conn->conn_kind));
   if (conn->db_conn->is_connected())
   {
     conn->db_conn->disconnect();
@@ -3929,11 +3932,15 @@ int spider_db_bulk_store_result(
   DBUG_PRINT("info",("spider spider=%p", spider));
   DBUG_PRINT("info",("spider conn=%p", conn));
   DBUG_PRINT("info",("spider link_idx=%d", link_idx));
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (conn->conn_kind == SPIDER_CONN_KIND_MYSQL)
   {
+#endif
     /* already stored */
     DBUG_RETURN(0);
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   }
+#endif
   error_num = spider_db_bulk_open_handler(spider, conn, link_idx);
   if (!discard_result)
   {
@@ -9689,6 +9696,7 @@ int spider_db_open_handler(
   bool tmp_mta_conn_mutex_lock_already;
   bool tmp_mta_conn_mutex_unlock_later;
   SPIDER_SHARE *share = spider->share;
+  uint conn_kind = SPIDER_CONN_KIND_MYSQL;
   uint *handler_id_ptr =
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     conn->conn_kind == SPIDER_CONN_KIND_MYSQL ?
@@ -9713,13 +9721,16 @@ int spider_db_open_handler(
   conn->mta_conn_mutex_lock_already = TRUE;
   tmp_mta_conn_mutex_unlock_later = conn->mta_conn_mutex_unlock_later;
   conn->mta_conn_mutex_unlock_later = TRUE;
-  if (!spider->handler_opened(link_idx, conn->conn_kind))
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  conn_kind = conn->conn_kind;
+#endif
+  if (!spider->handler_opened(link_idx, conn_kind))
     *handler_id_ptr = conn->opened_handlers;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (conn->conn_kind == SPIDER_CONN_KIND_MYSQL)
   {
 #endif
-    if (!spider->handler_opened(link_idx, conn->conn_kind))
+    if (!spider->handler_opened(link_idx, SPIDER_CONN_KIND_MYSQL/*conn->conn_kind*/))
       my_sprintf(spider->m_handler_cid[link_idx],
         (spider->m_handler_cid[link_idx], SPIDER_SQL_HANDLER_CID_FORMAT,
         *handler_id_ptr));
@@ -9892,7 +9903,7 @@ int spider_db_open_handler(
     }
   }
 #endif
-  if (!spider->handler_opened(link_idx, conn->conn_kind))
+  if (!spider->handler_opened(link_idx, conn_kind))
   {
     if ((error_num = dbton_hdl->insert_opened_handler(conn, link_idx)))
       goto error;

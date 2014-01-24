@@ -320,7 +320,9 @@ int ha_spider::open(
   DBUG_PRINT("info",("spider this=%p", this));
 
   dup_key_idx = (uint) -1;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   conn_kinds = SPIDER_CONN_KIND_MYSQL;
+#endif
   if (!spider_get_share(name, table, thd, this, &error_num))
     goto error_get_share;
   thr_lock_data_init(&share->lock,&lock,NULL);
@@ -807,7 +809,7 @@ int ha_spider::check_access_kind(
   THD *thd,
   bool write_request
 ) {
-  int error_num, roop_count;
+  int error_num, roop_count = 0;
   DBUG_ENTER("ha_spider::check_access_kind");
   DBUG_PRINT("info",("spider this=%p", this));
   sql_command = thd_sql_command(thd);
@@ -821,8 +823,8 @@ int ha_spider::check_access_kind(
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
   memset(do_hs_direct_update, 0, share->link_bitmap_size);
 #endif
-#endif
   conn_kinds = 0;
+#endif
   switch (sql_command)
   {
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -925,11 +927,13 @@ int ha_spider::check_access_kind(
       do_direct_update = TRUE;
 #endif
     default:
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       for (roop_count = 0; roop_count < (int) share->link_count; roop_count++)
       {
         conn_kinds |= SPIDER_CONN_KIND_MYSQL;
         conn_kind[roop_count] = SPIDER_CONN_KIND_MYSQL;
       }
+#endif
       break;
   }
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -1694,7 +1698,9 @@ int ha_spider::reset()
           error_num = error_num2;
       }
 
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       conn_kind[roop_count] = SPIDER_CONN_KIND_MYSQL;
+#endif
     }
     result_list.bulk_update_mode = 0;
     result_list.bulk_update_size = 0;
@@ -1724,7 +1730,9 @@ int ha_spider::reset()
   result_list.tmp_table_join = FALSE;
   result_list.use_union = FALSE;
   pt_clone_last_searcher = NULL;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   conn_kinds = SPIDER_CONN_KIND_MYSQL;
+#endif
   while (condition)
   {
     tmp_cond = condition->next;
@@ -2213,6 +2221,7 @@ int ha_spider::index_read_map_internal(
       }
       DBUG_PRINT("info",("spider sql_type=%lu", sql_type));
 #ifdef HA_CAN_BULK_ACCESS
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       if (
         is_bulk_access_clone &&
         !bulk_access_executing &&
@@ -2222,7 +2231,9 @@ int ha_spider::index_read_map_internal(
         spider_trx_add_bulk_access_conn(trx, conn);
         SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
         pthread_mutex_unlock(&conn->mta_conn_mutex);
-      } else {
+      } else 
+#endif
+	  {
 #endif
         conn->need_mon = &need_mons[roop_count];
         conn->mta_conn_mutex_lock_already = TRUE;
@@ -12003,9 +12014,9 @@ int ha_spider::sync_from_clone_source(
     memcpy(do_hs_direct_update, spider->do_hs_direct_update,
       share->link_bitmap_size);
 #endif
-#endif
     conn_kinds = spider->conn_kinds;
     memcpy(conn_kind, spider->conn_kind, sizeof(uint) * share->link_count);
+#endif
     result_list.lock_type = spider->result_list.lock_type;
     lock_type = spider->lock_type;
     selupd_lock_mode = spider->selupd_lock_mode;
@@ -12052,9 +12063,9 @@ int ha_spider::sync_from_clone_source(
     memcpy(do_hs_direct_update, spider->do_hs_direct_update,
       share->link_bitmap_size);
 #endif
-#endif
     conn_kinds = spider->conn_kinds;
     memcpy(conn_kind, spider->conn_kind, sizeof(uint) * share->link_count);
+#endif
     result_list.lock_type = spider->result_list.lock_type;
     lock_type = spider->lock_type;
     selupd_lock_mode = spider->selupd_lock_mode;

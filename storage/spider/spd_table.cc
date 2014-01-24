@@ -4300,7 +4300,9 @@ SPIDER_SHARE *spider_get_share(
 #endif
         &spider->sql_kind, sizeof(uint) * share->link_count,
         &spider->connection_ids, sizeof(ulonglong) * share->link_count,
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
         &spider->conn_kind, sizeof(uint) * share->link_count,
+#endif
         &spider->db_request_id, sizeof(ulonglong) * share->link_count,
         &spider->db_request_phase, sizeof(uchar) * share->link_bitmap_size,
         &spider->m_handler_opened, sizeof(uchar) * share->link_bitmap_size,
@@ -4386,7 +4388,9 @@ SPIDER_SHARE *spider_get_share(
       tmp_cid += SPIDER_SQL_HANDLER_CID_LEN + 1;
       result_list->upd_tmp_tbl_prms[roop_count].init();
       result_list->upd_tmp_tbl_prms[roop_count].field_count = 1;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       spider->conn_kind[roop_count] = SPIDER_CONN_KIND_MYSQL;
+#endif
     }
     spider_trx_set_link_idx_for_all(spider);
 
@@ -4745,7 +4749,9 @@ SPIDER_SHARE *spider_get_share(
 #endif
         &spider->sql_kind, sizeof(uint) * share->link_count,
         &spider->connection_ids, sizeof(ulonglong) * share->link_count,
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
         &spider->conn_kind, sizeof(uint) * share->link_count,
+#endif
         &spider->db_request_id, sizeof(ulonglong) * share->link_count,
         &spider->db_request_phase, sizeof(uchar) * share->link_bitmap_size,
         &spider->m_handler_opened, sizeof(uchar) * share->link_bitmap_size,
@@ -4828,7 +4834,9 @@ SPIDER_SHARE *spider_get_share(
       tmp_cid += SPIDER_SQL_HANDLER_CID_LEN + 1;
       result_list->upd_tmp_tbl_prms[roop_count].init();
       result_list->upd_tmp_tbl_prms[roop_count].field_count = 1;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       spider->conn_kind[roop_count] = SPIDER_CONN_KIND_MYSQL;
+#endif
     }
     spider_trx_set_link_idx_for_all(spider);
 

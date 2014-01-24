@@ -245,7 +245,9 @@ typedef struct st_spider_alter_table
 /* database connection */
 typedef struct st_spider_conn
 {
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   uint               conn_kind;
+#endif
   char               *conn_key;
   uint               conn_key_length;
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE

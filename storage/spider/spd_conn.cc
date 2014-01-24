@@ -102,7 +102,6 @@ uchar *spider_conn_get_key(
 ) {
   DBUG_ENTER("spider_conn_get_key");
   *length = conn->conn_key_length;
-  DBUG_PRINT("info",("spider conn_kind=%u", conn->conn_kind));
 #ifndef DBUG_OFF
   spider_print_keys(conn->conn_key, conn->conn_key_length);
 #endif
@@ -640,7 +639,9 @@ SPIDER_CONN *spider_create_conn(
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
   conn->link_idx = base_link_idx;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   conn->conn_kind = conn_kind;
+#endif
   conn->conn_need_mon = need_mon;
   if (spider)
     conn->need_mon = &spider->need_mons[base_link_idx];
@@ -3700,8 +3701,6 @@ bool spider_conn_use_handler(
     spider->share->use_handlers[link_idx]);
   DBUG_ENTER("spider_conn_use_handler");
   DBUG_PRINT("info",("spider use_handler=%d", use_handler));
-  DBUG_PRINT("info",("spider spider->conn_kind[link_idx]=%u",
-    spider->conn_kind[link_idx]));
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (spider->conn_kind[link_idx] != SPIDER_CONN_KIND_MYSQL)
   {
@@ -3734,14 +3733,18 @@ bool spider_conn_use_handler(
     } else
 #endif
       spider->direct_update_kinds |= SPIDER_SQL_KIND_SQL;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_MYSQL)
     {
+#endif
       DBUG_PRINT("info",("spider FALSE by using direct_update"));
       DBUG_RETURN(FALSE);
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     } else {
       DBUG_PRINT("info",("spider TRUE by using BOTH"));
       DBUG_RETURN(TRUE);
     }
+#endif
   }
 #endif
   if (spider->use_spatial_index)
@@ -3804,7 +3807,11 @@ bool spider_conn_need_open_handler(
 #endif
   DBUG_ENTER("spider_conn_need_open_handler");
   DBUG_PRINT("info",("spider spider=%p", spider));
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (spider->handler_opened(link_idx, spider->conn_kind[link_idx]))
+#else
+  if (spider->handler_opened(link_idx, SPIDER_CONN_KIND_MYSQL))
+#endif
   {
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS

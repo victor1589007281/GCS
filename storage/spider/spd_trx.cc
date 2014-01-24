@@ -3518,13 +3518,15 @@ int spider_check_trx_and_get_conn(
           spider->conn_link_idx, roop_count, share->link_count,
           SPIDER_LINK_STATUS_RECOVERY)
       ) {
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
         uint tgt_conn_kind = (use_conn_kind ? spider->conn_kind[roop_count] :
           SPIDER_CONN_KIND_MYSQL);
+#endif
         if (
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
           (
-#endif
             tgt_conn_kind == SPIDER_CONN_KIND_MYSQL &&
+#endif
               !spider->conns[roop_count]
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
           ) ||
@@ -3540,7 +3542,9 @@ int spider_check_trx_and_get_conn(
               spider_get_conn(share, roop_count,
                 spider->conn_keys[roop_count], trx,
                 spider, FALSE, TRUE,
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
                 use_conn_kind ? spider->conn_kind[roop_count] :
+#endif
                   SPIDER_CONN_KIND_MYSQL,
                 &error_num))
           ) {
@@ -3648,7 +3652,9 @@ int spider_check_trx_and_get_conn(
               spider_get_conn(share, roop_count,
                 spider->conn_keys[roop_count], trx,
                 spider, FALSE, TRUE,
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
                 use_conn_kind ? spider->conn_kind[roop_count] :
+#endif
                   SPIDER_CONN_KIND_MYSQL,
                 &error_num))
           ) {

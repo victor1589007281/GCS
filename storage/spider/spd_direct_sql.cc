@@ -528,9 +528,7 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (direct_sql->access_mode == 0)
   {
-#endif
     conn->conn_kind = SPIDER_CONN_KIND_MYSQL;
-#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   } else if (direct_sql->access_mode == 1)
   {
     conn->conn_kind = SPIDER_CONN_KIND_HS_READ;
@@ -758,7 +756,6 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
   }
 
   DBUG_PRINT("info",("spider conn=%p", conn));
-  DBUG_PRINT("info",("spider conn->conn_kind=%u", conn->conn_kind));
   DBUG_RETURN(conn);
 
 error:

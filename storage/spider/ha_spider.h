@@ -71,8 +71,10 @@ public:
   uint               sql_kinds;
   uint               *sql_kind;
   ulonglong          *connection_ids;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   uint               conn_kinds;
   uint               *conn_kind;
+#endif
   char               *conn_keys_first_ptr;
   char               **conn_keys;                               /* conn_keys数组，个数取决于share->all_link_count,大部分情况下为1 */
   SPIDER_CONN        **conns;

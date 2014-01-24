@@ -2413,7 +2413,11 @@ void spider_db_mysql::reset_opened_handler()
   {
     tmp_spider = (*tmp_link_for_hash)->spider;
     tmp_link_idx = (*tmp_link_for_hash)->link_idx;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     tmp_spider->clear_handler_opened(tmp_link_idx, conn->conn_kind);
+#else
+    tmp_spider->clear_handler_opened(tmp_link_idx, SPIDER_CONN_KIND_MYSQL);
+#endif
   }
   DBUG_VOID_RETURN;
 }
