@@ -145,7 +145,8 @@ enum enum_result_types {SQLPARSE_SUCESS, SQLPARSE_WARNING, SQLPARSE_FAIL, SQLPAR
 enum enum_warning_types {WARNINGS_DEFAULT, DROP_DB, DROP_TABLE, DROP_VIEW, TRUNCATE_TABLE, DELETE_WITHOUT_WHERE, UPDATE_WITHOUT_WHERE,
 						CREATE_TABLE_WITH_MUCH_BLOB, ALTER_TABLE_ADD_MUCH_BLOB, CREATE_TABLE_NOT_INNODB,
 						CREATE_TABLE_NO_INDEX, ALTER_TABLE_WITH_AFTER, ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL, 
-						CREATE_TABLE_WITH_OTHER_CHARACTER, CREATE_PROCEDURE_WITH_DEFINER};
+						CREATE_TABLE_WITH_OTHER_CHARACTER, CREATE_PROCEDURE_WITH_DEFINER, USE_UNKNOWN_SYSTEM_VARIABLE,
+						OTHER_WARNINGS};
 struct parse_result_audit {
 	void* thd_org;
 	int query_type;
@@ -175,6 +176,8 @@ struct parse_result_audit {
 	unsigned long line_number;//the error or warnings sql line
 
 	info_audit info; //other info for result of tmysqlparse
+
+	bool only_output_ntables;
 };
 
 int
@@ -216,7 +219,7 @@ parse_global_destroy();
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
-int parse_result_audit_init(parse_result_audit* pr, char *version, char *charset);
+int parse_result_audit_init(parse_result_audit* pr, char *version, char *charset, bool only_output_ntables);
 int query_parse_audit(char *query, parse_result_audit* pra);
 int parse_result_audit_destroy(parse_result_audit* pra);
 int parse_result_add_table_audit(parse_result_audit* pra, char* db_name, char* table_name);
