@@ -3533,6 +3533,7 @@ void *spider_bg_mon_action(
 }
 #endif
 
+#ifndef SPIDER_DISABLE_LINK
 int spider_conn_first_link_idx(
   THD *thd,
   long *link_statuses,
@@ -3665,6 +3666,7 @@ int spider_conn_link_idx_next(
   DBUG_PRINT("info",("spider link_idx=%d", link_idx));
   DBUG_RETURN(link_idx);
 }
+#endif
 
 int spider_conn_lock_mode(
   ha_spider *spider

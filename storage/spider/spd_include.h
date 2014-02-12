@@ -103,6 +103,9 @@
 #define spider_bit_is_set(BITMAP, BIT) \
   (uint) ((BITMAP)[(BIT) / 8] & (1 << ((BIT) & 7)))
 
+
+
+
 #define SPIDER_LINK_STATUS_NO_CHANGE         0
 #define SPIDER_LINK_STATUS_OK                1
 #define SPIDER_LINK_STATUS_RECOVERY          2
@@ -580,8 +583,8 @@ typedef struct st_spider_share
   char               *table_name;
   uint               table_name_length;
   uint               use_count;                         /* 引用计数 */
-  uint               link_count;                        /* when bigger than 1? */
-  uint               all_link_count;
+  uint               link_count;                        /* always 1 */
+  uint               all_link_count;                    /* always 1 */
   uint               link_bitmap_size;
   pthread_mutex_t    mutex;
   pthread_mutex_t    sts_mutex;
@@ -723,7 +726,7 @@ typedef struct st_spider_share
   int                read_only_mode;
   int                error_read_mode;
   int                error_write_mode;
-  int                active_link_count;
+  int                active_link_count;             /* always 1 */
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   longlong           hs_result_free_size;
 #endif
