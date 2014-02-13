@@ -41,6 +41,7 @@ Created 9/5/1995 Heikki Tuuri
 #include "os0file.h"
 #include "srv0srv.h"
 #include "ha_prototypes.h"
+#include "xb0xb.h"
 
 /*
 			WAIT ARRAY
@@ -928,6 +929,12 @@ sync_array_print_long_waits(
 	ibool		fatal = FALSE;
 	double		longest_diff = 0;
 
+	if (srv_rebuild_indexes) {
+
+		/* Avoid long semaphore warnings when rebuilding indexes */
+
+		return(FALSE);
+	}
 #ifdef UNIV_DEBUG_VALGRIND
 	/* Increase the timeouts if running under valgrind because it executes
 	extremely slowly. UNIV_DEBUG_VALGRIND does not necessary mean that

@@ -51,6 +51,7 @@ Created 11/5/1995 Heikki Tuuri
 #include "dict0dict.h"
 #include "log0recv.h"
 #include "page0zip.h"
+#include "xb0xb.h"
 
 /*
 		IMPLEMENTATION OF THE BUFFER POOL
@@ -518,7 +519,7 @@ buf_page_is_corrupted(
 		return(TRUE);
 	}
 
-#ifndef UNIV_HOTBACKUP
+#ifdef UNDEFINED
 	if (recv_lsn_checks_on) {
 		ib_uint64_t	current_lsn;
 
@@ -898,6 +899,7 @@ buf_block_init(
 	block->page.in_flush_list = FALSE;
 	block->page.in_free_list = FALSE;
 	block->page.in_LRU_list = FALSE;
+	block->page.is_compacted = FALSE;
 	block->in_unzip_LRU_list = FALSE;
 #endif /* UNIV_DEBUG */
 #if defined UNIV_AHI_DEBUG || defined UNIV_DEBUG
@@ -2246,7 +2248,8 @@ buf_page_get_gen(
 	ut_ad(zip_size == fil_space_get_zip_size(space));
 	ut_ad(ut_is_2pow(zip_size));
 #ifndef UNIV_LOG_DEBUG
-	ut_ad(!ibuf_inside(mtr)
+	/* ibuf_page_low() always returns FALSE with srv_fake_write=1 */
+	ut_ad(srv_fake_write || !ibuf_inside(mtr)
 	      || ibuf_page_low(space, zip_size, offset,
 			       FALSE, file, line, NULL));
 #endif
@@ -3514,6 +3517,13 @@ buf_page_io_complete(
 			frame = ((buf_block_t*) bpage)->frame;
 		}
 
+		/* Do not validate, recover and apply change buffer entries to
+		bogus pages which replace skipped pages in compact backups. */
+		if (srv_compact_backup && buf_page_is_compacted(frame)) {
+
+			bpage->is_compacted = TRUE;
+		}
+
 		/* If this page is not uninitialized and not in the
 		doublewrite buffer, then the page number and space id
 		should be the same as in block. */
@@ -3616,7 +3626,8 @@ corrupt:
 			recv_recover_page(TRUE, (buf_block_t*) bpage);
 		}
 
-		if (uncompressed && !recv_no_ibuf_operations) {
+		if (uncompressed && !recv_no_ibuf_operations &&
+		    !srv_fake_write && !bpage->is_compacted) {
 			ibuf_merge_or_delete_for_page(
 				(buf_block_t*) bpage, bpage->space,
 				bpage->offset, buf_page_get_zip_size(bpage),

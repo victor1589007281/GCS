@@ -576,7 +576,9 @@ log_group_calc_lsn_offset(
 
 	offset = (gr_lsn_size_offset + difference) % group_size;
 
+	if (sizeof(ulint) == 4) {
 	ut_a(offset < (((ib_int64_t) 1) << 32)); /* offset must be < 4 GB */
+	}
 
 	/* fprintf(stderr,
 	"Offset is %lu gr_lsn_offset is %lu difference is %lu\n",
@@ -1354,7 +1356,7 @@ log_write_up_to(
 #endif /* UNIV_DEBUG */
 	ulint		unlock;
 
-	if (recv_no_ibuf_operations) {
+	if (recv_no_ibuf_operations || srv_fake_write) {
 		/* Recovery is running and no operations on the log files are
 		allowed yet (the variable name .._no_ibuf_.. is misleading) */
 
@@ -2014,7 +2016,7 @@ log_checkpoint(
 		return(TRUE);
 	}
 
-	ut_ad(log_sys->flushed_to_disk_lsn >= oldest_lsn);
+	ut_ad(srv_fake_write || log_sys->flushed_to_disk_lsn >= oldest_lsn);
 
 	if (log_sys->n_pending_checkpoint_writes > 0) {
 		/* A checkpoint write is running */
@@ -3141,6 +3143,7 @@ loop:
 	shutdown, because the InnoDB layer may have committed or
 	prepared transactions and we don't want to lose them. */
 
+	if (!srv_apply_log_only) {
 	server_busy = trx_n_mysql_transactions > 0
 		|| UT_LIST_GET_LEN(trx_sys->trx_list) > trx_n_prepared;
 
@@ -3192,6 +3195,10 @@ loop:
 		}
 
 		goto loop;
+	}
+	}
+	else {
+		mutex_exit(&kernel_mutex);
 	}
 
 	mutex_enter(&log_sys->mutex);

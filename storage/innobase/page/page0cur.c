@@ -1256,8 +1256,10 @@ page_cur_insert_rec_zip(
 	ut_ad(page_is_comp(page));
 
 	ut_ad(!page_rec_is_supremum(*current_rec));
-#ifdef UNIV_ZIP_DEBUG
-	ut_a(page_zip_validate(page_zip, page));
+#if 0
+	/* Disabled to speedup compact_compressed test for debug XtraBackup
+	builds, see LP bug #1213036. */
+	ut_a(page_zip_validate(page_zip, page, index));
 #endif /* UNIV_ZIP_DEBUG */
 
 	/* 1. Get the size of the physical record in the page */

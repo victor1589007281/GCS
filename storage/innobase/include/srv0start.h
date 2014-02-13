@@ -91,6 +91,8 @@ extern	ib_uint64_t	srv_shutdown_lsn;
 /** Log sequence number immediately after startup */
 extern	ib_uint64_t	srv_start_lsn;
 
+extern	ib_uint64_t	srv_oldest_lsn;
+
 #ifdef HAVE_DARWIN_THREADS
 /** TRUE if the F_FULLFSYNC option is available */
 extern	ibool	srv_have_fullfsync;

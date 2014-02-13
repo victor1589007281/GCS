@@ -40,6 +40,8 @@ Created 10/25/1995 Heikki Tuuri
 #include "dict0dict.h"
 #include "page0page.h"
 #include "page0zip.h"
+#include "pars0pars.h"
+#include "que0que.h"
 #ifndef UNIV_HOTBACKUP
 # include "buf0lru.h"
 # include "ibuf0ibuf.h"
@@ -298,7 +300,7 @@ struct fil_system_struct {
 
 /** The tablespace memory cache. This variable is NULL before the module is
 initialized. */
-static fil_system_t*	fil_system	= NULL;
+fil_system_t*	fil_system	= NULL;
 
 #ifdef UNIV_DEBUG
 /** Try fil_validate() every this many times */
@@ -337,7 +339,7 @@ pending i/o's field in the node and the system appropriately. Takes the node
 off the LRU list if it is in the LRU list. The caller must hold the fil_sys
 mutex. */
 static
-void
+ulint
 fil_node_prepare_for_io(
 /*====================*/
 	fil_node_t*	node,	/*!< in: file node */
@@ -662,7 +664,7 @@ fil_node_create(
 Opens a the file of a node of a tablespace. The caller must own the fil_system
 mutex. */
 static
-void
+ulint
 fil_node_open_file(
 /*===============*/
 	fil_node_t*	node,	/*!< in: file node */
@@ -697,7 +699,17 @@ fil_node_open_file(
 			OS_FILE_READ_ONLY, &success);
 		if (!success) {
 			/* The following call prints an error message */
-			os_file_get_last_error(TRUE);
+			if (os_file_get_last_error(TRUE) == OS_FILE_NOT_FOUND)
+			{
+				ut_print_timestamp(stderr);
+				fprintf(stderr,
+					" InnoDB: Warning: cannot open %s\n"
+					"InnoDB: this can happen if the table "
+					"was removed or renamed during an \n"
+					"InnoDB: xtrabackup run and is not dangerous.\n",
+					node->name);
+				return(OS_FILE_NOT_FOUND);
+			}
 
 			ut_print_timestamp(stderr);
 
@@ -758,12 +770,15 @@ fil_node_open_file(
 
 		if (UNIV_UNLIKELY(space_id != space->id)) {
 			fprintf(stderr,
-				"InnoDB: Error: tablespace id is %lu"
+				"InnoDB: Warning: tablespace id is %lu"
 				" in the data dictionary\n"
-				"InnoDB: but in file %s it is %lu!\n",
+				"InnoDB: but in file %s it is %lu!\n"
+				"InnoDB: this can happen if the table metadata "
+				"was modified during an xtrabackup run\n"
+				"InnoDB: and is not dangerous.\n",
 				space->id, node->name, space_id);
 
-			ut_error;
+			return(OS_FILE_NOT_FOUND);
 		}
 
 		if (UNIV_UNLIKELY(space_id == ULINT_UNDEFINED
@@ -787,8 +802,8 @@ fil_node_open_file(
 		}
 
 		if (size_bytes >= 1024 * 1024) {
-			/* Truncate the size to whole megabytes. */
-			size_bytes = ut_2pow_round(size_bytes, 1024 * 1024);
+			/* The size should be exact for after applying .delta */
+			//size_bytes = ut_2pow_round(size_bytes, 1024 * 1024);
 		}
 
 		if (!(flags & DICT_TF_ZSSIZE_MASK)) {
@@ -839,6 +854,8 @@ add_size:
 		/* Put the node to the LRU list */
 		UT_LIST_ADD_FIRST(LRU, system->LRU, node);
 	}
+
+	return(0);
 }
 
 /**********************************************************************//**
@@ -1484,7 +1501,12 @@ fil_space_get_size(
 		the file yet; the following calls will open it and update the
 		size fields */
 
-		fil_node_prepare_for_io(node, fil_system, space);
+		if (fil_node_prepare_for_io(node, fil_system, space))
+		{
+			mutex_exit(&fil_system->mutex);
+
+			return(0);
+		}
 		fil_node_complete_io(node, fil_system, OS_FILE_READ);
 	}
 
@@ -1536,7 +1558,12 @@ fil_space_get_flags(
 		the file yet; the following calls will open it and update the
 		size fields */
 
-		fil_node_prepare_for_io(node, fil_system, space);
+		if (fil_node_prepare_for_io(node, fil_system, space))
+		{
+			mutex_exit(&fil_system->mutex);
+
+			return(ULINT_UNDEFINED);
+		}
 		fil_node_complete_io(node, fil_system, OS_FILE_READ);
 	}
 
@@ -1984,7 +2011,7 @@ fil_create_directory_for_tablename(
 	mem_free(path);
 }
 
-#ifndef UNIV_HOTBACKUP
+#if 0
 /********************************************************//**
 Writes a log record about an .ibd file create/rename/delete. */
 static
@@ -2208,7 +2235,7 @@ fil_op_log_parse_or_replay(
 			if (fil_create_new_single_table_tablespace(
 				    space_id, name, FALSE, flags,
 				    FIL_IBD_FILE_INITIAL_SIZE) != DB_SUCCESS) {
-				ut_error;
+				//ut_error;
 			}
 		}
 
@@ -2377,7 +2404,7 @@ try_again:
 	}
 
 	if (success) {
-#ifndef UNIV_HOTBACKUP
+#ifdef UNDEFINED
 		/* Write a log record about the deletion of the .ibd
 		file, so that ibbackup can replay it in the
 		--apply-log phase. We use a dummy mtr and the familiar
@@ -2678,8 +2705,8 @@ retry:
 
 	mutex_exit(&fil_system->mutex);
 
-#ifndef UNIV_HOTBACKUP
-	if (success) {
+#ifdef UNDEFINED
+	if (success && !recv_recovery_on) {
 		mtr_t		mtr;
 
 		mtr_start(&mtr);
@@ -2869,7 +2896,7 @@ error_exit2:
 
 	fil_node_create(path, size, space_id, FALSE);
 
-#ifndef UNIV_HOTBACKUP
+#ifdef UNDEFINED
 	{
 		mtr_t		mtr;
 
@@ -3124,18 +3151,96 @@ fil_open_single_table_tablespace(
 		      "InnoDB: open the tablespace file ", stderr);
 		ut_print_filename(stderr, filepath);
 		fputs("!\n"
-		      "InnoDB: Have you moved InnoDB .ibd files around"
-		      " without using the\n"
-		      "InnoDB: commands DISCARD TABLESPACE and"
-		      " IMPORT TABLESPACE?\n"
-		      "InnoDB: It is also possible that this is"
-		      " a temporary table #sql...,\n"
-		      "InnoDB: and MySQL removed the .ibd file for this.\n"
-		      "InnoDB: Please refer to\n"
-		      "InnoDB: " REFMAN "innodb-troubleshooting-datadict.html\n"
-		      "InnoDB: for how to resolve the issue.\n", stderr);
+		      "InnoDB: It will be removed from data dictionary.\n"
+		      , stderr);
 
 		mem_free(filepath);
+
+		/* removing from data dictionary */
+		{
+			trx_t*		trx;
+			pars_info_t*	info = NULL;
+
+			trx = trx_allocate_for_mysql();
+
+			trx->op_info = "removing invalid table from data dictionary";
+
+			info = pars_info_create();
+
+			pars_info_add_str_literal(info, "table_name", name);
+
+			que_eval_sql(info,
+			   "PROCEDURE DROP_TABLE_PROC () IS\n"
+			   "sys_foreign_id CHAR;\n"
+			   "table_id CHAR;\n"
+			   "index_id CHAR;\n"
+			   "foreign_id CHAR;\n"
+			   "found INT;\n"
+			   "BEGIN\n"
+			   "SELECT ID INTO table_id\n"
+			   "FROM SYS_TABLES\n"
+			   "WHERE NAME = :table_name\n"
+			   "LOCK IN SHARE MODE;\n"
+			   "IF (SQL % NOTFOUND) THEN\n"
+			   "       RETURN;\n"
+			   "END IF;\n"
+			   "found := 1;\n"
+			   "SELECT ID INTO sys_foreign_id\n"
+			   "FROM SYS_TABLES\n"
+			   "WHERE NAME = 'SYS_FOREIGN'\n"
+			   "LOCK IN SHARE MODE;\n"
+			   "IF (SQL % NOTFOUND) THEN\n"
+			   "       found := 0;\n"
+			   "END IF;\n"
+			   "IF (:table_name = 'SYS_FOREIGN') THEN\n"
+			   "       found := 0;\n"
+			   "END IF;\n"
+			   "IF (:table_name = 'SYS_FOREIGN_COLS') THEN\n"
+			   "       found := 0;\n"
+			   "END IF;\n"
+			   "WHILE found = 1 LOOP\n"
+			   "       SELECT ID INTO foreign_id\n"
+			   "       FROM SYS_FOREIGN\n"
+			   "       WHERE FOR_NAME = :table_name\n"
+			   "               AND TO_BINARY(FOR_NAME)\n"
+			   "                 = TO_BINARY(:table_name)\n"
+			   "               LOCK IN SHARE MODE;\n"
+			   "       IF (SQL % NOTFOUND) THEN\n"
+			   "               found := 0;\n"
+			   "       ELSE\n"
+			   "               DELETE FROM SYS_FOREIGN_COLS\n"
+			   "               WHERE ID = foreign_id;\n"
+			   "               DELETE FROM SYS_FOREIGN\n"
+			   "               WHERE ID = foreign_id;\n"
+			   "       END IF;\n"
+			   "END LOOP;\n"
+			   "found := 1;\n"
+			   "WHILE found = 1 LOOP\n"
+			   "       SELECT ID INTO index_id\n"
+			   "       FROM SYS_INDEXES\n"
+			   "       WHERE TABLE_ID = table_id\n"
+			   "       LOCK IN SHARE MODE;\n"
+			   "       IF (SQL % NOTFOUND) THEN\n"
+			   "               found := 0;\n"
+			   "       ELSE\n"
+			   "               DELETE FROM SYS_FIELDS\n"
+			   "               WHERE INDEX_ID = index_id;\n"
+			   "               DELETE FROM SYS_INDEXES\n"
+			   "               WHERE ID = index_id\n"
+			   "               AND TABLE_ID = table_id;\n"
+			   "       END IF;\n"
+			   "END LOOP;\n"
+			   "DELETE FROM SYS_COLUMNS\n"
+			   "WHERE TABLE_ID = table_id;\n"
+			   "DELETE FROM SYS_TABLES\n"
+			   "WHERE ID = table_id;\n"
+			   "END;\n"
+			   , FALSE, trx);
+
+			trx_commit_for_mysql(trx);
+
+			trx_free_for_mysql(trx);
+		}
 
 		return(FALSE);
 	}
@@ -3368,7 +3473,7 @@ fil_load_single_table_tablespace(
 	cannot be ok. */
 
 	size = (((ib_int64_t)size_high) << 32) + (ib_int64_t)size_low;
-#ifndef UNIV_HOTBACKUP
+#ifdef UNDEFINED
 	if (size < FIL_IBD_FILE_INITIAL_SIZE * UNIV_PAGE_SIZE) {
 		fprintf(stderr,
 			"InnoDB: Error: the size of single-table tablespace"
@@ -3498,7 +3603,51 @@ fil_load_single_table_tablespace(
 
 	fil_node_create(filepath, 0, space_id, FALSE);
 func_exit:
-	os_file_close(file);
+	/* We reuse file handles on the backup stage in XtraBackup to avoid
+	inconsistencies between the file name and the actual tablespace contents
+	if a DDL occurs between a fil_load_single_table_tablespaces() call and
+	the actual copy operation. */
+	if (srv_backup_mode) {
+
+		fil_node_t*	node;
+		fil_space_t*	space;
+
+		mutex_enter(&fil_system->mutex);
+
+		space = fil_space_get_by_id(space_id);
+
+		if (space) {
+			node = UT_LIST_GET_LAST(space->chain);
+
+			/* The handle will be closed by xtrabackup in
+			xtrabackup_copy_datafile(). We set node->open to TRUE to
+			make sure no one calls fil_node_open_file()
+			(i.e. attempts to reopen the tablespace by name) during
+			the backup stage. */
+
+			node->open = TRUE;
+			node->handle = file;
+
+			/* The following is copied from fil_node_open_file() to
+			pass fil_system validity checks. We cannot use
+			fil_node_open_file() directly, as that would re-open the
+			file by name and create another file handle. */
+
+			fil_system->n_open++;
+
+			if (space->purpose == FIL_TABLESPACE &&
+			    space->id != 0) {
+
+				/* Put the node to the LRU list */
+				UT_LIST_ADD_FIRST(LRU, fil_system->LRU, node);
+			}
+		}
+
+		mutex_exit(&fil_system->mutex);
+	} else {
+
+		os_file_close(file);
+	}
 	ut_free(buf2);
 	mem_free(filepath);
 }
@@ -3509,7 +3658,7 @@ directory. We retry 100 times if os_file_readdir_next_file() returns -1. The
 idea is to read as much good data as we can and jump over bad data.
 @return 0 if ok, -1 if error even after the retries, 1 if at the end
 of the directory */
-static
+//static
 int
 fil_file_readdir_next_file(
 /*=======================*/
@@ -3553,7 +3702,7 @@ space id is != 0.
 @return	DB_SUCCESS or error number */
 UNIV_INTERN
 ulint
-fil_load_single_table_tablespaces(void)
+fil_load_single_table_tablespaces(ibool (*pred)(const char*, const char*))
 /*===================================*/
 {
 	int		ret;
@@ -3609,7 +3758,9 @@ fil_load_single_table_tablespaces(void)
 			dbinfo.name);
 		srv_normalize_path_for_win(dbpath);
 
-		dbdir = os_file_opendir(dbpath, FALSE);
+		/* We want wrong directory permissions to be a fatal error for
+		XtraBackup. */
+		dbdir = os_file_opendir(dbpath, TRUE);
 
 		if (dbdir != NULL) {
 			/* printf("Opened dir %s\n", dbinfo.name); */
@@ -3635,8 +3786,11 @@ fil_load_single_table_tablespaces(void)
 						   ".ibd")) {
 					/* The name ends in .ibd; try opening
 					the file */
-					fil_load_single_table_tablespace(
+					if (!pred ||
+					    pred(dbinfo.name, fileinfo.name)) {
+						fil_load_single_table_tablespace(
 						dbinfo.name, fileinfo.name);
+					}
 				}
 next_file_item:
 				ret = fil_file_readdir_next_file(&err,
@@ -3808,15 +3962,97 @@ fil_space_for_table_exists_in_mem(
 				"InnoDB: in InnoDB data dictionary"
 				" has tablespace id %lu,\n"
 				"InnoDB: but tablespace with that id"
-				" or name does not exist. Have\n"
-				"InnoDB: you deleted or moved .ibd files?\n"
-				"InnoDB: This may also be a table created with"
-				" CREATE TEMPORARY TABLE\n"
-				"InnoDB: whose .ibd and .frm files"
-				" MySQL automatically removed, but the\n"
-				"InnoDB: table still exists in the"
-				" InnoDB internal data dictionary.\n",
+				" or name does not exist. It will be removed from data dictionary.\n"
+				,
 				(ulong) id);
+			mem_free(path);
+			mutex_exit(&fil_system->mutex);
+			/* removing from data dictionary */
+			{
+				trx_t*		trx;
+				pars_info_t*	info = NULL;
+
+				trx = trx_allocate_for_mysql();
+
+				trx->op_info = "removing invalid table from data dictionary";
+
+				info = pars_info_create();
+
+				pars_info_add_str_literal(info, "table_name", name);
+
+				que_eval_sql(info,
+				   "PROCEDURE DROP_TABLE_PROC () IS\n"
+				   "sys_foreign_id CHAR;\n"
+				   "table_id CHAR;\n"
+				   "index_id CHAR;\n"
+				   "foreign_id CHAR;\n"
+				   "found INT;\n"
+				   "BEGIN\n"
+				   "SELECT ID INTO table_id\n"
+				   "FROM SYS_TABLES\n"
+				   "WHERE NAME = :table_name\n"
+				   "LOCK IN SHARE MODE;\n"
+				   "IF (SQL % NOTFOUND) THEN\n"
+				   "       RETURN;\n"
+				   "END IF;\n"
+				   "found := 1;\n"
+				   "SELECT ID INTO sys_foreign_id\n"
+				   "FROM SYS_TABLES\n"
+				   "WHERE NAME = 'SYS_FOREIGN'\n"
+				   "LOCK IN SHARE MODE;\n"
+				   "IF (SQL % NOTFOUND) THEN\n"
+				   "       found := 0;\n"
+				   "END IF;\n"
+				   "IF (:table_name = 'SYS_FOREIGN') THEN\n"
+				   "       found := 0;\n"
+				   "END IF;\n"
+				   "IF (:table_name = 'SYS_FOREIGN_COLS') THEN\n"
+				   "       found := 0;\n"
+				   "END IF;\n"
+				   "WHILE found = 1 LOOP\n"
+				   "       SELECT ID INTO foreign_id\n"
+				   "       FROM SYS_FOREIGN\n"
+				   "       WHERE FOR_NAME = :table_name\n"
+				   "               AND TO_BINARY(FOR_NAME)\n"
+				   "                 = TO_BINARY(:table_name)\n"
+				   "               LOCK IN SHARE MODE;\n"
+				   "       IF (SQL % NOTFOUND) THEN\n"
+				   "               found := 0;\n"
+				   "       ELSE\n"
+				   "               DELETE FROM SYS_FOREIGN_COLS\n"
+				   "               WHERE ID = foreign_id;\n"
+				   "               DELETE FROM SYS_FOREIGN\n"
+				   "               WHERE ID = foreign_id;\n"
+				   "       END IF;\n"
+				   "END LOOP;\n"
+				   "found := 1;\n"
+				   "WHILE found = 1 LOOP\n"
+				   "       SELECT ID INTO index_id\n"
+				   "       FROM SYS_INDEXES\n"
+				   "       WHERE TABLE_ID = table_id\n"
+				   "       LOCK IN SHARE MODE;\n"
+				   "       IF (SQL % NOTFOUND) THEN\n"
+				   "               found := 0;\n"
+				   "       ELSE\n"
+				   "               DELETE FROM SYS_FIELDS\n"
+				   "               WHERE INDEX_ID = index_id;\n"
+				   "               DELETE FROM SYS_INDEXES\n"
+				   "               WHERE ID = index_id\n"
+				   "               AND TABLE_ID = table_id;\n"
+				   "       END IF;\n"
+				   "END LOOP;\n"
+				   "DELETE FROM SYS_COLUMNS\n"
+				   "WHERE TABLE_ID = table_id;\n"
+				   "DELETE FROM SYS_TABLES\n"
+				   "WHERE ID = table_id;\n"
+				   "END;\n"
+				   , FALSE, trx);
+
+				trx_commit_for_mysql(trx);
+
+				trx_free_for_mysql(trx);
+			}
+			return(FALSE);
 		} else {
 			ut_print_timestamp(stderr);
 			fputs("  InnoDB: Error: table ", stderr);
@@ -4205,7 +4441,7 @@ pending i/o's field in the node and the system appropriately. Takes the node
 off the LRU list if it is in the LRU list. The caller must hold the fil_sys
 mutex. */
 static
-void
+ulint
 fil_node_prepare_for_io(
 /*====================*/
 	fil_node_t*	node,	/*!< in: file node */
@@ -4225,10 +4461,13 @@ fil_node_prepare_for_io(
 	}
 
 	if (node->open == FALSE) {
+		ulint	err;
 		/* File is closed: open it */
 		ut_a(node->n_pending == 0);
 
-		fil_node_open_file(node, system, space);
+		err = fil_node_open_file(node, system, space);
+		if (err)
+			return(err);
 	}
 
 	if (node->n_pending == 0 && space->purpose == FIL_TABLESPACE
@@ -4241,6 +4480,8 @@ fil_node_prepare_for_io(
 	}
 
 	node->n_pending++;
+
+	return(0);
 }
 
 /********************************************************************//**
@@ -4422,6 +4663,16 @@ fil_io(
 	}
 
 	ut_ad((mode != OS_AIO_IBUF) || (space->purpose == FIL_TABLESPACE));
+
+	if (space->size > 0 && space->size <= block_offset) {
+		ulint	actual_size;
+
+		mutex_exit(&fil_system->mutex);
+		fil_extend_space_to_desired_size(&actual_size, space->id,
+						 block_offset + 1);
+		mutex_enter(&fil_system->mutex);
+		/* should retry? but it may safe for xtrabackup for now. */
+	}
 
 	node = UT_LIST_GET_FIRST(space->chain);
 
@@ -4922,3 +5173,35 @@ fil_close(void)
 
 	fil_system = NULL;
 }
+
+/****************************************************************//**
+Generate redo logs for swapping two .ibd files */
+UNIV_INTERN
+void
+fil_mtr_rename_log(
+/*===============*/
+	ulint		old_space_id,	/*!< in: tablespace id of the old
+					table. */
+	const char*	old_name,	/*!< in: old table name */
+	ulint		new_space_id,	/*!< in: tablespace id of the new
+					table */
+	const char*	new_name,	/*!< in: new table name */
+	const char*	tmp_name)	/*!< in: temp table name used while
+					swapping */
+{
+	(void)old_space_id;
+	(void)old_name;
+	(void)new_space_id;
+	(void)new_name;
+	(void)tmp_name;
+#ifdef UNDEFINED
+	mtr_t           mtr;
+	mtr_start(&mtr);
+	fil_op_write_log(MLOG_FILE_RENAME, old_space_id,
+			 0, 0, old_name, tmp_name, &mtr);
+	fil_op_write_log(MLOG_FILE_RENAME, new_space_id,
+			 0, 0, new_name, old_name, &mtr);
+	mtr_commit(&mtr);
+#endif
+}
+

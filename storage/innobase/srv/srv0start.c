@@ -62,6 +62,7 @@ Created 2/16/1996 Heikki Tuuri
 #include "ibuf0ibuf.h"
 #include "srv0start.h"
 #include "srv0srv.h"
+#include "xb0xb.h"
 #ifndef UNIV_HOTBACKUP
 # include "os0proc.h"
 # include "sync0sync.h"
@@ -92,6 +93,8 @@ Created 2/16/1996 Heikki Tuuri
 UNIV_INTERN ib_uint64_t	srv_start_lsn;
 /** Log sequence number at shutdown */
 UNIV_INTERN ib_uint64_t	srv_shutdown_lsn;
+
+UNIV_INTERN ib_uint64_t srv_oldest_lsn;
 
 #ifdef HAVE_DARWIN_THREADS
 # include <sys/utsname.h>
@@ -548,7 +551,7 @@ srv_calc_high32(
 /*********************************************************************//**
 Creates or opens the log files and closes them.
 @return	DB_SUCCESS or error code */
-static
+//static
 ulint
 open_or_create_log_file(
 /*====================*/
@@ -708,7 +711,7 @@ open_or_create_log_file(
 /*********************************************************************//**
 Creates or opens database data files and closes them.
 @return	DB_SUCCESS or error code */
-static
+//static
 ulint
 open_or_create_data_files(
 /*======================*/
@@ -1447,9 +1450,7 @@ innobase_start_or_create_for_mysql(void)
 	}
 #endif /* UNIV_LOG_ARCHIVE */
 
-	//if (srv_n_log_files * srv_log_file_size >= 262144) {
-    if (srv_n_log_files * srv_log_file_size
-            >= ((ulint)1 << (32 - UNIV_PAGE_SIZE_SHIFT))) {
+	if (sizeof(ulint) == 4 && srv_n_log_files * srv_log_file_size >= 262144) {
 		ut_print_timestamp(stderr);
 		fprintf(stderr,
 			" InnoDB: Error: combined size of log files"
@@ -1746,6 +1747,10 @@ innobase_start_or_create_for_mysql(void)
 		are initialized in trx_sys_init_at_db_start(). */
 
 		recv_recovery_from_checkpoint_finish();
+
+		if (srv_apply_log_only)
+			goto skip_processes;
+
 		if (srv_force_recovery < SRV_FORCE_NO_IBUF_MERGE) {
 			/* The following call is necessary for the insert
 			buffer to work with multiple tablespaces. We must
@@ -1912,6 +1917,17 @@ innobase_start_or_create_for_mysql(void)
 	if (!srv_auto_extend_last_data_file
 	    && sum_of_data_file_sizes != tablespace_size_in_header) {
 
+		/* extend table space size aligning with header */
+		ulint	actual_size;
+		fil_extend_space_to_desired_size(&actual_size, 0, tablespace_size_in_header);
+		if (actual_size < tablespace_size_in_header) {
+			fprintf(stderr,
+"InnoDB: Warning: To extend tablespace size aligning with header seems to be failed.\n"
+"InnoDB: The acutual size %lu must be larger than %lu.\n",
+				(ulong) actual_size,
+				(ulong) tablespace_size_in_header);
+		}
+#ifdef UNDEFINED
 		ut_print_timestamp(stderr);
 		fprintf(stderr,
 			" InnoDB: Error: tablespace size"
@@ -1991,6 +2007,7 @@ innobase_start_or_create_for_mysql(void)
 
 			return(DB_ERROR);
 		}
+#endif
 	}
 
 	/* Check that os_fast_mutexes work as expected */
@@ -2014,6 +2031,10 @@ innobase_start_or_create_for_mysql(void)
 	os_fast_mutex_unlock(&srv_os_test_mutex);
 
 	os_fast_mutex_free(&srv_os_test_mutex);
+
+	if (srv_rebuild_indexes) {
+		xb_compact_rebuild_indexes();
+	}
 
 	if (srv_print_verbose_log) {
 		ut_print_timestamp(stderr);
@@ -2103,6 +2124,7 @@ innobase_start_or_create_for_mysql(void)
 		ibuf_update_max_tablespace_id();
 	}
 
+skip_processes:
 	srv_file_per_table = srv_file_per_table_original_value;
 
 	srv_was_started = TRUE;

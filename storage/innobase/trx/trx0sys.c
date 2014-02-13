@@ -1656,11 +1656,13 @@ trx_sys_close(void)
 	mem_free(trx_doublewrite);
 	trx_doublewrite = NULL;
 
+	if (!srv_apply_log_only) {
 	/* Only prepared transactions may be left in the system. Free them. */
 	ut_a(UT_LIST_GET_LEN(trx_sys->trx_list) == trx_n_prepared);
 
 	while ((trx = UT_LIST_GET_FIRST(trx_sys->trx_list)) != NULL) {
 		trx_free_prepared(trx);
+	}
 	}
 
 	/* There can't be any active transactions. */
@@ -1687,10 +1689,12 @@ trx_sys_close(void)
 		UT_LIST_REMOVE(view_list, trx_sys->view_list, prev_view);
 	}
 
+	if (!srv_apply_log_only) {
 	ut_a(UT_LIST_GET_LEN(trx_sys->trx_list) == 0);
 	ut_a(UT_LIST_GET_LEN(trx_sys->rseg_list) == 0);
 	ut_a(UT_LIST_GET_LEN(trx_sys->view_list) == 0);
 	ut_a(UT_LIST_GET_LEN(trx_sys->mysql_trx_list) == 0);
+	}
 
 	mem_free(trx_sys);
 

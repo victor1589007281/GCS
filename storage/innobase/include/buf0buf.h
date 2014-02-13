@@ -1484,6 +1484,8 @@ struct buf_page_struct{
 					frees a page in buffer pool */
 # endif /* UNIV_DEBUG_FILE_ACCESSES || UNIV_DEBUG */
 #endif /* !UNIV_HOTBACKUP */
+	ibool		is_compacted;	/*!< TRUE if the page was skipped in
+					compact backups */
 };
 
 /** The buffer control block structure */

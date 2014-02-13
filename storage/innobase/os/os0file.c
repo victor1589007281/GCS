@@ -656,7 +656,7 @@ os_file_handle_error_no_exit(
 }
 
 #undef USE_FILE_LOCK
-#define USE_FILE_LOCK
+//#define USE_FILE_LOCK
 #if defined(UNIV_HOTBACKUP) || defined(__WIN__)
 /* InnoDB Hot Backup does not lock the data files.
  * On Windows, mandatory locking is used.
@@ -1456,8 +1456,9 @@ try_again:
 		attributes = 0;
 		ut_error;
 	}
-
+	share_mode |= FILE_SHARE_WRITE; /* Why? */
 	file = CreateFile((LPCTSTR) name,
+			  (srv_read_only && create_flag == OPEN_EXISTING) ? GENERIC_READ :
 			  GENERIC_READ | GENERIC_WRITE, /* read and write
 							access */
 			  share_mode,	/* File can be read also by other
@@ -1516,7 +1517,11 @@ try_again:
 	if (create_mode == OS_FILE_OPEN || create_mode == OS_FILE_OPEN_RAW
 	    || create_mode == OS_FILE_OPEN_RETRY) {
 		mode_str = "OPEN";
-		create_flag = O_RDWR;
+		if (srv_read_only) {
+			create_flag = O_RDONLY;
+		} else {
+			create_flag = O_RDWR;
+		}
 	} else if (create_mode == OS_FILE_CREATE) {
 		mode_str = "CREATE";
 		create_flag = O_RDWR | O_CREAT | O_EXCL;
@@ -2694,6 +2699,9 @@ os_file_write_func(
 	ut_a((offset & 0xFFFFFFFFUL) == offset);
 	ut_a((n & 0xFFFFFFFFUL) == n);
 
+	if (srv_fake_write)
+		return(TRUE);
+
 	os_n_file_writes++;
 
 	ut_ad(file);
@@ -2817,6 +2825,9 @@ retry:
 	return(FALSE);
 #else
 	ssize_t	ret;
+
+	if (srv_fake_write)
+		return(TRUE);
 
 	ret = os_file_pwrite(file, buf, n, offset, offset_high);
 
@@ -3021,7 +3032,7 @@ os_file_get_status(
 The function os_file_dirname returns a directory component of a
 null-terminated pathname string.  In the usual case, dirname returns
 the string up to, but not including, the final '/', and basename
-is the component following the final '/'.  Trailing '/' charac­
+is the component following the final '/'.  Trailing '/' charac?
 ters are not counted as part of the pathname.
 
 If path does not contain a slash, dirname returns the string ".".
