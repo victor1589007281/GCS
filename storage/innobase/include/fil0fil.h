@@ -511,7 +511,7 @@ space id is != 0.
 @return	DB_SUCCESS or error number */
 UNIV_INTERN
 ulint
-fil_load_single_table_tablespaces(void);
+fil_load_single_table_tablespaces(ibool (*pred)(const char*, const char*));
 /*===================================*/
 /*******************************************************************//**
 Returns TRUE if a single-table tablespace does not exist in the memory cache,

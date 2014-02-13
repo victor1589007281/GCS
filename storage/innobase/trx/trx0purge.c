@@ -1130,6 +1130,9 @@ trx_purge(
 	que_thr_t*	thr;
 	ulint		old_pages_handled;
 
+	if (srv_fake_write)
+		return(0);
+
 	ut_a(purge_sys->trx->n_active_thrs == 0);
 
 	rw_lock_x_lock(&purge_sys->latch);

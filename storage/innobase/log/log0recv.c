@@ -42,27 +42,28 @@ Created 9/20/1997 Heikki Tuuri
 #include "trx0undo.h"
 #include "trx0rec.h"
 #include "fil0fil.h"
-#ifndef UNIV_HOTBACKUP
+//#ifndef UNIV_HOTBACKUP
 # include "buf0rea.h"
 # include "srv0srv.h"
 # include "srv0start.h"
 # include "trx0roll.h"
 # include "row0merge.h"
 # include "sync0sync.h"
-#else /* !UNIV_HOTBACKUP */
+//#else /* !UNIV_HOTBACKUP */
+#include "xb0xb.h"
 
 /** This is set to FALSE if the backup was originally taken with the
 ibbackup --include regexp option: then we do not want to create tables in
 directories which were not included */
 UNIV_INTERN ibool	recv_replay_file_ops	= TRUE;
-#endif /* !UNIV_HOTBACKUP */
+//#endif /* !UNIV_HOTBACKUP */
 
 /** Log records are stored in the hash table in chunks at most of this size;
 this must be less than UNIV_PAGE_SIZE as it is stored in the buffer pool */
 #define RECV_DATA_BLOCK_SIZE	(MEM_MAX_ALLOC_IN_BUF - sizeof(recv_data_t))
 
 /** Read-ahead area in applying log records to file pages */
-#define RECV_READ_AHEAD_AREA	32
+#define RECV_READ_AHEAD_AREA	128
 
 /** The recovery system */
 UNIV_INTERN recv_sys_t*	recv_sys = NULL;
@@ -259,7 +260,7 @@ recv_sys_var_init(void)
 {
 	recv_lsn_checks_on = FALSE;
 
-	recv_n_pool_free_frames = 256;
+	recv_n_pool_free_frames = 1024;
 
 	recv_recovery_on = FALSE;
 
@@ -285,7 +286,7 @@ recv_sys_var_init(void)
 
 	recv_max_parsed_page_no	= 0;
 
-	recv_n_pool_free_frames	= 256;
+	recv_n_pool_free_frames	= 1024;
 
 	recv_max_page_lsn = 0;
 }
@@ -623,7 +624,7 @@ recv_synchronize_groups(
 /***********************************************************************//**
 Checks the consistency of the checkpoint info
 @return	TRUE if ok */
-static
+//static
 ibool
 recv_check_cp_is_consistent(
 /*========================*/
@@ -653,7 +654,7 @@ recv_check_cp_is_consistent(
 /********************************************************//**
 Looks for the maximum consistent checkpoint from the log groups.
 @return	error code or DB_SUCCESS */
-static
+//static
 ulint
 recv_find_max_checkpoint(
 /*=====================*/
@@ -828,7 +829,7 @@ block.  We also accept a log block in the old format before
 InnoDB-3.23.52 where the checksum field contains the log block number.
 @return TRUE if ok, or if the log block may be in the format of InnoDB
 version predating 3.23.52 */
-static
+//static
 ibool
 log_block_checksum_is_ok_or_old_format(
 /*===================================*/
@@ -1496,6 +1497,7 @@ recv_recover_page_func(
 					     buf_block_get_page_no(block));
 
 	if ((recv_addr == NULL)
+	    || (recv_addr->state == RECV_BEING_READ && !just_read_in)
 	    || (recv_addr->state == RECV_BEING_PROCESSED)
 	    || (recv_addr->state == RECV_PROCESSED)) {
 
@@ -1585,9 +1587,16 @@ recv_recover_page_func(
 			if (page_zip) {
 				memset(FIL_PAGE_LSN + page_zip->data, 0, 8);
 			}
+
+			if (block->page.is_compacted) {
+
+				ut_ad(srv_compact_backup);
+
+				block->page.is_compacted = FALSE;
+			}
 		}
 
-		if (recv->start_lsn >= page_lsn) {
+		if (!block->page.is_compacted && recv->start_lsn >= page_lsn) {
 
 			ib_uint64_t	end_lsn;
 
@@ -1774,6 +1783,18 @@ loop:
 			ulint	zip_size = fil_space_get_zip_size(space);
 			ulint	page_no = recv_addr->page_no;
 
+			/* By now we have replayed all DDL log records from the
+			current batch. Check if the space ID is still valid in
+			the entry being processed, and ignore it if it is not.*/
+			if (fil_tablespace_deleted_or_being_deleted_in_mem(space, -1)) {
+
+				ut_a(recv_sys->n_addrs);
+
+				recv_addr->state = RECV_PROCESSED;
+				recv_sys->n_addrs--;
+
+				goto next;
+			}
 			if (recv_addr->state == RECV_NOT_PROCESSED) {
 				if (!has_printed) {
 					ut_print_timestamp(stderr);
@@ -1807,7 +1828,7 @@ loop:
 
 				mutex_enter(&(recv_sys->mutex));
 			}
-
+next:
 			recv_addr = HASH_GET_NEXT(addr_hash, recv_addr);
 		}
 
@@ -2310,7 +2331,7 @@ loop:
 			   || type == MLOG_FILE_RENAME
 			   || type == MLOG_FILE_DELETE) {
 			ut_a(space);
-#ifdef UNIV_HOTBACKUP
+//#ifdef UNIV_HOTBACKUP
 			if (recv_replay_file_ops) {
 
 				/* In ibbackup --apply-log, replay an .ibd file
@@ -2333,7 +2354,7 @@ loop:
 					ut_error;
 				}
 			}
-#endif
+//#endif
 			/* In normal mysqld crash recovery we do not try to
 			replay file operations */
 #ifdef UNIV_LOG_LSN_DEBUG
@@ -2750,8 +2771,11 @@ recv_scan_log_recs(
 
 			fprintf(stderr,
 				"InnoDB: Doing recovery: scanned up to"
-				" log sequence number %llu\n",
-				*group_scanned_lsn);
+				" log sequence number %llu (%lu %%)\n",
+				*group_scanned_lsn,
+				(ulong) (*group_scanned_lsn - srv_oldest_lsn)
+				/ (8 * log_group_get_capacity(UT_LIST_GET_FIRST(log_sys->log_groups))/900)
+			);
 		}
 	}
 
@@ -2856,7 +2880,7 @@ recv_init_crash_recovery(void)
 		"InnoDB: Reading tablespace information"
 		" from the .ibd files...\n");
 
-	fil_load_single_table_tablespaces();
+	fil_load_single_table_tablespaces(NULL);
 
 	/* If we are using the doublewrite method, we will
 	check if there are half-written pages in data files,
@@ -2865,12 +2889,14 @@ recv_init_crash_recovery(void)
 
 	if (srv_force_recovery < SRV_FORCE_NO_LOG_REDO) {
 
+#ifdef UNDEFINED
 		fprintf(stderr,
 			"InnoDB: Restoring possible"
 			" half-written data pages from"
 			" the doublewrite\n"
 			"InnoDB: buffer...\n");
-		trx_sys_doublewrite_init_or_restore_pages(TRUE);
+#endif
+		trx_sys_doublewrite_init_or_restore_pages(FALSE);
 	}
 }
 
@@ -3020,6 +3046,7 @@ recv_recovery_from_checkpoint_start_func(
 		recv_sys->recovered_lsn = checkpoint_lsn;
 
 		srv_start_lsn = checkpoint_lsn;
+		srv_oldest_lsn = checkpoint_lsn;
 	}
 
 	contiguous_lsn = ut_uint64_align_down(recv_sys->scanned_lsn,
@@ -3301,6 +3328,7 @@ recv_recovery_from_checkpoint_finish(void)
 	that the data dictionary tables will be free of any locks.
 	The data dictionary latch should guarantee that there is at
 	most one data dictionary transaction active at a time. */
+	if (!srv_apply_log_only)
 	trx_rollback_or_clean_recovered(FALSE);
 }
 

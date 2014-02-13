@@ -1157,6 +1157,9 @@ ibuf_page_low(
 	ut_ad(!recv_no_ibuf_operations);
 	ut_ad(x_latch || mtr == NULL);
 
+	if (srv_fake_write)
+		return(FALSE);
+
 	if (ibuf_fixed_addr_page(space, zip_size, page_no)) {
 
 		return(TRUE);
@@ -2728,6 +2731,9 @@ ibuf_contract_for_n_pages(
 	ulint	sum_pages	= 0;
 	ulint	n_bytes;
 	ulint	n_pag2;
+
+	if (srv_fake_write)
+		return(0);
 
 	while (sum_pages < n_pages) {
 		n_bytes = ibuf_contract_ext(&n_pag2, sync);

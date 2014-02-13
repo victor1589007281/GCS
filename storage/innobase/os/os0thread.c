@@ -251,11 +251,16 @@ os_thread_sleep(
 #ifdef __WIN__
 	Sleep((DWORD) tm / 1000);
 #else
+	/* select() simetimes hang up from xtrabackup */
+	/* change to use usleep() for now */
+	usleep(tm);
+/*
 	struct timeval	t;
 
 	t.tv_sec = tm / 1000000;
 	t.tv_usec = tm % 1000000;
 
 	select(0, NULL, NULL, NULL, &t);
+*/
 #endif
 }

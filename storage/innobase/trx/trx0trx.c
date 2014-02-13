@@ -522,9 +522,8 @@ trx_lists_init_at_db_start(void)
 						(ullint) trx->id);
 
 					if (srv_force_recovery == 0) {
-
-						trx->conc_state = TRX_PREPARED;
-						trx_n_prepared++;
+						/* xtrabackup should rollback it */
+						trx->conc_state = TRX_ACTIVE;
 					} else {
 						fprintf(stderr,
 							"InnoDB: Since"
@@ -598,10 +597,9 @@ trx_lists_init_at_db_start(void)
 							(ullint) trx->id);
 
 						if (srv_force_recovery == 0) {
-
+							/* xtrabackup should rollback it */
 							trx->conc_state
-								= TRX_PREPARED;
-							trx_n_prepared++;
+								= TRX_ACTIVE;
 						} else {
 							fprintf(stderr,
 								"InnoDB: Since"

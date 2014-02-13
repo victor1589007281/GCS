@@ -406,6 +406,10 @@ UNIV_INTERN ibool	srv_use_checksums = TRUE;
 
 UNIV_INTERN ulong	srv_replication_delay		= 0;
 
+UNIV_INTERN ibool	srv_read_only   = FALSE;
+UNIV_INTERN ibool	srv_fake_write  = FALSE;
+UNIV_INTERN ibool	srv_apply_log_only = FALSE;
+UNIV_INTERN ibool	srv_backup_mode = FALSE;
 /*-------------------------------------------*/
 UNIV_INTERN ulong	srv_n_spin_wait_rounds	= 30;
 UNIV_INTERN ulong	srv_n_free_tickets_to_enter = 500;
@@ -1085,7 +1089,7 @@ srv_init(void)
 	}
 
 	/* Initialize some INFORMATION SCHEMA internal structures */
-	trx_i_s_cache_init(trx_i_s_cache);
+	//trx_i_s_cache_init(trx_i_s_cache);
 }
 
 /*********************************************************************//**
@@ -1096,6 +1100,7 @@ srv_free(void)
 /*==========*/
 {
 	os_fast_mutex_free(&srv_conc_mutex);
+#ifdef UNDEFINED
 	mem_free(srv_conc_slots);
 	srv_conc_slots = NULL;
 
@@ -1109,6 +1114,7 @@ srv_free(void)
 	srv_mysql_table = NULL;
 
 	trx_i_s_cache_free(trx_i_s_cache);
+#endif
 }
 
 /*********************************************************************//**
@@ -1724,7 +1730,7 @@ srv_suspend_mysql_thread(
 		}
 
 		/* Record the lock wait time for this thread */
-		thd_set_lock_wait_time(trx->mysql_thd, diff_time);
+		//thd_set_lock_wait_time(trx->mysql_thd, diff_time);
 	}
 
 	if (trx->was_chosen_as_deadlock_victim) {
