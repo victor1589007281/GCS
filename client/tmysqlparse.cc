@@ -1528,6 +1528,9 @@ static struct my_option my_long_options[] =
 	0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
 */	{"version", 'V', "Output version information and exit.", 0, 0, 0,
 	GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
+	{"force", 'F', "Continue even if we get an SQL error.",
+	  &ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG, 0, 0,
+	  0, 0, 0, 0},
 	{"set_version", 'v', "choose a version to parse sql, like, \"5.0\" \"5.1\" \"5.5\" \"tmysql-1.0\" " 
 	" \"tmysql-1.1\" \"tmysql-1.2\" \"tmysql-1.3\" \"tmysql-1.4\"."
 	"default value is \"5.5\"",&set_version, &set_version, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},

@@ -6739,6 +6739,10 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
 		inplace_info = NULL;
 	}
 
+
+	// upgrade Ëø
+	wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN);
+
 #ifdef WITH_PARTITION_STORAGE_ENGINE
     if (table_for_fast_alter_partition)
     {

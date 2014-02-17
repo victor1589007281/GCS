@@ -479,6 +479,7 @@ const char* get_warnings_type_str(int type)
 	case DROP_DB: return "DROP_DB";
 	case DROP_TABLE: return "DROP_TABLE";
 	case DROP_VIEW: return "DROP_VIEW";
+	case DROP_COLUMN: return "DROP_COLUMN";
 	case TRUNCATE_TABLE: return "TRUNCATE";
 	case DELETE_WITHOUT_WHERE: return "DELETE_WITHOUT_WHERE";
 	case UPDATE_WITHOUT_WHERE: return "UPDATE_WITHOUT_WHERE";
@@ -714,6 +715,11 @@ query_parse_audit_tsqlparse(
 	sp_head* sp;
 	List<Create_field> list_field ;
 	List_iterator<Create_field> it_field;
+
+
+	List<Alter_drop> list_field_drop;
+	List_iterator<Create_field> it_field_drop;
+
 	Create_field *cur_field;
 	uint blob_text_count;
 
@@ -751,6 +757,8 @@ query_parse_audit_tsqlparse(
     pra->query_type = lex->sql_command;
 	list_field = lex->alter_info.create_list;
 	it_field = lex->alter_info.create_list;
+
+	list_field_drop = lex->alter_info.drop_list;
 
 	switch (lex->sql_command)
     {
@@ -920,7 +928,7 @@ query_parse_audit_tsqlparse(
 		break;
 	case SQLCOM_ALTER_TABLE:
 		{
-			/* 建表中，blob字段过多的告警 */
+			/* alter table时，add blob字段过多的告警 */
 			if(list_field.elements >= 10)
 			{
 				blob_text_count = 0;
@@ -968,6 +976,17 @@ query_parse_audit_tsqlparse(
 						pra->warning_type = ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL;
 					}
 				}
+			}
+
+
+			{// alter table t1 drop column c1, 处理drop column导致的告警
+
+				if(list_field_drop.elements > 0)
+				{
+					pra->result_type = 1;
+					pra->warning_type = DROP_COLUMN ;
+				}
+
 			}
 		}
 		break;
