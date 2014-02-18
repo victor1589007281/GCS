@@ -2995,7 +2995,7 @@ com_rehash(String *buffer __attribute__((unused)),
 {
 #ifdef HAVE_READLINE
 
-	if(pra->only_output_ntables)
+	if(pra.only_output_ntables)
 	{// 用于控制在-T的时候，显示行号
 		pra.line_number = line_number_audit;
 	}
