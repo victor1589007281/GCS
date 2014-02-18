@@ -1143,7 +1143,8 @@ int query_parse_audit(char* query, parse_result_audit* pra )
 		/* Óï·¨·ÖÎö */
 		if (query_parse(query, &pr))
 		{
-			printf("query_parse error: %s\n", pr.err_msg);
+			printf("query_parse error at line %d: %s\n",pra->line_number, pr.err_msg);
+			printf("error_sql: %s\n", query);
 		}
 		else 
 		{

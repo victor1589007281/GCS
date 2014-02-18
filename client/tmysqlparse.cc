@@ -2556,6 +2556,11 @@ extern "C" {
 static int com_server_help(String *buffer __attribute__((unused)),
 						   char *line __attribute__((unused)), char *help_arg)
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
 	/* 语法分析 */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
@@ -2677,6 +2682,12 @@ com_go(String *buffer,char *line __attribute__((unused)))
 		return put_info("No query specified\n",INFO_ERROR);
 
 	}
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
 		if(pra.result_type == 2)
@@ -2983,6 +2994,12 @@ com_rehash(String *buffer __attribute__((unused)),
 		   char *line __attribute__((unused)))
 {
 #ifdef HAVE_READLINE
+
+	if(pra->only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	/* 语法分析 */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
@@ -3055,6 +3072,12 @@ com_print(String *buffer,char *line __attribute__((unused)))
 static int
 com_connect(String *buffer, char *line)
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	/* 语法分析 */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
@@ -3165,6 +3188,12 @@ com_delimiter(String *buffer __attribute__((unused)), char *line)
 static int
 com_use(String *buffer __attribute__((unused)), char *line)
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	/* 语法分析 */
 	if (query_parse_audit(line, &pra))
 	{
@@ -3273,6 +3302,12 @@ static int
 com_status(String *buffer __attribute__((unused)),
 		   char *line __attribute__((unused)))
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	/* 语法分析 */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
@@ -3620,6 +3655,12 @@ static void add_int_to_prompt(int toadd)
 
 static void init_username()
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	char query[100] = "select USER()";
 	/* 语法分析 */
 	if (query_parse_audit(query, &pra))
