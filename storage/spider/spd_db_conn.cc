@@ -255,6 +255,7 @@ int spider_db_conn_queue_action(
   DBUG_PRINT("info", ("spider conn=%p", conn));
   sql_str.init_calc_mem(106);
   sql_str.length(0);
+
   if (conn->queued_connect)
   {
     if ((error_num = spider_db_connect(conn->queued_connect_share, conn,
@@ -335,7 +336,7 @@ int spider_db_conn_queue_action(
           append_time_zone(&sql_str, conn->queued_time_zone_val))
       ) ||
       (
-        conn->queued_trx_start &&
+        conn->queued_trx_start && conn->db_conn->trx_transmit_begin_commit() &&
         conn->db_conn->trx_start_in_bulk_sql() &&
         (error_num = spider_dbton[conn->dbton_id].db_util->
           append_start_transaction(&sql_str))
@@ -375,6 +376,10 @@ int spider_db_conn_queue_action(
         DBUG_RETURN(error_num);
     }
 
+
+/***************************************************************
+ 在oracle, handler socket的逻辑下才会走的， mysql下必然不走，注释掉
+
     if (
       conn->queued_autocommit &&
       (
@@ -387,6 +392,7 @@ int spider_db_conn_queue_action(
     ) {
       DBUG_RETURN(error_num);
     }
+
     if (
       conn->queued_sql_log_off &&
       (
@@ -399,6 +405,8 @@ int spider_db_conn_queue_action(
     ) {
       DBUG_RETURN(error_num);
     }
+
+
     if (
       conn->queued_time_zone &&
       conn->queued_time_zone_val != conn->time_zone &&
@@ -408,6 +416,7 @@ int spider_db_conn_queue_action(
     ) {
       DBUG_RETURN(error_num);
     }
+	
     if (
       conn->queued_trx_isolation &&
       !conn->queued_semi_trx_isolation &&
@@ -418,6 +427,7 @@ int spider_db_conn_queue_action(
     ) {
       DBUG_RETURN(error_num);
     }
+
     if (
       conn->queued_semi_trx_isolation &&
       conn->queued_semi_trx_isolation_val != conn->trx_isolation &&
@@ -427,6 +437,7 @@ int spider_db_conn_queue_action(
     ) {
       DBUG_RETURN(error_num);
     }
+
     if (
       conn->queued_trx_start &&
       !conn->db_conn->trx_start_in_bulk_sql() &&
@@ -435,6 +446,7 @@ int spider_db_conn_queue_action(
     ) {
       DBUG_RETURN(error_num);
     }
+
     if (
       conn->queued_xa_start &&
       !conn->db_conn->xa_start_in_bulk_sql() &&
@@ -443,7 +455,7 @@ int spider_db_conn_queue_action(
     ) {
       DBUG_RETURN(error_num);
     }
-
+***********************************************************/ 
     if (
       conn->queued_trx_isolation &&
       !conn->queued_semi_trx_isolation &&

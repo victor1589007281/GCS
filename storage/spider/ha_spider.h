@@ -1060,4 +1060,8 @@ public:
 #endif
   int init_union_table_name_pos_sql();
   int set_union_table_name_pos_sql();
+  bool if_spider_storage_in_partition()
+  {
+	  return true;
+  }
 };

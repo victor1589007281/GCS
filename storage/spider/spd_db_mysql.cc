@@ -1778,6 +1778,20 @@ bool spider_db_mysql::trx_start_in_bulk_sql()
   DBUG_RETURN(TRUE);
 }
 
+
+bool spider_db_mysql::trx_transmit_begin_commit()
+{
+
+	DBUG_ENTER("spider_db_mysql::trx_transmit_begin_commit");
+	DBUG_PRINT("info",("spider this=%p", this));
+	THD *thd = current_thd;
+	if (thd && !thd->variables.spider_with_begin_commit && !thd_test_options(thd, OPTION_NOT_AUTOCOMMIT) && !thd_test_options(thd, OPTION_BEGIN))
+	{// thd不为空，是autocommit自动提交 且没有显示的指定事务begin ；则返回false表示不发送额外的begin操作 
+		DBUG_RETURN(FALSE);
+	}
+	DBUG_RETURN(TRUE);
+}
+
 int spider_db_mysql::start_transaction(
   int *need_mon
 ) {
@@ -1801,14 +1815,18 @@ int spider_db_mysql::commit(
 ) {
   DBUG_ENTER("spider_db_mysql::commit");
   DBUG_PRINT("info",("spider this=%p", this));
-  if (spider_db_query(
-    conn,
-    SPIDER_SQL_COMMIT_STR,
-    SPIDER_SQL_COMMIT_LEN,
-    -1,
-    need_mon)
-  )
-    DBUG_RETURN(spider_db_errorno(conn));
+
+  if(trx_transmit_begin_commit())
+  {// 如果允许begin与commit，才执行下面的commit
+	if (spider_db_query(
+		conn,
+		SPIDER_SQL_COMMIT_STR,
+		SPIDER_SQL_COMMIT_LEN,
+		-1,
+		need_mon)
+		)
+		DBUG_RETURN(spider_db_errorno(conn));
+  }
   SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
   pthread_mutex_unlock(&conn->mta_conn_mutex);
   DBUG_RETURN(0);

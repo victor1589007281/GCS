@@ -310,6 +310,7 @@ public:
                                           uint table_changes);
   /* check if the partition table support inplace alter */
   virtual bool check_if_supported_inplace_alter(THD *thd, TABLE *table,Alter_inplace_info *inplace_info);
+  virtual bool if_spider_storage_in_partition();
 
 
   /* fast inplace alter partition table,we just support fast add column(s) yet */

@@ -9743,6 +9743,24 @@ ha_partition::check_if_supported_inplace_alter(
         DBUG_RETURN(is_support);	
 }
 
+
+bool
+ha_partition::if_spider_storage_in_partition()
+{
+        DBUG_ENTER("ha_partition::if_spider_storage_in_partition");	
+        handler ** file;
+        bool    is_in_partition= TRUE;
+
+        for(file=m_file; *file; file++)
+		{
+            is_in_partition = (*file)->if_spider_storage_in_partition();
+            if(!is_in_partition) 
+                DBUG_RETURN(is_in_partition);
+
+        }	
+        DBUG_RETURN(is_in_partition);	
+}
+
 /* partition inplace alter table */
 int
 ha_partition::inplace_alter_table(

@@ -2527,6 +2527,15 @@ public:
  }
 
 
+ virtual
+ bool
+ if_spider_storage_in_partition(
+)
+ {
+	 return false;
+ }
+
+
  /**
     Public function wrapping the actual handler call.
     @see inplace_alter_table()
