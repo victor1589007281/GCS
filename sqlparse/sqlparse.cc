@@ -479,6 +479,7 @@ const char* get_warnings_type_str(int type)
 	case DROP_DB: return "DROP_DB";
 	case DROP_TABLE: return "DROP_TABLE";
 	case DROP_VIEW: return "DROP_VIEW";
+	case DROP_COLUMN: return "DROP_COLUMN";
 	case TRUNCATE_TABLE: return "TRUNCATE";
 	case DELETE_WITHOUT_WHERE: return "DELETE_WITHOUT_WHERE";
 	case UPDATE_WITHOUT_WHERE: return "UPDATE_WITHOUT_WHERE";
@@ -490,6 +491,8 @@ const char* get_warnings_type_str(int type)
 	case ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL: return "ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL";
 	case CREATE_TABLE_WITH_OTHER_CHARACTER: return "CREATE_TABLE_WITH_OTHER_CHARACTER";
 	case CREATE_PROCEDURE_WITH_DEFINER: return "CREATE_PROCEDURE_WITH_DEFINER";
+	case USE_UNKNOWN_SYSTEM_VARIABLE: return "USE_UNKNOWN_SYSTEM_VARIABLE";
+	case OTHER_WARNINGS: return "OTHER_WARNINGS";
 	default:
 		break;
 	}
@@ -644,7 +647,7 @@ const char* get_stmt_type_str(int type)
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
-int parse_result_audit_init(parse_result_audit* pra, char *version, char *charset)
+int parse_result_audit_init(parse_result_audit* pra, char *version, char *charset, bool only_output_ntables)
 {
     THD* thd;
 	enum_version current_version;
@@ -682,6 +685,7 @@ int parse_result_audit_init(parse_result_audit* pra, char *version, char *charse
 	pra->info.non_ascii = 0;
 	pra->table_arr = (parse_table_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_table_t));
 	pra->mysql_version = current_version;
+	pra->only_output_ntables = only_output_ntables;
 
 	if(charset)
 	{
@@ -711,6 +715,11 @@ query_parse_audit_tsqlparse(
 	sp_head* sp;
 	List<Create_field> list_field ;
 	List_iterator<Create_field> it_field;
+
+
+	List<Alter_drop> list_field_drop;
+	List_iterator<Create_field> it_field_drop;
+
 	Create_field *cur_field;
 	uint blob_text_count;
 
@@ -748,6 +757,8 @@ query_parse_audit_tsqlparse(
     pra->query_type = lex->sql_command;
 	list_field = lex->alter_info.create_list;
 	it_field = lex->alter_info.create_list;
+
+	list_field_drop = lex->alter_info.drop_list;
 
 	switch (lex->sql_command)
     {
@@ -917,7 +928,7 @@ query_parse_audit_tsqlparse(
 		break;
 	case SQLCOM_ALTER_TABLE:
 		{
-			/* 建表中，blob字段过多的告警 */
+			/* alter table时，add blob字段过多的告警 */
 			if(list_field.elements >= 10)
 			{
 				blob_text_count = 0;
@@ -965,6 +976,17 @@ query_parse_audit_tsqlparse(
 						pra->warning_type = ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL;
 					}
 				}
+			}
+
+
+			{// alter table t1 drop column c1, 处理drop column导致的告警
+
+				if(list_field_drop.elements > 0)
+				{
+					pra->result_type = 1;
+					pra->warning_type = DROP_COLUMN ;
+				}
+
 			}
 		}
 		break;
@@ -1101,6 +1123,38 @@ int query_parse_audit_low(char* query, parse_result_audit* pra)
 
 int query_parse_audit(char* query, parse_result_audit* pra )
 {
+
+	/*
+	tmysqlparse --version 
+	if ()
+	query_parse();
+	out
+	return 0;
+	
+	*/
+	if(pra->only_output_ntables)
+	{//  如果tmysqlparse选择只输出SQL中表的个数
+		parse_result_t pr;
+
+		/* 初始化parse_result结构 */
+		parse_result_init(&pr);
+
+
+		/* 语法分析 */
+		if (query_parse(query, &pr))
+		{
+			printf("query_parse error at line %d: %s\n",pra->line_number, pr.err_msg);
+			printf("error_sql: %s\n", query);
+		}
+		else 
+		{
+			if(pr.n_tables > 0)
+				printf("sql: %s; n_tables=%d\n", query, pr.n_tables);
+		}
+		parse_result_destroy(&pr);
+		return 0;
+	}
+
 	int exit_code = 0;
 	int len = sizeof(reserve_words) / sizeof(reserve_words[0]);
 	const char *reserve;
@@ -1148,6 +1202,11 @@ int query_parse_audit(char* query, parse_result_audit* pra )
 			free(sql1);
 			free(sql2);
 		}
+	}
+	else if(pra->errcode == ER_UNKNOWN_SYSTEM_VARIABLE)
+	{
+		pra->result_type = 1;
+		pra->warning_type = USE_UNKNOWN_SYSTEM_VARIABLE;
 	}
 	return exit_code;
 }
@@ -1242,7 +1301,7 @@ static int process_msg_error(int err_code, char *err_msg)
 	{
 		if(ignore_error_code[i] == err_code)
 		{
-			result_type = 0;//means ignore this parse error
+			result_type = 1;//means ignore this parse error
 			break;
 		}
 	}

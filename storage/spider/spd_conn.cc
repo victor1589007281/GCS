@@ -1085,6 +1085,10 @@ SPIDER_CONN *spider_get_conn(
   }
   conn->link_idx = base_link_idx;
 
+// 更新conn中的share对象， conn中的share对象存在未更新也使用的现象，若share被alter，
+//  则会读到旧的share， 发生crash
+  spider_conn_queue_connect_rewrite(share, conn, link_idx); 
+
   DBUG_PRINT("info",("spider conn=%p", conn));
   DBUG_RETURN(conn);
 

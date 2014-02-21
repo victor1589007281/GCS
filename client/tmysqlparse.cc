@@ -119,7 +119,7 @@ static char **defaults_argv;
 enum enum_info_type { INFO_INFO,INFO_ERROR,INFO_RESULT};
 typedef enum enum_info_type INFO_TYPE;
 
-static my_bool ignore_errors=0,quick=0,
+static my_bool ignore_errors=0,quick=0,get_only_ntables=0,
 opt_raw_data=0,unbuffered=0,
 opt_rehash=1,skip_updates=0,one_database=0,
 using_opt_local_infile=0,
@@ -1216,7 +1216,7 @@ int main(int argc,char *argv[])
 	/************************************************************************/
 	/* add by willhan. 2013-06-17                                                                     */
 	/************************************************************************/
-	if(-1 == parse_result_audit_init(&pra,set_version, set_charset))
+	if(-1 == parse_result_audit_init(&pra,set_version, set_charset, get_only_ntables))
 		return -1;
 	tmysqlparse_result_init(&roa);
 	if(current_db)//set the currentdb
@@ -1528,11 +1528,16 @@ static struct my_option my_long_options[] =
 	0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
 */	{"version", 'V', "Output version information and exit.", 0, 0, 0,
 	GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
+	{"force", 'F', "Continue even if we get an SQL error.",
+	  &ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG, 0, 0,
+	  0, 0, 0, 0},
 	{"set_version", 'v', "choose a version to parse sql, like, \"5.0\" \"5.1\" \"5.5\" \"tmysql-1.0\" " 
 	" \"tmysql-1.1\" \"tmysql-1.2\" \"tmysql-1.3\" \"tmysql-1.4\"."
 	"default value is \"5.5\"",&set_version, &set_version, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"set_charset", 'c', "set the charset of db.", &set_charset, &set_charset, 0 ,GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
-/*	{"wait", 'w', "Wait and retry if connection is down.", 0, 0, 0, GET_NO_ARG,
+	{"get_only_ntables", 'T', "sqlparse output table counts only.", &get_only_ntables, &get_only_ntables, 0 ,GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+
+	/*	{"wait", 'w', "Wait and retry if connection is down.", 0, 0, 0, GET_NO_ARG,
 	NO_ARG, 0, 0, 0, 0, 0, 0},
 	{"connect_timeout", OPT_CONNECT_TIMEOUT,
 	"Number of seconds before connection timeout.",
@@ -1576,7 +1581,7 @@ static struct my_option my_long_options[] =
 
 static void usage(int version)
 {
-	printf("tmysqlparse Ver 1.1\n");
+	printf("tmysqlparse Ver 1.2\n");
 	if (version)
 		return;
 //	puts(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000, 2011"));
@@ -2551,6 +2556,11 @@ extern "C" {
 static int com_server_help(String *buffer __attribute__((unused)),
 						   char *line __attribute__((unused)), char *help_arg)
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
 	/* 语法分析 */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
@@ -2672,6 +2682,12 @@ com_go(String *buffer,char *line __attribute__((unused)))
 		return put_info("No query specified\n",INFO_ERROR);
 
 	}
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
 		if(pra.result_type == 2)
@@ -2682,6 +2698,13 @@ com_go(String *buffer,char *line __attribute__((unused)))
 		{//error
 			fprintf(stderr, "SQL: %s\n",buffer->c_ptr());
 			fprintf(stderr, "error: %s\n", pra.err_msg);
+		}
+		else if(pra.result_type == 1)
+		{// 额外的处理告警，当前主要修复set xx xx这类被忽略的错误
+		// 正常的告警处理，是基于语法正确的。 
+		//	本类处理是被忽略的语法错误， 以告警来显示
+			tmysqlparse_add_pra(&roa,buffer->c_ptr(),&pra);
+
 		}
 	}
 	else 
@@ -2971,6 +2994,12 @@ com_rehash(String *buffer __attribute__((unused)),
 		   char *line __attribute__((unused)))
 {
 #ifdef HAVE_READLINE
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	/* 语法分析 */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
@@ -3043,6 +3072,12 @@ com_print(String *buffer,char *line __attribute__((unused)))
 static int
 com_connect(String *buffer, char *line)
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	/* 语法分析 */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
@@ -3153,6 +3188,12 @@ com_delimiter(String *buffer __attribute__((unused)), char *line)
 static int
 com_use(String *buffer __attribute__((unused)), char *line)
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	/* 语法分析 */
 	if (query_parse_audit(line, &pra))
 	{
@@ -3261,6 +3302,12 @@ static int
 com_status(String *buffer __attribute__((unused)),
 		   char *line __attribute__((unused)))
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	/* 语法分析 */
 	if (query_parse_audit(buffer->c_ptr(), &pra))
 	{
@@ -3608,6 +3655,12 @@ static void add_int_to_prompt(int toadd)
 
 static void init_username()
 {
+
+	if(pra.only_output_ntables)
+	{// 用于控制在-T的时候，显示行号
+		pra.line_number = line_number_audit;
+	}
+
 	char query[100] = "select USER()";
 	/* 语法分析 */
 	if (query_parse_audit(query, &pra))
@@ -3622,6 +3675,7 @@ static void init_username()
 			fprintf(stderr, "error: %s\n", pra.err_msg);
 		}
 	}
+
 	else 
 	{
 		if(pra.result_type == 1)
