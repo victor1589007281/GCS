@@ -9612,7 +9612,7 @@ int spider_mysql_handler::show_table_status(
   uint flag
 ) {
   int error_num;
-  SPIDER_CONN *conn = spider->conns[link_idx];
+  SPIDER_CONN *conn = spider->spider_read_or_create_conns(link_idx);
   SPIDER_DB_RESULT *res;
   SPIDER_SHARE *share = spider->share;
   uint pos = (2 * spider->conn_link_idx[link_idx]);
@@ -9880,7 +9880,7 @@ int spider_mysql_handler::show_index(
   int crd_mode
 ) {
   int error_num;
-  SPIDER_CONN *conn = spider->conns[link_idx];
+  SPIDER_CONN *conn = spider->spider_read_or_create_conns(link_idx);
   SPIDER_SHARE *share = spider->share;
   TABLE *table = spider->get_table();
   SPIDER_DB_RESULT *res;
@@ -10166,7 +10166,7 @@ int spider_mysql_handler::show_records(
   int link_idx
 ) {
   int error_num;
-  SPIDER_CONN *conn = spider->conns[link_idx];
+  SPIDER_CONN *conn = spider->spider_read_or_create_conns(link_idx);
   SPIDER_DB_RESULT *res;
   SPIDER_SHARE *share = spider->share;
   uint pos = spider->conn_link_idx[link_idx];
@@ -10280,7 +10280,7 @@ int spider_mysql_handler::show_last_insert_id(
   int link_idx,
   ulonglong &last_insert_id
 ) {
-  SPIDER_CONN *conn = spider->conns[link_idx];
+  SPIDER_CONN *conn = spider->spider_read_or_create_conns(link_idx);
   DBUG_ENTER("spider_mysql_handler::show_last_insert_id");
   last_insert_id = conn->db_conn->last_insert_id();
   DBUG_RETURN(0);
@@ -10292,7 +10292,7 @@ ha_rows spider_mysql_handler::explain_select(
   int link_idx
 ) {
   int error_num;
-  SPIDER_CONN *conn = spider->conns[link_idx];
+  SPIDER_CONN *conn = spider->spider_read_or_create_conns(link_idx);
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   spider_string *str = &result_list->sqls[link_idx];
   SPIDER_DB_RESULT *res;
@@ -10427,7 +10427,7 @@ int spider_mysql_handler::lock_tables(
   int link_idx
 ) {
   int error_num;
-  SPIDER_CONN *conn = spider->conns[link_idx];
+  SPIDER_CONN *conn = spider->spider_read_or_create_conns(link_idx);
   spider_string *str = &sql;
   DBUG_ENTER("spider_mysql_handler::lock_tables");
   str->length(0);
@@ -10480,7 +10480,7 @@ int spider_mysql_handler::unlock_tables(
   int link_idx
 ) {
   int error_num;
-  SPIDER_CONN *conn = spider->conns[link_idx];
+  SPIDER_CONN *conn = spider->spider_read_or_create_conns(link_idx);
   DBUG_ENTER("spider_mysql_handler::unlock_tables");
   if (conn->table_locked)
   {

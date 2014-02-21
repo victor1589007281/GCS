@@ -1064,4 +1064,21 @@ public:
   {
 	  return true;
   }
+
+
+  // 函数用于给 spider->conns[base_link_idx] 赋值
+  SPIDER_CONN* spider_search_or_create_conn
+  (
+  	  SPIDER_SHARE *share,
+	  ha_spider *spider,
+	  int link_idx,
+	  int base_link_idx,
+	  uint conn_kind,
+	  int *error_num
+  );
+
+
+  // 函数用于给 spider->conns[base_link_idx] 赋值
+  SPIDER_CONN* spider_read_or_create_conns(int link_idx);
+
 };
