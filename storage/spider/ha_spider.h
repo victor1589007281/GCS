@@ -92,8 +92,8 @@ public:
   void               **quick_targets;
   int                *need_mons;
   query_id_t         search_link_query_id;
-  int                search_link_idx;                           /* 只用于负载均衡模式，对于普通情况都是0 */
-  int                result_link_idx;
+  int                search_link_idx;                           /* 只用于负载均衡模式，对于普通情况都是0, always 0 */
+  int                result_link_idx;                           /* always 0 */
   SPIDER_RESULT_LIST result_list;
   SPIDER_CONDITION   *condition;
   spider_string      *blob_buff;

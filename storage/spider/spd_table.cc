@@ -2308,6 +2308,7 @@ int spider_parse_connect_info(
 
   /* check all_link_count */
   share->all_link_count = 1;
+#ifndef SPIDER_DISABLE_LINK
   if (share->all_link_count < share->server_names_length)
     share->all_link_count = share->server_names_length;
   if (share->all_link_count < share->tgt_table_names_length)
@@ -2386,6 +2387,7 @@ int spider_parse_connect_info(
     share->all_link_count = share->net_write_timeouts_length;
   if (share->all_link_count < share->access_balances_length)
     share->all_link_count = share->access_balances_length;
+#endif
   if ((error_num = spider_increase_string_list(
     &share->server_names,
     &share->server_names_lengths,
@@ -4263,7 +4265,7 @@ SPIDER_SHARE *spider_get_share(
     }
     spider->set_error_mode();
 
-    /* 1.1.4 创建monitor线程 */
+    /* 1.1.4 创建monitor线程，视乎monitoring_bg_kind(mbk)的设置，默认不创建 */
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     if (
       sql_command != SQLCOM_DROP_TABLE &&
@@ -4553,7 +4555,7 @@ SPIDER_SHARE *spider_get_share(
           difftime(tmp_time, spider_init_error_table->init_error_time)));
         if (difftime(tmp_time,
           spider_init_error_table->init_error_time) <
-          spider_param_table_init_error_interval())
+          spider_param_table_init_error_interval())         // protect link loop
         {
           *error_num = spider_init_error_table->init_error;
           if (spider_init_error_table->init_error_with_message)

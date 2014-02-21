@@ -5717,7 +5717,6 @@ int spider_mysql_handler::append_direct_update_set_part()
 int spider_mysql_handler::append_direct_update_set(
   spider_string *str
 ) {
-  SPIDER_SHARE *share = spider->share;
 #ifndef DBUG_OFF
   TABLE *table = spider->get_table();
 #endif
@@ -5740,6 +5739,7 @@ int spider_mysql_handler::append_direct_update_set(
     size_t roop_count;
     Field *field;
     uint field_name_length;
+    SPIDER_SHARE *share = spider->share;
     if (str->reserve(SPIDER_SQL_SET_LEN))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     str->q_append(SPIDER_SQL_SET_STR, SPIDER_SQL_SET_LEN);
