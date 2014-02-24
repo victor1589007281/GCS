@@ -1510,7 +1510,7 @@ int spider_set_conn_bg_param(
         spider->lock_mode ?
         SPIDER_LINK_STATUS_RECOVERY : SPIDER_LINK_STATUS_OK)
     ) {
-      if ((error_num = spider_create_conn_thread(spider->spider_read_or_create_conns(roop_count))))
+      if ((error_num = spider_create_conn_thread(spider->conns[roop_count])))
         DBUG_RETURN(error_num);
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       if ((error_num = spider_create_conn_thread(
@@ -1715,7 +1715,7 @@ void spider_bg_all_conn_wait(
       spider->conn_link_idx, roop_count, share->link_count,
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
-    conn = spider->spider_read_or_create_conns(roop_count);
+    conn = spider->conns[roop_count];
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     if (conn && result_list->bgs_working)
       spider_bg_conn_wait(conn);
@@ -1809,7 +1809,7 @@ void spider_bg_all_conn_break(
       spider->conn_link_idx, roop_count, share->link_count,
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
-    conn = spider->spider_read_or_create_conns(roop_count);
+    conn = spider->conns[roop_count];
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     if (conn && result_list->bgs_working)
       spider_bg_conn_break(conn, spider);
@@ -1869,9 +1869,9 @@ int spider_bg_conn_search(
   if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_MYSQL)
   {
 #endif
-    conn = spider->spider_read_or_create_conns(link_idx);
+    conn = spider->spider_get_conns_by_idx(link_idx);
     with_lock = (spider_conn_lock_mode(spider) != SPIDER_LOCK_MODE_NO_LOCK);
-    first_conn = spider->spider_read_or_create_conns(first_link_idx);
+    first_conn = spider->spider_get_conns_by_idx(first_link_idx);
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   } else if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_HS_READ)
     conn = spider->hs_r_conns[link_idx];

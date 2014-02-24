@@ -3634,7 +3634,7 @@ int spider_check_trx_and_get_conn(
           spider->conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL
         ) {
 #endif
-          conn = spider->spider_read_or_create_conns(roop_count);
+          conn = spider->spider_get_conns_by_idx(roop_count);
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
         } else if (spider->conn_kind[roop_count] == SPIDER_CONN_KIND_HS_READ)
         {

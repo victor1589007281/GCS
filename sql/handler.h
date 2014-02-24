@@ -2529,7 +2529,7 @@ public:
 
  virtual
  bool
- if_spider_storage_in_partition(
+ if_support_advance_upgrade(
 )
  {
 	 return false;

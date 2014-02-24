@@ -1139,7 +1139,7 @@ THR_LOCK_DATA **ha_spider::store_lock(
             conn_link_idx, roop_count, share->link_count,
             SPIDER_LINK_STATUS_RECOVERY)
         ) {
-          SPIDER_CONN *conn = spider_read_or_create_conns(roop_count);
+          SPIDER_CONN *conn = spider_get_conns_by_idx(roop_count);
           int appended = 0;
           if ((error_num = dbton_handler[conn->dbton_id]->
             append_lock_tables_list(conn, roop_count, &appended)))
@@ -1175,7 +1175,7 @@ THR_LOCK_DATA **ha_spider::store_lock(
             spider_param_semi_table_lock(thd, share->semi_table_lock) &&
             !spider_param_local_lock_table(thd)
           ) {
-            SPIDER_CONN *conn = spider_read_or_create_conns(roop_count);
+            SPIDER_CONN *conn = conns[roop_count];
             int appended = 0;
             if ((error_num = dbton_handler[conn->dbton_id]->
               append_lock_tables_list(conn, roop_count, &appended)))
@@ -2188,7 +2188,7 @@ int ha_spider::index_read_map_internal(
       if (conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL)
       {
 #endif
-        conn = spider_read_or_create_conns(roop_count);
+        conn = spider_get_conns_by_idx(roop_count);
         if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
         {
           sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -2672,7 +2672,7 @@ int ha_spider::index_read_last_map_internal(
       if (conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL)
       {
 #endif
-        conn = spider_read_or_create_conns(roop_count);
+        conn = spider_get_conns_by_idx(roop_count);
         if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
         {
           sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -3127,7 +3127,7 @@ int ha_spider::index_first_internal(
         if (conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL)
         {
 #endif
-          conn = spider_read_or_create_conns(roop_count);
+          conn = spider_get_conns_by_idx(roop_count);
           if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
           {
             sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -3500,7 +3500,7 @@ int ha_spider::index_last_internal(
         if (conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL)
         {
 #endif
-          conn = spider_read_or_create_conns(roop_count);
+          conn = spider_get_conns_by_idx(roop_count);
           if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
           {
             sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -3932,7 +3932,7 @@ int ha_spider::read_range_first_internal(
       if (conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL)
       {
 #endif
-        conn = conns[roop_count];
+        conn = spider_get_conns_by_idx(roop_count);
         if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
         {
           sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -4509,7 +4509,7 @@ int ha_spider::read_multi_range_first_internal(
           if (conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL)
           {
 #endif
-            conn = spider_read_or_create_conns(roop_count);
+            conn = spider_get_conns_by_idx(roop_count);
             if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
             {
               sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -5283,7 +5283,7 @@ int ha_spider::read_multi_range_first_internal(
           if (conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL)
           {
 #endif
-            conn = spider_read_or_create_conns(roop_count);
+            conn = spider_get_conns_by_idx(roop_count);
             if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
             {
               sql_type = SPIDER_SQL_TYPE_SELECT_SQL | SPIDER_SQL_TYPE_TMP_SQL;
@@ -5855,7 +5855,7 @@ int ha_spider::read_multi_range_next(
           if (conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL)
           {
 #endif
-            conn = spider_read_or_create_conns(roop_count);
+            conn = spider_get_conns_by_idx(roop_count);
             if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
             {
               sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -6639,7 +6639,7 @@ int ha_spider::read_multi_range_next(
           if (conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL)
           {
 #endif
-            conn = spider_read_or_create_conns(roop_count);
+            conn = spider_get_conns_by_idx(roop_count);
             if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
             {
               sql_type = SPIDER_SQL_TYPE_SELECT_SQL | SPIDER_SQL_TYPE_TMP_SQL;
@@ -7240,7 +7240,7 @@ int ha_spider::rnd_next_internal(
         }
       } else {
 #endif
-        SPIDER_CONN *conn = spider_read_or_create_conns(roop_count);
+        SPIDER_CONN *conn = spider_get_conns_by_idx(roop_count);
         ulong sql_type;
         if (sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
         {
@@ -7812,7 +7812,7 @@ int ha_spider::ft_read_internal(
 #endif
         uint dbton_id = share->use_sql_dbton_ids[roop_count];
         spider_db_handler *dbton_hdl = dbton_handler[dbton_id];
-        SPIDER_CONN *conn = spider_read_or_create_conns(roop_count);
+        SPIDER_CONN *conn = spider_get_conns_by_idx(roop_count);
         if (dbton_hdl->need_lock_before_set_sql_for_exec(
           SPIDER_SQL_TYPE_SELECT_SQL))
         {
@@ -11258,7 +11258,7 @@ int ha_spider::drop_tmp_tables()
       {
         uint dbton_id = share->use_sql_dbton_ids[roop_count];
         spider_db_handler *dbton_hdl = dbton_handler[dbton_id];
-        SPIDER_CONN *conn = spider_read_or_create_conns(roop_count);
+        SPIDER_CONN *conn = spider_get_conns_by_idx(roop_count);
         if (dbton_hdl->need_lock_before_set_sql_for_exec(
           SPIDER_SQL_TYPE_TMP_SQL))
         {
@@ -14159,23 +14159,8 @@ int ha_spider::set_union_table_name_pos_sql()
   DBUG_RETURN(0);
 }
 
-SPIDER_CONN* ha_spider::spider_search_or_create_conn
-(
- SPIDER_SHARE *share,
- ha_spider *spider,
- int link_idx,
- int base_link_idx,
- uint conn_kind,
- int *error_num
- )
-{
-	SPIDER_CONN *conn = NULL;
 
-	conn = spider_create_conn(share, spider, link_idx, base_link_idx,conn_kind, error_num);
-	return conn;
-}
-
-SPIDER_CONN* ha_spider::spider_read_or_create_conns(int link_idx)
+SPIDER_CONN* ha_spider::spider_get_conns_by_idx(int link_idx)
 {
 	assert(this->conns);
 	if(this && this->conns)

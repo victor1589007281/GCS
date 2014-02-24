@@ -483,7 +483,7 @@ typedef struct system_variables
   my_bool old_passwords;
   my_bool big_tables;
   my_bool blob_compressed;
-  my_bool spider_with_begin_commit;
+//  my_bool spider_with_begin_commit;
 
   plugin_ref table_plugin;
 

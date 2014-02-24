@@ -4473,7 +4473,7 @@ SPIDER_SHARE *spider_get_share(
           spider_free_share(share);
           goto error_but_no_delete;
         }
-        spider->spider_read_or_create_conns(roop_count)->error_mode &= spider->error_mode;
+        spider->conns[roop_count]->error_mode &= spider->error_mode;
       }
     }
     /* 1.1.8 负载均衡，确定search_link_idx，这里总认为是0 */
@@ -4914,7 +4914,7 @@ SPIDER_SHARE *spider_get_share(
           spider_free_share(share);
           goto error_but_no_delete;
         }
-        spider->spider_read_or_create_conns(roop_count)->error_mode &= spider->error_mode;
+        spider->conns[roop_count]->error_mode &= spider->error_mode;
       }
     }
     search_link_idx = spider_conn_first_link_idx(thd,

@@ -28,6 +28,10 @@ uint spider_param_conn_recycle_strict(
 bool spider_param_sync_trx_isolation(
   THD *thd
 );
+bool spider_param_with_begin_commit(
+	THD *thd
+);
+
 bool spider_param_use_consistent_snapshot(
   THD *thd
 );

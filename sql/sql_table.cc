@@ -6741,7 +6741,7 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
 
 
 	// upgrade Ëø
-	if((table->file)->if_spider_storage_in_partition())
+	if((table->file)->if_support_advance_upgrade())
 		wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN);
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE

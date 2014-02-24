@@ -285,11 +285,34 @@ static MYSQL_THDVAR_BOOL(
   TRUE /* def */
 );
 
+
+/*
+  FALSE: no sync
+  TRUE:  sync
+ */
+static MYSQL_THDVAR_BOOL(
+  with_begin_commit, /* name */
+  PLUGIN_VAR_OPCMDARG, /* opt */
+  "Sync transaction isolation level", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  FALSE /* def */
+);
+
+
 bool spider_param_sync_trx_isolation(
   THD *thd
 ) {
   DBUG_ENTER("spider_param_sync_trx_isolation");
   DBUG_RETURN(THDVAR(thd, sync_trx_isolation));
+}
+
+bool spider_param_with_begin_commit(
+	THD *thd
+)
+{
+	DBUG_ENTER("spider_param_with_begin_commit");
+	DBUG_RETURN(THDVAR(thd, with_begin_commit));
 }
 
 /*
@@ -2794,6 +2817,7 @@ static MYSQL_SYSVAR_BOOL(
   FALSE
 );
 
+
 my_bool spider_param_general_log()
 {
   DBUG_ENTER("spider_param_general_log");
@@ -2837,6 +2861,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(conn_recycle_mode),
   MYSQL_SYSVAR(conn_recycle_strict),
   MYSQL_SYSVAR(sync_trx_isolation),
+  MYSQL_SYSVAR(with_begin_commit),
   MYSQL_SYSVAR(use_consistent_snapshot),
   MYSQL_SYSVAR(internal_xa),
   MYSQL_SYSVAR(internal_xa_snapshot),

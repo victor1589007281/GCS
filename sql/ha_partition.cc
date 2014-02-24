@@ -9745,15 +9745,15 @@ ha_partition::check_if_supported_inplace_alter(
 
 
 bool
-ha_partition::if_spider_storage_in_partition()
+ha_partition::if_support_advance_upgrade()
 {
-        DBUG_ENTER("ha_partition::if_spider_storage_in_partition");	
+        DBUG_ENTER("ha_partition::if_support_advance_upgrade");	
         handler ** file;
         bool    is_in_partition= TRUE;
 
         for(file=m_file; *file; file++)
 		{
-            is_in_partition = (*file)->if_spider_storage_in_partition();
+            is_in_partition = (*file)->if_support_advance_upgrade();
             if(!is_in_partition) 
                 DBUG_RETURN(is_in_partition);
 
