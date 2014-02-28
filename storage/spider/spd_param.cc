@@ -747,6 +747,7 @@ int spider_param_semi_table_lock(
   int semi_table_lock
 ) {
   DBUG_ENTER("spider_param_semi_table_lock");
+  DBUG_RETURN(0);
   DBUG_RETURN((semi_table_lock & THDVAR(thd, semi_table_lock)));
 }
 
@@ -2824,6 +2825,29 @@ my_bool spider_param_general_log()
   DBUG_RETURN(spider_general_log);
 }
 
+
+
+// 变量用于控制spider中获取conn的值的方式，
+// 默认为true，即通过spider_get_conn_idx来操作过程中获取conn
+// 原值为false，在get_share与get_trx_and_get_conn中调用get_conn获取conn
+static my_bool spider_get_conn_from_idx;
+static MYSQL_SYSVAR_BOOL(
+	get_conn_from_idx,
+	spider_get_conn_from_idx,
+	PLUGIN_VAR_OPCMDARG,
+	"get conn from spider_get_conn_idx during the execution process",
+	NULL,
+	NULL,
+	TRUE
+);
+
+
+my_bool spider_param_get_conn_from_idx()
+{
+	DBUG_ENTER("spider_param_general_log");
+	DBUG_RETURN(spider_get_conn_from_idx);
+}
+
 static uint spider_log_result_errors;
 /*
   0: no log
@@ -2978,6 +3002,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(udf_ds_use_real_table),
 #endif
   MYSQL_SYSVAR(general_log),
+  MYSQL_SYSVAR(get_conn_from_idx),
   MYSQL_SYSVAR(log_result_errors),
   NULL
 };

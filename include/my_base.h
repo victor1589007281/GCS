@@ -452,6 +452,7 @@ enum ha_base_keytype {
 #define HA_ERR_TABLE_IN_FK_CHECK  181    /* Table being used in foreign key check */
 #define HA_ERR_LAST               181    /* Copy of last error nr */
 
+
 /* Number of different errors */
 #define HA_ERR_ERRORS            (HA_ERR_LAST - HA_ERR_FIRST + 1)
 

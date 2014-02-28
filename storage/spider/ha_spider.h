@@ -1066,6 +1066,9 @@ public:
   }
 
   // 函数用于给 spider->conns[base_link_idx] 赋值
-  SPIDER_CONN* spider_get_conns_by_idx(int link_idx);
-
+  SPIDER_CONN* spider_get_conn_by_idx(int link_idx);
+  int ha_spider::spider_set_trx_status_info();
 };
+
+
+

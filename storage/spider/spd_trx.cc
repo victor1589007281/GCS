@@ -3535,45 +3535,50 @@ int spider_check_trx_and_get_conn(
           (tgt_conn_kind == SPIDER_CONN_KIND_HS_WRITE &&
             !spider->hs_w_conns[roop_count])
 #endif
-        ) {
-          *spider->conn_keys[roop_count] = first_byte;
-          if (
-            !(conn =
-              spider_get_conn(share, roop_count,
-                spider->conn_keys[roop_count], trx,
-                spider, FALSE, TRUE,
+			) 
+		  {
+			  *spider->conn_keys[roop_count] = first_byte;
+
+			  if(! spider_param_get_conn_from_idx())
+			  {
+				  if (
+					  !(conn =
+					  spider_get_conn(share, roop_count,
+					  spider->conn_keys[roop_count], trx,
+					  spider, FALSE, TRUE,
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
-                use_conn_kind ? spider->conn_kind[roop_count] :
+					  use_conn_kind ? spider->conn_kind[roop_count] :
 #endif
-                  SPIDER_CONN_KIND_MYSQL,
-                &error_num))
-          ) {
-            if (
-              share->monitoring_kind[roop_count] &&
-              spider->need_mons[roop_count]
-            ) {
-              error_num = spider_ping_table_mon_from_table(
-                trx,
-                trx->thd,
-                share,
-                (uint32) share->monitoring_sid[roop_count],
-                share->table_name,
-                share->table_name_length,
-                spider->conn_link_idx[roop_count],
-                NULL,
-                0,
-                share->monitoring_kind[roop_count],
-                share->monitoring_limit[roop_count],
-                TRUE
-              );
-            }
-            DBUG_PRINT("info",("spider get conn error"));
-            *spider->conn_keys[0] = first_byte_bak;
-            spider->spider_thread_id = 0;
-            DBUG_RETURN(error_num);
-          }
-          conn->error_mode &= spider->error_mode;
-        }
+					  SPIDER_CONN_KIND_MYSQL,
+					  &error_num))
+					  ) {
+						  if (
+							  share->monitoring_kind[roop_count] &&
+							  spider->need_mons[roop_count]
+						  ) {
+							  error_num = spider_ping_table_mon_from_table(
+								  trx,
+								  trx->thd,
+								  share,
+								  (uint32) share->monitoring_sid[roop_count],
+								  share->table_name,
+								  share->table_name_length,
+								  spider->conn_link_idx[roop_count],
+								  NULL,
+								  0,
+								  share->monitoring_kind[roop_count],
+								  share->monitoring_limit[roop_count],
+								  TRUE
+								  );
+						  }
+						  DBUG_PRINT("info",("spider get conn error"));
+						  *spider->conn_keys[0] = first_byte_bak;
+						  spider->spider_thread_id = 0;
+						  DBUG_RETURN(error_num);
+				  }
+				  conn->error_mode &= spider->error_mode;
+			  }
+		  }
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
         if (
@@ -3634,7 +3639,7 @@ int spider_check_trx_and_get_conn(
           spider->conn_kind[roop_count] == SPIDER_CONN_KIND_MYSQL
         ) {
 #endif
-          conn = spider->spider_get_conns_by_idx(roop_count);
+          conn = spider->conns[roop_count];
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
         } else if (spider->conn_kind[roop_count] == SPIDER_CONN_KIND_HS_READ)
         {
@@ -3644,43 +3649,46 @@ int spider_check_trx_and_get_conn(
         }
 #endif
 
-        if (!conn)
-        {
-          DBUG_PRINT("info",("spider get conn %d", roop_count));
-          if (
-            !(conn =
-              spider_get_conn(share, roop_count,
-                spider->conn_keys[roop_count], trx,
-                spider, FALSE, TRUE,
+		if (!conn)
+		{
+			DBUG_PRINT("info",("spider get conn %d", roop_count));
+			if(!spider_param_get_conn_from_idx())
+			{
+				if (
+					!(conn =
+					spider_get_conn(share, roop_count,
+					spider->conn_keys[roop_count], trx,
+					spider, FALSE, TRUE,
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
-                use_conn_kind ? spider->conn_kind[roop_count] :
+					use_conn_kind ? spider->conn_kind[roop_count] :
 #endif
-                  SPIDER_CONN_KIND_MYSQL,
-                &error_num))
-          ) {
-            if (
-              share->monitoring_kind[roop_count] &&
-              spider->need_mons[roop_count]
-            ) {
-              error_num = spider_ping_table_mon_from_table(
-                trx,
-                trx->thd,
-                share,
-                (uint32) share->monitoring_sid[roop_count],
-                share->table_name,
-                share->table_name_length,
-                spider->conn_link_idx[roop_count],
-                NULL,
-                0,
-                share->monitoring_kind[roop_count],
-                share->monitoring_limit[roop_count],
-                TRUE
-              );
-            }
-            DBUG_PRINT("info",("spider get conn error"));
-            DBUG_RETURN(error_num);
-          }
-        }
+					SPIDER_CONN_KIND_MYSQL,
+					&error_num))
+					) {
+						if (
+							share->monitoring_kind[roop_count] &&
+							spider->need_mons[roop_count]
+						) {
+							error_num = spider_ping_table_mon_from_table(
+								trx,
+								trx->thd,
+								share,
+								(uint32) share->monitoring_sid[roop_count],
+								share->table_name,
+								share->table_name_length,
+								spider->conn_link_idx[roop_count],
+								NULL,
+								0,
+								share->monitoring_kind[roop_count],
+								share->monitoring_limit[roop_count],
+								TRUE
+								);
+						}
+						DBUG_PRINT("info",("spider get conn error"));
+						DBUG_RETURN(error_num);
+				}
+			}
+		}
         conn->error_mode &= spider->error_mode;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
