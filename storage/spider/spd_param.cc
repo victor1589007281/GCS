@@ -748,7 +748,8 @@ int spider_param_semi_table_lock(
 ) {
   DBUG_ENTER("spider_param_semi_table_lock");
   DBUG_RETURN(0);
-  DBUG_RETURN((semi_table_lock & THDVAR(thd, semi_table_lock)));
+// 直接返回0， 即不走此处的逻辑了。  在默认情况下semi_table_lock值也为0，默认返回为0.
+//  DBUG_RETURN((semi_table_lock & THDVAR(thd, semi_table_lock)));
 }
 
 static int spider_param_semi_table_lock_connection_check(

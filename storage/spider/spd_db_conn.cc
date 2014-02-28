@@ -167,6 +167,11 @@ int spider_db_ping(
   SPIDER_CONN *conn,
   int link_idx
 ) {
+
+	if(spider_param_get_conn_from_idx())
+	{// 认为ping的逻辑是没有好处的，在我们的逻辑下，去掉ping的行为
+		return 0;
+	}
   int error_num;
   DBUG_ENTER("spider_db_ping");
 #ifndef DBUG_OFF
