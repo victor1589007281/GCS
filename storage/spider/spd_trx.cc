@@ -3689,7 +3689,10 @@ int spider_check_trx_and_get_conn(
 				}
 			}
 		}
-        conn->error_mode &= spider->error_mode;
+        if(conn)
+		{
+			conn->error_mode &= spider->error_mode;
+		}
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
         if (
