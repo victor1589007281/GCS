@@ -375,3 +375,4 @@ int spider_param_udf_ds_use_real_table(
 my_bool spider_param_general_log();
 my_bool spider_param_get_conn_from_idx();
 uint spider_param_log_result_errors();
+my_bool spider_param_with_sts_crd();

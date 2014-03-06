@@ -8023,11 +8023,15 @@ int ha_spider::info(
         pthread_mutex_unlock(&share->sts_mutex);
       }
     }
+
+
     if (flag & HA_STATUS_CONST)
     {
       if ((error_num = check_crd()))
         DBUG_RETURN(error_num);
-      spider_db_set_cardinarity(this, table);
+
+// ×¢ÊÍµôÏÂÃæµÄÓï¾ä, by will
+//	  spider_db_set_cardinarity(this, table);
     }
 
     if (flag & HA_STATUS_TIME)

@@ -4573,24 +4573,40 @@ SPIDER_SHARE *spider_get_share(
         }
       }
 
-      if (spider_get_sts(share, spider->search_link_idx, tmp_time,
-        spider, sts_interval, sts_mode,
+	  if(spider_param_with_sts_crd())
+	  {
+		  if (spider_get_sts(share, spider->search_link_idx, tmp_time,
+			  spider, sts_interval, sts_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-        sts_sync,
+			  sts_sync,
 #endif
-        1, HA_STATUS_VARIABLE | HA_STATUS_CONST | HA_STATUS_AUTO))
-      {
-        thd->clear_error();
-      }
-      if (spider_get_crd(share, spider->search_link_idx, tmp_time,
-        spider, table, crd_interval, crd_mode,
+			  1, HA_STATUS_VARIABLE | HA_STATUS_CONST | HA_STATUS_AUTO))
+		  {
+			  thd->clear_error();
+		  }
+		  if (spider_get_crd(share, spider->search_link_idx, tmp_time,
+			  spider, table, crd_interval, crd_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-        crd_sync,
+			  crd_sync,
 #endif
-        1))
-      {
-        thd->clear_error();
-      }
+			  1))
+		  {
+			  thd->clear_error();
+		  }
+
+	  }
+
+
+	  if(!spider_param_with_sts_crd())
+	  {
+
+
+		  share->sts_get_time = tmp_time;
+		  share->sts_init = true;
+		  share->crd_get_time = tmp_time;
+		  share->crd_init = true;
+	  }
+
 /*
       if (
         (*error_num = spider_get_sts(share, spider->search_link_idx, tmp_time,
@@ -5010,26 +5026,39 @@ SPIDER_SHARE *spider_get_share(
               goto error_but_no_delete;
             }
           }
+		  
+		  if(spider_param_with_sts_crd())
+		  {
+			  if (spider_get_sts(share, spider->search_link_idx,
+				  tmp_time, spider, sts_interval, sts_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+				  sts_sync,
+#endif
+				  1, HA_STATUS_VARIABLE | HA_STATUS_CONST | HA_STATUS_AUTO))
+			  {
+				  thd->clear_error();
+			  }
+			  if (spider_get_crd(share, spider->search_link_idx,
+				  tmp_time, spider, table, crd_interval, crd_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+				  crd_sync,
+#endif
+				  1))
+			  {
+				  thd->clear_error();
+			  }
+		  }
 
-          if (spider_get_sts(share, spider->search_link_idx,
-            tmp_time, spider, sts_interval, sts_mode,
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-            sts_sync,
-#endif
-            1, HA_STATUS_VARIABLE | HA_STATUS_CONST | HA_STATUS_AUTO))
-          {
-            thd->clear_error();
-          }
-          if (spider_get_crd(share, spider->search_link_idx,
-            tmp_time, spider, table, crd_interval, crd_mode,
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-            crd_sync,
-#endif
-            1))
-          {
-            thd->clear_error();
-          }
-/*
+		  // add by will. 2014.3.5
+		  if(!spider_param_with_sts_crd())
+		  {
+			  share->sts_get_time = tmp_time;
+			  share->sts_init = true;
+			  share->crd_get_time = tmp_time;
+			  share->crd_init = true;
+
+		  }
+		  /*
           if (
             (*error_num = spider_get_sts(share, spider->search_link_idx,
               tmp_time, spider, sts_interval, sts_mode,

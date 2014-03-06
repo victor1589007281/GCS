@@ -2826,6 +2826,24 @@ my_bool spider_param_general_log()
   DBUG_RETURN(spider_general_log);
 }
 
+//  spider_with_sts_crd 控制spider在open table的时候，要不要直接
+// 调用 get table status与get index status 默认为false
+static my_bool spider_with_sts_crd;
+static MYSQL_SYSVAR_BOOL(
+  with_sts_crd,
+  spider_with_sts_crd,
+  PLUGIN_VAR_OPCMDARG,
+  "control the spider open table with get table status and get index status",
+  NULL,
+  NULL,
+  FALSE
+);
+
+my_bool spider_param_with_sts_crd()
+{
+	DBUG_ENTER("spider_param_with_sts_crd");
+	DBUG_RETURN(spider_with_sts_crd);
+}
 
 
 // 变量用于控制spider中获取conn的值的方式，
@@ -3003,6 +3021,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(udf_ds_use_real_table),
 #endif
   MYSQL_SYSVAR(general_log),
+  MYSQL_SYSVAR(with_sts_crd),
   MYSQL_SYSVAR(get_conn_from_idx),
   MYSQL_SYSVAR(log_result_errors),
   NULL
