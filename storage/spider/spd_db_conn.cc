@@ -154,7 +154,8 @@ int spider_db_connect(
     share->server_names[link_idx],
     connect_retry_count, connect_retry_interval)))
   {
-    DBUG_RETURN(error_num);
+	  fprintf(stderr, "failed to connect the hosts: %s, port: %s .\n",  share->tgt_hosts[link_idx], share->tgt_ports[link_idx]);
+	  DBUG_RETURN(error_num);
   }
   conn->opened_handlers = 0;
   conn->db_conn->reset_opened_handler();
@@ -5146,8 +5147,12 @@ void spider_db_set_cardinarity(
     {
       key_part = &key_info->key_part[roop_count2];
       field = key_part->field;
-      rec_per_key = (ha_rows) share->records /
-        share->cardinality[field->field_index];
+
+	  if(share->cardinality[field->field_index])
+		  rec_per_key = (ha_rows) share->records / share->cardinality[field->field_index];
+	  else
+		  rec_per_key = 0;
+
       if (rec_per_key > ~(ulong) 0)
         key_info->rec_per_key[roop_count2] = ~(ulong) 0;
       else if (rec_per_key == 0)

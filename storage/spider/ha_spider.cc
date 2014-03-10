@@ -1275,12 +1275,15 @@ int ha_spider::external_lock(
 			DBUG_RETURN(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM);
 		}
 	}
+
 	
 	if(!spider_param_get_conn_from_idx())
 	{
 		error_num = spider_set_trx_status_info();
 		DBUG_RETURN(error_num);
 	}
+	result_list.lock_type = lock_type;
+
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   } else {
     result_list.lock_type = lock_type;
@@ -7829,6 +7832,14 @@ int ha_spider::ft_read(
   DBUG_RETURN(ft_read_internal(buf));
 }
 
+
+/**************************************
+ info主要处理一些统计信息，比如table status， index
+ auto_increment等。  其中，table status与index的后台
+执行是在此处。 在open table的时候，flag值分别为16，18，8
+且分别对每个spider执行
+*****************************************/
+
 int ha_spider::info(
   uint flag
 ) {
@@ -7882,7 +7893,7 @@ int ha_spider::info(
 #endif
     }
     if (!share->sts_init)
-    {
+    { // spider中，open table时会首先在主线程中执行spider_get_sts. 在get_share中调用get_sts让share->sts_init为true
       pthread_mutex_lock(&share->sts_mutex);
       if (share->sts_init)
         pthread_mutex_unlock(&share->sts_mutex);
@@ -7927,7 +7938,7 @@ int ha_spider::info(
       }
     }
     if (difftime(tmp_time, share->sts_get_time) >= sts_interval)
-    {
+    { // 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
       if (
         sts_interval == 0 ||
         !pthread_mutex_trylock(&share->sts_mutex)
@@ -8009,7 +8020,7 @@ int ha_spider::info(
             share->bg_sts_sync = sts_sync;
 #endif
             if (!share->bg_sts_init)
-            {
+            {// 后台线程执行spider_get_sts， 每一个share对象都对应一个后台线程
               if ((error_num = spider_create_sts_thread(share)))
               {
                 pthread_mutex_unlock(&share->sts_mutex);
@@ -8026,12 +8037,12 @@ int ha_spider::info(
 
 
     if (flag & HA_STATUS_CONST)
-    {
+    { // check_crd()中会后台执行spider_get_crd()
       if ((error_num = check_crd()))
         DBUG_RETURN(error_num);
 
 // 注释掉下面的语句, by will
-//	  spider_db_set_cardinarity(this, table);
+	  spider_db_set_cardinarity(this, table);
     }
 
     if (flag & HA_STATUS_TIME)
