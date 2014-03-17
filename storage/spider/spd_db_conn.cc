@@ -154,7 +154,7 @@ int spider_db_connect(
     share->server_names[link_idx],
     connect_retry_count, connect_retry_interval)))
   {
-	  fprintf(stderr, "failed to connect the hosts: %s, port: %l .\n",  share->tgt_hosts[link_idx], share->tgt_ports[link_idx]);
+	  fprintf(stderr, "failed to connect the hosts: %s, port: %ld .\n",  share->tgt_hosts[link_idx], share->tgt_ports[link_idx]);
 	  DBUG_RETURN(error_num);
   }
   conn->opened_handlers = 0;
