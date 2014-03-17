@@ -1444,7 +1444,8 @@ int ha_spider::reset()
   if (
     partition_handler_share &&
     partition_handler_share->searched_bitmap
-  ) {
+  ) {//  server层open一个partition表对应有唯一的partition_handler_share， 对应有分区表个数的spider对象
+	  // 因此，同一个分区表下面的多个spider， 只有第一个spider会执行此处逻辑
     if (!is_clone)
     {
       partition_handler_share->searched_bitmap = NULL;
