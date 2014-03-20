@@ -380,7 +380,14 @@ int opt_sum_query(THD *thd,
             const_result= 0;
             break;
           }
-          table->file->ha_index_init((uint) ref.key, 1);
+          longlong info_limit = 1;
+          table->file->info_push(INFO_KIND_FORCE_LIMIT_BEGIN, &info_limit);
+          if ((error= table->file->ha_index_init((uint) ref.key, 1)))
+          {
+            table->file->print_error(error, MYF(0));
+            table->set_keyread(FALSE);
+            DBUG_RETURN(error);
+          }
 
           error= is_max ? 
                  get_index_max_value(table, &ref, range_fl) :
@@ -393,6 +400,7 @@ int opt_sum_query(THD *thd,
 	    error= HA_ERR_KEY_NOT_FOUND;
           table->set_keyread(FALSE);
           table->file->ha_index_end();
+          table->file->info_push(INFO_KIND_FORCE_LIMIT_END, NULL);
           if (error)
 	  {
 	    if (error == HA_ERR_KEY_NOT_FOUND || error == HA_ERR_END_OF_FILE)
