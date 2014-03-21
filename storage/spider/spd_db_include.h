@@ -18,6 +18,10 @@
 #include "hstcpcli.hpp"
 #endif
 
+
+#define  SPIDER_DISABLE_STANDBY  // 用于一个spider后端接多个db，进行负载均衡，我们禁止掉该行为
+
+
 #define SPIDER_DB_WRAPPER_MYSQL "mysql"
 
 #if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100002
@@ -1497,7 +1501,13 @@ typedef struct st_spider_dbton
   SPIDER_DB_CONN *(*create_db_conn)(SPIDER_CONN *conn);
   spider_db_util *db_util;
 } SPIDER_DBTON;
-#define SPIDER_DBTON_SIZE 15
+
+#ifndef SPIDER_DISABLE_STANDBY
+	#define SPIDER_DBTON_SIZE 15
+#else
+	#define SPIDER_DBTON_SIZE 1
+#endif
+
 
 typedef struct st_spider_position
 {
