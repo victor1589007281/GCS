@@ -327,6 +327,8 @@ void ha_partition::init_handler_variables()
   m_clone_mem_root= NULL;
   m_part_ids_sorted_by_num_of_records= NULL;
 
+  m_queue_malloc_flag = FALSE;
+
 #ifdef DONT_HAVE_TO_BE_INITALIZED
   m_start_key.flag= 0;
   m_ordered= TRUE;
@@ -2882,6 +2884,8 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
   if ((error= init_queue(&m_queue, m_tot_parts, (uint) PARTITION_BYTES_IN_POS,
                          0, key_rec_cmp, (void*)this)))
     goto err_handler;
+  else
+	  m_queue_malloc_flag = TRUE;
 
   /*
     Use table_share->ha_part_data to share auto_increment_value among
@@ -3035,6 +3039,12 @@ int ha_partition::close(void)
       ft_first = tmp_ft_info;
     } while (ft_first);
   }
+
+  // will. m_queue在open过程中分配内存后，一直没有释放，存在内存泄露的情况
+  // 当标记该内存被malloc过时，在close 的时候对其进行释放
+  if(m_queue_malloc_flag)
+	  delete_queue(&m_queue);
+
   bitmap_free(&m_bulk_insert_started);
 #ifdef HA_CAN_BULK_ACCESS
   bitmap_free(&bulk_access_exec_bitmap);
@@ -7599,6 +7609,14 @@ int ha_partition::reset(void)
   int result= 0, tmp;
   handler **file;
   DBUG_ENTER("ha_partition::reset");
+
+  /*
+  file = m_file;
+  do
+  {
+	  if (bitmap_is_set(&(m_part_info->used_partitions), (file - m_file)))
+
+*/
   if (m_part_info)
     bitmap_set_all(&m_part_info->used_partitions);
   file= m_file;
