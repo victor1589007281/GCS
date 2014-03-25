@@ -4995,7 +4995,7 @@ int spider_mysql_handler::append_tmp_table_and_sql_for_bka(
       SPIDER_SQL_B_DOT_STR, SPIDER_SQL_B_DOT_LEN,
       SPIDER_SQL_TYPE_SELECT_SQL, FALSE)) ||
     (
-      spider->result_list.direct_order_limit &&
+      (spider->result_list.direct_order_limit || spider->result_list.direct_aggregate) &&
       (error_num = append_key_order_for_direct_order_limit_with_alias(&sql,
         SPIDER_SQL_B_DOT_STR, SPIDER_SQL_B_DOT_LEN))
     )
@@ -5209,7 +5209,7 @@ int spider_mysql_handler::append_union_table_and_sql_for_bka(
       SPIDER_SQL_B_DOT_STR, SPIDER_SQL_B_DOT_LEN,
       SPIDER_SQL_TYPE_TMP_SQL, FALSE)) ||
     (
-      spider->result_list.direct_order_limit &&
+      (spider->result_list.direct_order_limit || spider->result_list.direct_aggregate) &&
       (error_num = append_key_order_for_direct_order_limit_with_alias(&tmp_sql,
         SPIDER_SQL_B_DOT_STR, SPIDER_SQL_B_DOT_LEN))
     )
@@ -7451,6 +7451,7 @@ int spider_mysql_handler::append_key_order_for_direct_order_limit_with_alias_par
   DBUG_RETURN(error_num);
 }
 
+// 直接语句中指定order by或limit
 int spider_mysql_handler::append_key_order_for_direct_order_limit_with_alias(
   spider_string *str,
   const char *alias,

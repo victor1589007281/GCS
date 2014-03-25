@@ -7003,7 +7003,7 @@ int ha_spider::rnd_next_internal(
 
     set_order_pos_sql(SPIDER_SQL_TYPE_SELECT_SQL);
     if (
-      result_list.direct_order_limit &&
+      (result_list.direct_order_limit || result_list.direct_aggregate) &&       // 用了聚集函数有可能需要加group by
       (error_num = append_key_order_for_direct_order_limit_with_alias_sql_part(
         NULL, 0, SPIDER_SQL_TYPE_SELECT_SQL))
     )
@@ -7577,7 +7577,7 @@ int ha_spider::ft_read_internal(
     if (
       (error_num = spider_db_append_match_where(this)) ||
       (
-        result_list.direct_order_limit &&
+        (result_list.direct_order_limit || result_list.direct_aggregate) &&
         (error_num =
           append_key_order_for_direct_order_limit_with_alias_sql_part(NULL, 0,
             SPIDER_SQL_TYPE_SELECT_SQL))

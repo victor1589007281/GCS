@@ -2213,13 +2213,16 @@ void Item_sum_num::reset_field()
 }
 
 
+// reset 并没有与value比较，而是使用args[0]进行覆盖，所以这个direct_item直接覆盖args[0]
 void Item_sum_hybrid::reset_field()
 {
   Item *tmp_item;
   if (direct_added)
   {
-    tmp_item= value->get_item();
-    value->store(direct_item);
+    //tmp_item= value->get_item();
+    //value->store(direct_item);
+    tmp_item = args[0];
+    args[0] = direct_item;
   }
   switch(hybrid_type) {
   case STRING_RESULT:
@@ -2300,7 +2303,8 @@ void Item_sum_hybrid::reset_field()
   }
   if (direct_added)
   {
-    value->store(tmp_item);
+    //value->store(tmp_item);
+    args[0] = tmp_item;
     direct_added= FALSE;
   }
 }
