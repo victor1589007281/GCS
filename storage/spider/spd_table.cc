@@ -287,6 +287,9 @@ PSI_thread_key spd_key_thd_bg_crd;
 PSI_thread_key spd_key_thd_bg_mon;
 #endif
 
+/* harryczhang: last_visited thd key */
+PSI_thread_key spd_key_thd_conn_rcyc;
+
 static PSI_thread_info all_spider_threads[] = {
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   {&spd_key_thd_bg, "bg", 0},
@@ -294,6 +297,8 @@ static PSI_thread_info all_spider_threads[] = {
   {&spd_key_thd_bg_crd, "bg_crd", 0},
   {&spd_key_thd_bg_mon, "bg_mon", 0},
 #endif
+  /* harryczhang: thread info */
+  {&spd_key_thd_conn_rcyc, "conn_rcyc", 0},
 };
 #endif
 
@@ -383,6 +388,10 @@ extern ulonglong  spider_free_mem_count[SPIDER_MEM_CALC_LIST_NUM];
 
 static char spider_wild_many = '%', spider_wild_one = '_',
   spider_wild_prefix='\\';
+
+/* harryczhang: */
+extern void spider_free_conn_recycle_thread(void);
+extern int spider_create_conn_recycle_thread(void);
 
 // for spider_open_tables
 uchar *spider_tbl_get_key(
@@ -6114,6 +6123,7 @@ int spider_db_done(
 /*
 DBUG_ASSERT(0);
 */
+  spider_free_conn_recycle_thread();
   DBUG_RETURN(0);
 }
 
@@ -6132,6 +6142,9 @@ int spider_db_init(
   uint dbton_id = 0;
   handlerton *spider_hton = (handlerton *)p;
   DBUG_ENTER("spider_db_init");
+  if (error_num = spider_create_conn_recycle_thread()) {
+      return error_num;
+  }
   spider_hton_ptr = spider_hton;
 
   spider_hton->state = SHOW_OPTION_YES;
