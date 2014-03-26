@@ -94,6 +94,11 @@ ulong spider_hs_w_conn_hash_line_no;
 pthread_mutex_t spider_hs_w_conn_mutex;
 #endif
 
+/* harryczhang: */
+extern PSI_thread_key spd_key_thd_conn_rcyc;
+volatile bool      conn_rcyc_init = FALSE;
+pthread_t          conn_rcyc_thread;
+
 /* for spider_open_connections and trx_conn_hash */
 uchar *spider_conn_get_key(
   SPIDER_CONN *conn,
@@ -665,7 +670,7 @@ SPIDER_CONN *spider_create_conn(
   conn->conn_id = spider_conn_id;
   ++spider_conn_id;
   pthread_mutex_unlock(&spider_conn_id_mutex);
-
+  conn->last_visited = time(NULL);
   DBUG_RETURN(conn);
 
 /*
@@ -3981,4 +3986,118 @@ bool spider_conn_need_open_handler(
 #endif
   }
   DBUG_RETURN(TRUE);
+}
+
+static void my_polling_last_visited(uchar *entry, void *data) {
+    DBUG_ENTER("my_polling_last_visited");
+    /* harryczhang: This conn object must be in hash pool. So conn->last_visited can't be modified. */
+    SPIDER_CONN *conn = (SPIDER_CONN *)entry;
+    DYNAMIC_ARRAY *hash_key_arr = (DYNAMIC_ARRAY *)data;
+    if (conn) {
+#ifdef NDEBUG
+        time_t time_now = time((time_t *) 0);
+        if (time_now > 0 && time_now > conn->last_visited && time_now - conn->last_visited >= IDLE_INTERVAL_IN_SECS) {
+#else
+        if (1) {
+#endif
+            insert_dynamic(hash_key_arr, (uchar *) &conn);
+        } else {
+            // TODO: print error, this because UTC time is overflow
+        }
+
+        DBUG_VOID_RETURN;
+    }
+}
+
+static void *spider_conn_recycle_action(void *arg)
+{
+    DBUG_ENTER ("spider_conn_recycle_action");
+    while (conn_rcyc_init) {
+        DYNAMIC_ARRAY idle_conn_key_arr;
+        my_init_dynamic_array(&idle_conn_key_arr, sizeof(uchar *), 64, 16);
+#ifdef NDEBUG
+again:
+#endif
+        my_hash_delegate(&spider_open_connections, my_polling_last_visited, &idle_conn_key_arr);
+#ifdef NDEBUG
+        if (!idle_conn_key_arr.elements) {
+            sleep(60);
+            goto again;
+        }
+#endif
+        for (size_t i = 0; i < idle_conn_key_arr.elements; ++i) {
+            SPIDER_CONN *tmp_spider_conn = NULL;
+            get_dynamic(&idle_conn_key_arr, (uchar *)&tmp_spider_conn, i);
+            if (!tmp_spider_conn) {
+                // TODO: print some warning info.
+                continue;
+            }
+            pthread_mutex_lock (&spider_conn_mutex);
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE           
+            SPIDER_CONN *conn = (SPIDER_CONN *) my_hash_search_using_hash_value (
+                            &spider_open_connections,
+                            tmp_spider_conn->conn_key_hash_value,
+                            (uchar *) tmp_spider_conn->conn_key, 
+                            tmp_spider_conn->conn_key_length);
+            
+#else
+            SPIDER_CONN *conn = (SPIDER_CONN *) my_hash_search(&spider_open_connections, tmp_spider_conn->conn_key, tmp_spider_conn->conn_key_length);            
+#endif
+            if (!conn) {
+                // TODO: print some warn info, this means this conn obj is retrieved, leaving from hash pool.
+                
+            } else {
+#ifdef HASH_UPDATE_WITH_HASH_VALUE
+                my_hash_delete_with_hash_value (&spider_open_connections,
+                                                conn->conn_key_hash_value, (uchar *) conn);
+#else
+                my_hash_delete (&spider_open_connections, (uchar *) conn);
+#endif
+            }
+            pthread_mutex_unlock(&spider_conn_mutex);
+            spider_free_conn(conn);
+        }
+        delete_dynamic(&idle_conn_key_arr);
+#ifdef NDEBUG /* harryczhang: debug mode sleep less, release mode sleep more */
+        sleep(IDLE_INTERVAL_IN_SECS);
+#endif
+    }
+
+    DBUG_RETURN(NULL);
+}
+
+int spider_create_conn_recycle_thread()
+{
+    int error_num;
+    DBUG_ENTER("spider_create_conn_recycle_thread");
+    if (conn_rcyc_init) {
+        DBUG_RETURN(0);
+    }
+
+#if MYSQL_VERSION_ID < 50500
+    if (pthread_create (&conn_rcyc_thread, NULL, spider_conn_recycle_action, NULL))
+#else
+    if (mysql_thread_create (spd_key_thd_conn_rcyc, &conn_rcyc_thread, NULL, spider_conn_recycle_action, NULL))
+#endif
+    {
+        error_num = HA_ERR_OUT_OF_MEM;
+        goto error_thread_create;
+    }
+    conn_rcyc_init = TRUE;
+    DBUG_RETURN (0);
+
+error_thread_create:
+    DBUG_RETURN (error_num);
+}
+
+void spider_free_conn_recycle_thread()
+{
+    DBUG_ENTER ("spider_free_conn_recycle_thread");
+    if (conn_rcyc_init) {
+        pthread_cancel(conn_rcyc_thread);
+        pthread_join(conn_rcyc_thread, NULL);
+        conn_rcyc_init = FALSE; 
+    }
+
+    DBUG_VOID_RETURN;
 }
