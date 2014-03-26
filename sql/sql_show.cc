@@ -2330,6 +2330,7 @@ static bool show_status_array(THD *thd, const char *wild,
       {
         char *value=var->value;
         const char *pos, *end;                  // We assign a lot of const's
+        bool is_unsigned= TRUE;
 
         mysql_mutex_lock(&LOCK_global_system_variables);
 
@@ -2339,6 +2340,11 @@ static bool show_status_array(THD *thd, const char *wild,
           show_type= var->show_type();
           value= (char*) var->value_ptr(thd, value_type, &null_lex_str);
           charset= var->charset(thd);
+          sys_var_pluginvar *pluginvar= var->cast_pluginvar();
+          if (pluginvar)
+          {
+            is_unsigned= plugin_var_is_unsigned(pluginvar);
+          }
         }
 
         pos= end= buff;
@@ -2359,13 +2365,19 @@ static bool show_status_array(THD *thd, const char *wild,
           /* fall through */
         case SHOW_LONG:
         case SHOW_LONG_NOFLUSH: // the difference lies in refresh_status()
-          end= int10_to_str(*(long*) value, buff, 10);
+          if (is_unsigned)
+            end= int10_to_str(*(long*) value, buff, 10);
+          else
+            end= int10_to_str(*(long*) value, buff, -10);
           break;
         case SHOW_LONGLONG_STATUS:
           value= ((char *) status_var + (ulong) value);
           /* fall through */
         case SHOW_LONGLONG:
-          end= longlong10_to_str(*(longlong*) value, buff, 10);
+          if (is_unsigned)
+            end= longlong10_to_str(*(longlong*) value, buff, 10);
+          else
+            end= longlong10_to_str(*(longlong*) value, buff, -10);
           break;
         case SHOW_HA_ROWS:
           end= longlong10_to_str((longlong) *(ha_rows*) value, buff, 10);
@@ -2377,7 +2389,10 @@ static bool show_status_array(THD *thd, const char *wild,
           end= strmov(buff, *(my_bool*) value ? "ON" : "OFF");
           break;
         case SHOW_INT:
-          end= int10_to_str((long) *(uint32*) value, buff, 10);
+          if (is_unsigned)
+            end= int10_to_str((long) *(uint32*) value, buff, 10);
+          else
+            end= int10_to_str((long) *(int32*) value, buff, -10);
           break;
         case SHOW_HAVE:
         {
@@ -2397,6 +2412,14 @@ static bool show_status_array(THD *thd, const char *wild,
         {
           if (!(pos= *(char**) value))
             pos= "";
+
+          DBUG_EXECUTE_IF("alter_server_version_str",
+                          if (!my_strcasecmp(system_charset_info,
+                                             variables->name,
+                                             "version")) {
+                            pos= "some-other-version";
+                          });
+
           end= strend(pos);
           break;
         }
