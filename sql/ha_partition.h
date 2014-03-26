@@ -109,6 +109,7 @@ private:
   uchar *m_rec0;                        // table->record[0]
   const uchar *m_err_rec;               // record which gave error
   QUEUE m_queue;                        // Prio queue used by sorted read
+  my_bool m_queue_malloc_flag;            //用来标记m_queue是否成功分配，主要用于控制是否走free逻辑。 未初始化而free会crash。
   /*
     Since the partition handler is a handler on top of other handlers, it
     is necessary to keep information about what the underlying handler

@@ -21,6 +21,11 @@
 #define SPIDER_BG_SIMPLE_CONNECT             1
 #define SPIDER_BG_SIMPLE_DISCONNECT          2
 
+
+#define  SPIDER_DISABLE_SYNC   // 一些sts, crd的同步逻辑 默认下是不走的，禁止掉该代码
+#define  SPIDER_DISABLE_LINK 
+
+
 uchar *spider_conn_get_key(
   SPIDER_CONN *conn,
   size_t *length,
@@ -265,7 +270,7 @@ void *spider_bg_mon_action(
 );
 #endif
 
-#define SPIDER_DISABLE_LINK
+
 
 #ifdef SPIDER_DISABLE_LINK
 #define spider_conn_first_link_idx(thd, link_statuses, access_balances, conn_link_idx, link_count, link_status) (0)

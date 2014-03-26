@@ -1444,7 +1444,8 @@ int ha_spider::reset()
   if (
     partition_handler_share &&
     partition_handler_share->searched_bitmap
-  ) {
+  ) {//  server层open一个partition表对应有唯一的partition_handler_share， 对应有分区表个数的spider对象
+	  // 因此，同一个分区表下面的多个spider， 只有第一个spider会执行此处逻辑
     if (!is_clone)
     {
       partition_handler_share->searched_bitmap = NULL;
@@ -1458,9 +1459,9 @@ int ha_spider::reset()
   memset(ft_discard_bitmap, 0xFF, no_bytes_in_map(table->read_set));
   if (!(tmp_trx = spider_get_trx(thd, TRUE, &error_num2)))
   {
-    DBUG_PRINT("info",("spider get trx error"));
-    if (check_error_mode(error_num2))
-      error_num = error_num2;
+	  DBUG_PRINT("info",("spider get trx error"));
+	  if (check_error_mode(error_num2))
+		  error_num = error_num2;
   }
   if (share)
   {
@@ -14108,7 +14109,6 @@ int ha_spider::spider_set_trx_status_info()
 						}
 						return(check_error_mode(error_num));
 				}
-				result_list.lock_type = lock_type;
 				reset_first_link_idx();
 				if (
 					conns[roop_count]->semi_trx_isolation == -2 &&

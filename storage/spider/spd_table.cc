@@ -6727,7 +6727,7 @@ int spider_get_sts(
   DBUG_ENTER("spider_get_sts");
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-  if (
+  if (// sts_sync的默认值为0
     sts_sync == 0
   ) {
 #endif
@@ -6771,6 +6771,10 @@ int spider_get_sts(
   if (get_type >= 2)
     pthread_mutex_unlock(&share->partition_share->sts_mutex);
 #endif
+
+// will. 此处代码正常下不走，其它逻辑有share对spider中sts的赋值，此处代码可以注释
+#ifndef SPIDER_DISABLE_SYNC
+
   if (error_num)
   {
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -6826,6 +6830,9 @@ int spider_get_sts(
     share->partition_share->sts_init = TRUE;
   }
 #endif
+
+#endif
+
   share->sts_get_time = tmp_time;
   share->sts_init = TRUE;
   DBUG_RETURN(0);
@@ -6894,6 +6901,9 @@ int spider_get_crd(
   if (get_type >= 2)
     pthread_mutex_unlock(&share->partition_share->crd_mutex);
 #endif
+
+// will. 此处代码正常下不走，其它逻辑有share对spider中sts的赋值，此处代码可以注释
+#ifndef SPIDER_DISABLE_SYNC
   if (error_num)
   {
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -6951,6 +6961,9 @@ int spider_get_crd(
     share->partition_share->crd_init = TRUE;
   }
 #endif
+
+#endif
+
   share->crd_get_time = tmp_time;
   share->crd_init = TRUE;
   DBUG_RETURN(0);
