@@ -293,7 +293,7 @@ static MYSQL_THDVAR_BOOL(
 static MYSQL_THDVAR_BOOL(
   with_begin_commit, /* name */
   PLUGIN_VAR_OPCMDARG, /* opt */
-  "Sync transaction isolation level", /* comment */
+  "Sync begin or commit", /* comment */
   NULL, /* check */
   NULL, /* update */
   FALSE /* def */
