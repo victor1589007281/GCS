@@ -2309,18 +2309,20 @@ static MYSQL_THDVAR_INT(
   "Connect retry count", /* comment */
   NULL, /* check */
   NULL, /* update */
-  1000, /* def */
+  20, /* def */
   0, /* min */
   2147483647, /* max */
   0 /* blk */
 );
 
 int spider_param_connect_retry_count(
-  THD *thd
+  THD *thd,
+  int retry_count
 ) {
+// retry_count默认值为0， 只有在spider get sts与spider get crd后续的操作中，才会为-1
   DBUG_ENTER("spider_param_connect_retry_count");
   if (thd)
-    DBUG_RETURN(THDVAR(thd, connect_retry_count));
+	  DBUG_RETURN((retry_count == -1) ? 0 : THDVAR(thd, connect_retry_count));
   DBUG_RETURN(0);
 }
 

@@ -41,6 +41,109 @@
 #include "spd_conn.h"
 #include "spd_ping_table.h"
 #include "spd_malloc.h"
+#include "hash.h"
+
+
+// will. 下面的结构体及对应的函数，主要用来处理table name的保存
+// 用一个一维数组保存所有的表名，表名间用\0间隔。
+typedef struct name_array
+{
+	char *str;  // 存储表名的字符串，表名间间隔为\0
+	size_t elements; //存储的表名个数
+	size_t cur_pos; // 下一个表名分配后的起始位置，在\0后的位置
+	size_t alloc_length; // str 被分配的长度
+}name_array, TABLE_NAME_ARRAY;
+
+int init_name_array(TABLE_NAME_ARRAY *tna)
+{
+	tna->str = (char*)malloc(sizeof(char)*(1024*1024));
+	if(!(tna->str))
+	{
+
+		time_t cur_time = (time_t) time((time_t*) 0);
+		struct tm lt;
+		struct tm *l_time = localtime_r(&cur_time, &lt);
+		fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
+			"failed to malloc name_array\n",
+			l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+			l_time->tm_hour, l_time->tm_min, l_time->tm_sec);
+		return 1;
+	}
+	tna->alloc_length = 1024*1024;
+	tna->elements = 0;
+	tna->cur_pos = 0;
+	return 0;
+}
+
+int destory_name_array(TABLE_NAME_ARRAY *tna)
+{// 释放内存
+	if(tna && tna->str)
+	{
+		free(tna->str);
+		tna->str = NULL;
+		tna->alloc_length = 0;
+		tna->elements = 0;
+		tna->cur_pos = 0;
+		return 0;
+	}
+	return 1;
+}
+
+int reset_name_array(TABLE_NAME_ARRAY *tna)
+{ // 将空间存储的内容全部置为0
+	if(tna && tna->str)
+	{
+		memset(tna->str,0, tna->elements);
+		// tna->alloc_length = tna->alloc_length; 分配的大小不用变化
+		tna->elements = 0;
+		tna->cur_pos = 0;
+		return 0;
+	}
+	return 1;
+}
+
+int add_name_array(TABLE_NAME_ARRAY *tna, char *name)
+{
+	if(tna->str)
+	{
+		size_t len = strlen(name);
+		if(len + tna->cur_pos > tna->alloc_length)
+		{//内存不够，继续分配
+			tna->str = (char*)realloc(tna->str, tna->alloc_length+1024*1024); //追加1M
+			if(!(tna->str))
+			{
+				time_t cur_time = (time_t) time((time_t*) 0);
+				struct tm lt;
+				struct tm *l_time = localtime_r(&cur_time, &lt);
+				fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
+					"failed to realloc in add_name_array\n",
+					l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+					l_time->tm_hour, l_time->tm_min, l_time->tm_sec);
+				return 1;
+			}
+
+		}
+		memcpy(tna->str+tna->cur_pos, name, len+1);
+		tna->cur_pos = tna->cur_pos+len+1;
+		tna->elements = tna->elements+1;
+		return 0;
+
+	}
+	fprintf(stderr, "the str is null can not be add\n");
+	return 1;
+
+}
+
+char* read_name_array(TABLE_NAME_ARRAY *tna, size_t pos)
+{
+	if(tna && tna->str && pos < tna->cur_pos)
+	{// 在pos小于tna->cur_pos时，才能返回正确的字符串（有\0结尾）
+		return (tna->str+pos);
+
+	}
+	fprintf(stderr, "the tna or tna->str or pos is invalid\n");
+	return NULL;
+}
 
 ulong *spd_db_att_thread_id;
 pthread_mutex_t *spd_db_att_LOCK_xid_cache;
@@ -4572,7 +4675,7 @@ SPIDER_SHARE *spider_get_share(
           goto error_but_no_delete;
         }
       }
-
+/*
 	  if(spider_param_with_sts_crd())
 	  {
 		  if (spider_get_sts(share, spider->search_link_idx, tmp_time,
@@ -4596,16 +4699,16 @@ SPIDER_SHARE *spider_get_share(
 
 	  }
 
-
-	  if(!spider_param_with_sts_crd())
-	  {
+*/
 
 
-		  share->sts_get_time = tmp_time;
-		  share->sts_init = true;
-		  share->crd_get_time = tmp_time;
-		  share->crd_init = true;
-	  }
+//	  if(!spider_param_with_sts_crd())
+//	  {
+		  share->sts_get_time = 0;
+//		  share->sts_init = true;
+		  share->crd_get_time = 0;
+//		  share->crd_init = true;
+//	  }
 
 /*
       if (
@@ -5026,7 +5129,7 @@ SPIDER_SHARE *spider_get_share(
               goto error_but_no_delete;
             }
           }
-		  
+/*		  
 		  if(spider_param_with_sts_crd())
 		  {
 			  if (spider_get_sts(share, spider->search_link_idx,
@@ -5048,8 +5151,9 @@ SPIDER_SHARE *spider_get_share(
 				  thd->clear_error();
 			  }
 		  }
-
+*/
 		  // add by will. 2014.3.5
+/******************
 		  if(!spider_param_with_sts_crd())
 		  {
 			  share->sts_get_time = tmp_time;
@@ -5058,6 +5162,8 @@ SPIDER_SHARE *spider_get_share(
 			  share->crd_init = true;
 
 		  }
+*****************/
+
 		  /*
           if (
             (*error_num = spider_get_sts(share, spider->search_link_idx,
@@ -5164,9 +5270,10 @@ int spider_free_share(
   pthread_mutex_lock(&spider_tbl_mutex);
   if (!--share->use_count)
   {
+
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-    spider_free_sts_thread(share);
-    spider_free_crd_thread(share);
+ //   spider_free_sts_thread(share);
+ //   spider_free_crd_thread(share);
     spider_free_mon_threads(share);
 #endif
     spider_free_share_alloc(share);
@@ -6711,7 +6818,9 @@ int spider_get_sts(
 ) {
   int get_type;
   int error_num = 0;
+  THD *thd= current_thd;
   DBUG_ENTER("spider_get_sts");
+  share->sts_get_time = tmp_time;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   if (// sts_sync的默认值为0
@@ -6820,9 +6929,13 @@ int spider_get_sts(
 
 #endif
 
-  share->sts_get_time = tmp_time;
   share->sts_init = TRUE;
-  DBUG_RETURN(0);
+  if(thd)
+  {
+	  thd->clear_error();
+	  thd->warning_info->clear_warning_info(thd->query_id);
+  }
+  DBUG_RETURN(error_num);
 }
 
 int spider_get_crd(
@@ -6840,8 +6953,9 @@ int spider_get_crd(
 ) {
   int get_type;
   int error_num = 0;
+  THD *thd= current_thd;
   DBUG_ENTER("spider_get_crd");
-
+  share->crd_get_time = tmp_time;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   if (
     crd_sync == 0
@@ -6951,9 +7065,13 @@ int spider_get_crd(
 
 #endif
 
-  share->crd_get_time = tmp_time;
   share->crd_init = TRUE;
-  DBUG_RETURN(0);
+  if(thd)
+  {
+	  thd->clear_error();
+	  thd->warning_info->clear_warning_info(thd->query_id);
+  }
+  DBUG_RETURN(error_num);
 }
 
 void spider_set_result_list_param(
