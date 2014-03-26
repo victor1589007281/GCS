@@ -139,6 +139,12 @@
 #define SPIDER_CLEAR_FILE_POS(A) \
   {(A)->thd = NULL; (A)->func_name = NULL; (A)->file_name = NULL; (A)->line_no = 0;}
 
+
+#define IDLE_INTERVAL_IN_SECS 3600 /* harryczhang: max idle time in secs */ 
+/* harryczhang: recycle connection thread initialized flag */
+extern volatile bool      conn_rcyc_init;
+extern pthread_t          conn_rcyc_thread;
+
 class ha_spider;
 typedef struct st_spider_share SPIDER_SHARE;
 
@@ -412,6 +418,9 @@ typedef struct st_spider_conn
   int                bulk_access_error_num;
   st_spider_conn     *bulk_access_next;
 #endif
+
+  /* harryczhang : This field is modified out of global connection pool, so it's not necessary to lock this variable by using a mutex. */
+  time_t            last_visited; 
 } SPIDER_CONN;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -492,7 +501,7 @@ typedef struct st_spider_transaction
   my_hash_value_type thd_hash_value;
 #endif
   XID                xid;
-  HASH               trx_conn_hash;
+  HASH               trx_conn_hash; /* harryczhang: trx scope connection pool */
   uint               trx_conn_hash_id;
   const char         *trx_conn_hash_func_name;
   const char         *trx_conn_hash_file_name;
@@ -616,11 +625,13 @@ typedef struct st_spider_share
   volatile bool      bg_sts_kill;
   volatile bool      bg_sts_thd_wait;
   THD                *bg_sts_thd;
+
   pthread_t          bg_sts_thread;
   pthread_cond_t     bg_sts_cond;
   pthread_cond_t     bg_sts_sync_cond;
   volatile bool      crd_init;
 #endif
+
   volatile time_t    crd_get_time;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   volatile time_t    bg_crd_try_time;

@@ -1540,6 +1540,10 @@ int spider_db_mysql::exec_query(
       tmp_query_str.length());
   }
   error_num = mysql_real_query(db_conn, query, length);
+
+  /* harryczhang: update last_visited field by using current timestamp in seconds. */
+  this->conn->last_visited = (time_t) time((time_t *) 0);
+
   if (spider_param_log_result_errors() >= 2 && db_conn->warning_count > 0)
   {
     time_t cur_time = (time_t) time((time_t*) 0);
