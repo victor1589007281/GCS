@@ -1539,15 +1539,20 @@ int spider_db_mysql::exec_query(
   DBUG_PRINT("info",("spider this=%p", this));
   if (spider_param_general_log())
   {
+    char port_buf[10];
     const char *tgt_str = conn->tgt_host;
     uint32 tgt_len = conn->tgt_host_length;
     spider_string tmp_query_str(length + conn->tgt_wrapper_length +
       tgt_len + (SPIDER_SQL_SPACE_LEN * 2));
+
+    snprintf(port_buf, sizeof(port_buf), "%d", conn->tgt_port);
     tmp_query_str.init_calc_mem(230);
     tmp_query_str.length(0);
     tmp_query_str.q_append(conn->tgt_wrapper, conn->tgt_wrapper_length);
     tmp_query_str.q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
     tmp_query_str.q_append(tgt_str, tgt_len);
+    tmp_query_str.q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
+    tmp_query_str.q_append(port_buf, strlen(port_buf));
     tmp_query_str.q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
     tmp_query_str.q_append(query, length);
     general_log_write(current_thd, COM_QUERY, tmp_query_str.ptr(),
