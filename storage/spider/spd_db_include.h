@@ -790,6 +790,10 @@ public:
   virtual int init() = 0;
   virtual bool is_connected() = 0;
   virtual void bg_connect() = 0;
+  virtual int set_net_read_write_time(uint net_read_timeout, uint net_write_timeout)
+  {
+	  return 0;
+  };
   virtual int connect(
     char *tgt_host,
     char *tgt_username,

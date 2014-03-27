@@ -1212,7 +1212,7 @@ int ha_spider::external_lock(
   THD *thd,
   int lock_type
 ) {
-  int error_num, roop_count;
+  int error_num;
   bool sync_trx_isolation = spider_param_sync_trx_isolation(thd);
   backup_error_status();
   DBUG_ENTER("ha_spider::external_lock");
@@ -7844,10 +7844,14 @@ int ha_spider::ft_read(
 int ha_spider::info(
   uint flag
 ) {
-  int error_num;
+//  int error_num;
   THD *thd = ha_thd();
   double sts_interval = spider_param_sts_interval(thd, share->sts_interval);
   int sts_mode = spider_param_sts_mode(thd, share->sts_mode);
+  double crd_interval = spider_param_crd_interval(thd, share->crd_interval);
+  int crd_mode = spider_param_crd_mode(thd, share->crd_mode);
+  int sts_crd_errornum_flag = 1; // 默认为1，即走spider_get_crd；当spider_get_sts出错，则不走spider_get_crd
+
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   int sts_sync = spider_param_sts_sync(thd, share->sts_sync);
 #endif
@@ -7893,156 +7897,80 @@ int ha_spider::info(
       info_auto_called = TRUE;
 #endif
     }
-    if (!share->sts_init)
-    { // spider中，open table时会首先在主线程中执行spider_get_sts. 在get_share中调用get_sts让share->sts_init为true
-      pthread_mutex_lock(&share->sts_mutex);
-      if (share->sts_init)
-        pthread_mutex_unlock(&share->sts_mutex);
-      else {
-        if ((spider_init_error_table =
-          spider_get_init_error_table(trx, share, FALSE)))
-        {
-          DBUG_PRINT("info",("spider diff=%f",
-            difftime(tmp_time, spider_init_error_table->init_error_time)));
-          if (difftime(tmp_time,
-            spider_init_error_table->init_error_time) <
-            spider_param_table_init_error_interval())
-          {
-            pthread_mutex_unlock(&share->sts_mutex);
-            if (spider_init_error_table->init_error_with_message)
-              my_message(spider_init_error_table->init_error,
-                spider_init_error_table->init_error_msg, MYF(0));
-            DBUG_RETURN(check_error_mode(spider_init_error_table->init_error));
-          }
-        }
-        pthread_mutex_unlock(&share->sts_mutex);
-        sts_interval = 0;
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-        if (tmp_auto_increment_mode == 1)
-          sts_sync = 0;
-#endif
-      }
-    }
-    if (flag & HA_STATUS_AUTO)
-    {
-      if (
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-        share->partition_share &&
-#endif
-        tmp_auto_increment_mode == 1 &&
-        !share->auto_increment_init
-      ) {
-        sts_interval = 0;
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-        sts_sync = 0;
-#endif
-      }
-    }
+
+	sts_mode = crd_mode = 1; // 设定都按show table status句式
     if (difftime(tmp_time, share->sts_get_time) >= sts_interval)
     { // 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
-      if (
-        sts_interval == 0 ||
-        !pthread_mutex_trylock(&share->sts_mutex)
-      ) {
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-        if (sts_interval == 0 || sts_bg_mode == 0)
-        {
-#endif
-          if (sts_interval == 0)
-            pthread_mutex_lock(&share->sts_mutex);
-          if (difftime(tmp_time, share->sts_get_time) >= sts_interval)
-          {
-            if (
-              (error_num = spider_check_trx_and_get_conn(ha_thd(), this,
-                FALSE)) ||
-              (error_num = spider_get_sts(share, search_link_idx, tmp_time,
-                this, sts_interval, sts_mode,
+		int roop_count; // 设置此处的conns为null，防止上次操作过程conn在free后未将此值值NULL
+		for (
+			roop_count = spider_conn_link_idx_next(share->link_statuses,
+			this->conn_link_idx, -1, share->link_count,
+			SPIDER_LINK_STATUS_RECOVERY);
+		roop_count < (int) share->link_count;
+		roop_count = spider_conn_link_idx_next(share->link_statuses,
+			this->conn_link_idx, roop_count, share->link_count,
+			SPIDER_LINK_STATUS_RECOVERY)
+			) {
+				this->conns[roop_count] = NULL;
+		}
+		if (spider_get_sts(share, search_link_idx, tmp_time,
+			this, sts_interval, sts_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-                sts_sync,
+			0,
 #endif
-                share->sts_init ? 2 : 1,
-                flag | (share->sts_init ? 0 : HA_STATUS_AUTO)))
-            ) {
-              pthread_mutex_unlock(&share->sts_mutex);
-              if (
-                share->monitoring_kind[search_link_idx] &&
-                need_mons[search_link_idx]
-              ) {
-                error_num = spider_ping_table_mon_from_table(
-                    trx,
-                    trx->thd,
-                    share,
-                    (uint32) share->monitoring_sid[search_link_idx],
-                    share->table_name,
-                    share->table_name_length,
-                    conn_link_idx[search_link_idx],
-                    NULL,
-                    0,
-                    share->monitoring_kind[search_link_idx],
-                    share->monitoring_limit[search_link_idx],
-                    TRUE
-                  );
-              }
-              if (!share->sts_init)
-              {
-                if (
-                  spider_init_error_table ||
-                  (spider_init_error_table =
-                    spider_get_init_error_table(trx, share, TRUE))
-                ) {
-                  spider_init_error_table->init_error = error_num;
-/*
-                  if (!thd->is_error())
-                    my_error(error_num, MYF(0), "");
-*/
-                  if ((spider_init_error_table->init_error_with_message =
-                    thd->is_error()))
-                    strmov(spider_init_error_table->init_error_msg,
-                      spider_stmt_da_message(thd));
-                  spider_init_error_table->init_error_time =
-                    (time_t) time((time_t*) 0);
-                }
-                share->init_error = TRUE;
-                share->init = TRUE;
-              }
-              DBUG_RETURN(check_error_mode(error_num));
-            }
-          }
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-        } else {
-          /* background */
-          if (!share->bg_sts_init || share->bg_sts_thd_wait)
-          {
-            share->bg_sts_thd_wait = FALSE;
-            share->bg_sts_try_time = tmp_time;
-            share->bg_sts_interval = sts_interval;
-            share->bg_sts_mode = sts_mode;
+			1, HA_STATUS_VARIABLE | HA_STATUS_CONST | HA_STATUS_AUTO))
+		{
+			time_t cur_time = (time_t) time((time_t*) 0);
+			struct tm lt;
+			struct tm *l_time = localtime_r(&cur_time, &lt);
+			fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
+				"error to spider_get_sts in ha_spider::info\n",
+				l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+				l_time->tm_hour, l_time->tm_min, l_time->tm_sec);
+
+			sts_crd_errornum_flag = 0; // 如果spider_get_sts出错，则不走spider_get_crd
+		}
+	}
+
+	if (difftime(tmp_time, share->crd_get_time) >= crd_interval && sts_crd_errornum_flag)
+	{ // 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
+		int roop_count; // 设置此处的conns为null，防止上次操作过程conn在free后未将此值值NULL
+		for (
+			roop_count = spider_conn_link_idx_next(share->link_statuses,
+			this->conn_link_idx, -1, share->link_count,
+			SPIDER_LINK_STATUS_RECOVERY);
+		roop_count < (int) share->link_count;
+		roop_count = spider_conn_link_idx_next(share->link_statuses,
+			this->conn_link_idx, roop_count, share->link_count,
+			SPIDER_LINK_STATUS_RECOVERY)
+			) {
+				this->conns[roop_count] = NULL;
+		}
+		if (sts_crd_errornum_flag = spider_get_crd(share, search_link_idx, tmp_time,
+			this, table, crd_interval, crd_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-            share->bg_sts_sync = sts_sync;
+			0,
 #endif
-            if (!share->bg_sts_init)
-            {// 后台线程执行spider_get_sts， 每一个share对象都对应一个后台线程
-              if ((error_num = spider_create_sts_thread(share)))
-              {
-                pthread_mutex_unlock(&share->sts_mutex);
-                DBUG_RETURN(error_num);
-              }
-            } else
-              pthread_cond_signal(&share->bg_sts_cond);
-          }
-        }
-#endif
-        pthread_mutex_unlock(&share->sts_mutex);
-      }
-    }
+			1))
+		{
+			time_t cur_time = (time_t) time((time_t*) 0);
+			struct tm lt;
+			struct tm *l_time = localtime_r(&cur_time, &lt);
+			fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
+				"error to spider_get_crd in ha_spider::info\n",
+				l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+				l_time->tm_hour, l_time->tm_min, l_time->tm_sec);
+ 		}
+	}
+
+
+
 
 
     if (flag & HA_STATUS_CONST)
     { // check_crd()中会后台执行spider_get_crd()
-      if ((error_num = check_crd()))
-        DBUG_RETURN(error_num);
-
-// 注释掉下面的语句, by will
+//      if ((error_num = check_crd()))
+ //       DBUG_RETURN(error_num);
 	  spider_db_set_cardinarity(this, table);
     }
 
@@ -8111,7 +8039,6 @@ ha_rows ha_spider::records_in_range(
   key_range *start_key,
   key_range *end_key
 ) {
-  int error_num;
   THD *thd = ha_thd();
   double crd_interval = spider_param_crd_interval(thd, share->crd_interval);
   int crd_mode = spider_param_crd_mode(thd, share->crd_mode);
@@ -8167,103 +8094,6 @@ ha_rows ha_spider::records_in_range(
       ("spider difftime=%f", difftime(tmp_time, share->crd_get_time)));
     DBUG_PRINT("info",
       ("spider crd_interval=%f", crd_interval));
-    if (difftime(tmp_time, share->crd_get_time) >= crd_interval)
-    {
-      if (
-        crd_interval == 0 ||
-        !pthread_mutex_trylock(&share->crd_mutex)
-      ) {
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-        if (crd_interval == 0 || crd_bg_mode == 0)
-        {
-#endif
-          if (crd_interval == 0)
-            pthread_mutex_lock(&share->crd_mutex);
-          if (difftime(tmp_time, share->crd_get_time) >= crd_interval)
-          {
-            if ((error_num = spider_get_crd(share, search_link_idx, tmp_time,
-              this, table, crd_interval, crd_mode,
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-              crd_sync,
-#endif
-              share->crd_init ? 2 : 1)))
-            {
-              pthread_mutex_unlock(&share->crd_mutex);
-              if (
-                share->monitoring_kind[search_link_idx] &&
-                need_mons[search_link_idx]
-              ) {
-                error_num = spider_ping_table_mon_from_table(
-                    trx,
-                    trx->thd,
-                    share,
-                    (uint32) share->monitoring_sid[search_link_idx],
-                    share->table_name,
-                    share->table_name_length,
-                    conn_link_idx[search_link_idx],
-                    NULL,
-                    0,
-                    share->monitoring_kind[search_link_idx],
-                    share->monitoring_limit[search_link_idx],
-                    TRUE
-                  );
-              }
-              if (!share->crd_init)
-              {
-                if (
-                  spider_init_error_table ||
-                  (spider_init_error_table =
-                    spider_get_init_error_table(trx, share, TRUE))
-                ) {
-                  spider_init_error_table->init_error = error_num;
-/*
-                  if (!thd->is_error())
-                    my_error(error_num, MYF(0), "");
-*/
-                  if ((spider_init_error_table->init_error_with_message =
-                    thd->is_error()))
-                    strmov(spider_init_error_table->init_error_msg,
-                      spider_stmt_da_message(thd));
-                  spider_init_error_table->init_error_time =
-                    (time_t) time((time_t*) 0);
-                }
-                share->init_error = TRUE;
-                share->init = TRUE;
-              }
-              if (check_error_mode(error_num))
-                my_errno = error_num;
-              DBUG_RETURN(HA_POS_ERROR);
-            }
-          }
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-        } else {
-          /* background */
-          if (!share->bg_crd_init || share->bg_crd_thd_wait)
-          {
-            share->bg_crd_thd_wait = FALSE;
-            share->bg_crd_try_time = tmp_time;
-            share->bg_crd_interval = crd_interval;
-            share->bg_crd_mode = crd_mode;
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-            share->bg_crd_sync = crd_sync;
-#endif
-            if (!share->bg_crd_init)
-            {
-              if ((error_num = spider_create_crd_thread(share)))
-              {
-                pthread_mutex_unlock(&share->crd_mutex);
-                my_errno = error_num;
-                DBUG_RETURN(HA_POS_ERROR);
-              }
-            } else
-              pthread_cond_signal(&share->bg_crd_cond);
-          }
-        }
-#endif
-        pthread_mutex_unlock(&share->crd_mutex);
-      }
-    }
-
     KEY *key_info = &table->key_info[inx];
     key_part_map full_key_part_map =
       make_prev_keypart_map(spider_user_defined_key_parts(key_info));

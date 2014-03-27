@@ -241,6 +241,9 @@ public:
   int init();
   bool is_connected();
   void bg_connect();
+  int set_net_read_write_time(
+	  uint net_read_timeout, 
+	  uint net_write_timeout);
   int connect(
     char *tgt_host,
     char *tgt_username,
