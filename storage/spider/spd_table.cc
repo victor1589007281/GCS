@@ -3495,7 +3495,7 @@ int spider_set_connect_info_default(
   if (share->priority == -1)
     share->priority = 1000000;
   if (share->quick_mode == -1)
-    share->quick_mode = 0;
+    share->quick_mode = 1;
   if (share->quick_page_size == -1)
     share->quick_page_size = 100;
   if (share->low_mem_read == -1)
