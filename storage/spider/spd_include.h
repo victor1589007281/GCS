@@ -411,7 +411,7 @@ typedef struct st_spider_conn
   bool               queued_sql_log_off_val;
   Time_zone          *queued_time_zone_val;
   XID                *queued_xa_start_xid;
-  int                retry_count;
+  int                retry_count_flag;
 
 #ifdef HA_CAN_BULK_ACCESS
   uint               bulk_access_requests;

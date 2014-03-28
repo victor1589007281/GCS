@@ -9658,13 +9658,14 @@ int spider_mysql_handler::show_table_status(
     spider_conn_set_timeout_from_share(conn, link_idx, spider->trx->thd,
       share);
 
-	// 把值保存起来，
+	// 把值保存起来， 在执行show table status时,connect_timeout的值变短， 防止因为show table status把线程卡住
+	//  在操作完后，将各种timeout还原
 	net_read_timeout_tmp = conn->net_read_timeout;
 	net_write_timeout_tmp = conn->net_write_timeout;
 	connect_timeout_tmp = share->connect_timeouts[0];
 
 	share->connect_timeouts[0] = 1;
-	conn->retry_count = -1;
+	conn->retry_count_flag = -1;
     if (
       (error_num = spider_db_set_names(spider, conn, link_idx)) || (conn->db_conn->set_net_read_write_time(2, 1)) ||
       (spider_db_query(
@@ -9673,11 +9674,13 @@ int spider_mysql_handler::show_table_status(
           mysql_share->show_table_status[0 + pos].length(),
           -1,
           &spider->need_mons[link_idx]) &&
-        (error_num = spider_db_errorno(conn))) || (conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp))
-    ) {
+        (error_num = spider_db_errorno(conn))) 
+		) {
          // 值还原
 		share->connect_timeouts[0] = connect_timeout_tmp;
-		conn->retry_count = 0;
+		conn->retry_count_flag = 0;
+		conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp);
+
 
       if (
         error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
@@ -9723,7 +9726,8 @@ int spider_mysql_handler::show_table_status(
     }
 // 值还原
 	share->connect_timeouts[0] = connect_timeout_tmp;
-	conn->retry_count = 0;
+	conn->retry_count_flag = 0;
+	conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp);
     st_spider_db_request_key request_key;
     request_key.spider_thread_id = spider->trx->spider_thread_id;
     request_key.query_id = spider->trx->thd->query_id;
@@ -9804,7 +9808,7 @@ int spider_mysql_handler::show_table_status(
 	net_read_timeout_tmp = conn->net_read_timeout;
 	net_write_timeout_tmp = conn->net_write_timeout;
 	connect_timeout_tmp = share->connect_timeouts[0];
-	conn->retry_count = -1;
+	conn->retry_count_flag = -1;
 	share->connect_timeouts[0] = 1;
     if (
       (error_num = spider_db_set_names(spider, conn, link_idx)) ||  (conn->db_conn->set_net_read_write_time(2, 1)) ||
@@ -9814,10 +9818,11 @@ int spider_mysql_handler::show_table_status(
           mysql_share->show_table_status[1 + pos].length(),
           -1,
           &spider->need_mons[link_idx]) &&
-        (error_num = spider_db_errorno(conn))) || (conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp))
+        (error_num = spider_db_errorno(conn)))
 ) {
-	  conn->retry_count = 0;
+	  conn->retry_count_flag = 0;
 	  share->connect_timeouts[0] = connect_timeout_tmp;
+	  conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp);
       if (
         error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
         !conn->disable_reconnect
@@ -9861,7 +9866,8 @@ int spider_mysql_handler::show_table_status(
       }
     }
 	share->connect_timeouts[0] = connect_timeout_tmp;
-	conn->retry_count = 0;
+	conn->retry_count_flag = 0;
+	conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp);
     st_spider_db_request_key request_key;
     request_key.spider_thread_id = spider->trx->spider_thread_id;
     request_key.query_id = spider->trx->thd->query_id;
@@ -9962,7 +9968,7 @@ int spider_mysql_handler::show_index(
 	net_read_timeout_tmp = conn->net_read_timeout;
 	net_write_timeout_tmp = conn->net_write_timeout;
 	connect_timeout_tmp = share->connect_timeouts[0];
-	conn->retry_count = -1;
+	conn->retry_count_flag = -1;
 	share->connect_timeouts[0] = 1;
     if (
       (error_num = spider_db_set_names(spider, conn, link_idx)) || (conn->db_conn->set_net_read_write_time(2, 1)) ||
@@ -9972,12 +9978,13 @@ int spider_mysql_handler::show_index(
           mysql_share->show_index[0 + pos].length(),
           -1,
           &spider->need_mons[link_idx]) &&
-        (error_num = spider_db_errorno(conn))) || (conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp))
+        (error_num = spider_db_errorno(conn)))
     ) {
 
 	// 值还原
 	share->connect_timeouts[0] = connect_timeout_tmp;
-	conn->retry_count = 0;
+	conn->retry_count_flag = 0;
+	conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp);
       if (
         error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
         !conn->disable_reconnect
@@ -10021,8 +10028,9 @@ int spider_mysql_handler::show_index(
       }
     }
 	// 值还原
-	conn->retry_count = 0;
+	conn->retry_count_flag = 0;
 	share->connect_timeouts[0] = connect_timeout_tmp;
+	conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp);
     st_spider_db_request_key request_key;
     request_key.spider_thread_id = spider->trx->spider_thread_id;
     request_key.query_id = spider->trx->thd->query_id;
@@ -10111,7 +10119,7 @@ int spider_mysql_handler::show_index(
 	net_read_timeout_tmp = conn->net_read_timeout;
 	net_write_timeout_tmp = conn->net_write_timeout;
 	connect_timeout_tmp = share->connect_timeouts[0];
-	conn->retry_count = -1;
+	conn->retry_count_flag = -1;
 	share->connect_timeouts[0] = 1;
     if (
       (error_num = spider_db_set_names(spider, conn, link_idx)) || (conn->db_conn->set_net_read_write_time(2, 1)) ||
@@ -10121,11 +10129,12 @@ int spider_mysql_handler::show_index(
           mysql_share->show_index[1 + pos].length(),
           -1,
           &spider->need_mons[link_idx]) &&
-        (error_num = spider_db_errorno(conn))) || (conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp))
+        (error_num = spider_db_errorno(conn))) 
     ) {
 	// 值还原
-	  conn->retry_count = 0;
+	  conn->retry_count_flag = 0;
 	  share->connect_timeouts[0] = connect_timeout_tmp;
+	  conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp);
       if (
         error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
         !conn->disable_reconnect
@@ -10169,8 +10178,9 @@ int spider_mysql_handler::show_index(
       }
     }
 	// 值还原
-	conn->retry_count = 0;
+	conn->retry_count_flag = 0;
 	share->connect_timeouts[0] = connect_timeout_tmp;
+	conn->db_conn->set_net_read_write_time(net_read_timeout_tmp, net_write_timeout_tmp);
     st_spider_db_request_key request_key;
     request_key.spider_thread_id = spider->trx->spider_thread_id;
     request_key.query_id = spider->trx->thd->query_id;
