@@ -236,7 +236,7 @@ static MYSQL_THDVAR_UINT(
   "Connection recycle mode", /* comment */
   NULL, /* check */
   NULL, /* update */
-  0, /* def */
+  1, /* def */
   0, /* min */
   2, /* max */
   0 /* blk */
@@ -1239,7 +1239,7 @@ static MYSQL_THDVAR_INT(
   "Wait timeout of receiving data from remote server", /* comment */
   NULL, /* check */
   NULL, /* update */
-  -1, /* def */
+  10000, /* def */
   -1, /* min */
   2147483647, /* max */
   0 /* blk */
@@ -1297,7 +1297,7 @@ static MYSQL_THDVAR_INT(
   "The retrieval result from a remote server is acquired by acquisition one by one", /* comment */
   NULL, /* check */
   NULL, /* update */
-  -1, /* def */
+  1, /* def */
   -1, /* min */
   3, /* max */
   0 /* blk */
@@ -1535,7 +1535,7 @@ static MYSQL_THDVAR_INT(
   "Interval of cardinality confirmation.(second)", /* comment */
   NULL, /* check */
   NULL, /* update */
-  -1, /* def */
+  36000, /* def */
   -1, /* min */
   2147483647, /* max */
   0 /* blk */
@@ -1699,7 +1699,7 @@ static MYSQL_THDVAR_INT(
   "Interval of table state confirmation.(second)", /* comment */
   NULL, /* check */
   NULL, /* update */
-  -1, /* def */
+  36000, /* def */
   -1, /* min */
   2147483647, /* max */
   0 /* blk */
@@ -1978,7 +1978,7 @@ static MYSQL_SYSVAR_UINT(
   "Mutex count of table lock for Spider UDFs",
   NULL,
   NULL,
-  20,
+  1,
   1,
   4294967295U,
   0
@@ -2001,7 +2001,7 @@ static MYSQL_SYSVAR_UINT(
   "Mutex count of table mon for Spider UDFs",
   NULL,
   NULL,
-  20,
+  1,
   1,
   4294967295U,
   0
@@ -2192,7 +2192,7 @@ static MYSQL_SYSVAR_INT(
   "Set sql_log_off mode at connecting for improvement performance of connection if you know",
   NULL,
   NULL,
-  -1,
+  0,
   -1,
   1,
   0
