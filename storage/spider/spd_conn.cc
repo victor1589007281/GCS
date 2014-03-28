@@ -98,6 +98,10 @@ pthread_mutex_t spider_hs_w_conn_mutex;
 extern PSI_thread_key spd_key_thd_conn_rcyc;
 volatile bool      conn_rcyc_init = FALSE;
 pthread_t          conn_rcyc_thread;
+typedef struct {
+    HASH *hash_info;
+    DYNAMIC_STRING_ARRAY *arr_info[2];
+} delegate_param;
 
 /* for spider_open_connections and trx_conn_hash */
 uchar *spider_conn_get_key(
@@ -3993,18 +3997,20 @@ static void my_polling_last_visited(uchar *entry, void *data) {
     DBUG_ENTER("my_polling_last_visited");
     /* harryczhang: This conn object must be in hash pool. So conn->last_visited can't be modified. */
     SPIDER_CONN *conn = (SPIDER_CONN *)entry;
-    DYNAMIC_ARRAY *hash_key_arr = (DYNAMIC_ARRAY *)data;
+    delegate_param *param = (delegate_param *) data;
+    DYNAMIC_STRING_ARRAY **arr_info = param->arr_info;
+    HASH *spider_open_connections = param->hash_info;
     if (conn) {
-#ifdef NDEBUG
         time_t time_now = time((time_t *) 0);
-        if (time_now > 0 && time_now > conn->last_visited && time_now - conn->last_visited >= IDLE_INTERVAL_IN_SECS) {
+        if (time_now > 0 && time_now > conn->last_visited && time_now - conn->last_visited >= spider_param_idle_conn_recycle_interval()) {
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+            append_dynamic_string_array(arr_info[0], (char *) &conn->conn_key_hash_value, sizeof(conn->conn_key_hash_value));
 #else
-        if (1) {
+            my_hash_value_type hash_value = my_calc_hash(spider_open_connections, conn->conn_key, conn->conn_key_length);
+            append_dynamic_string_array(arr_info[0], (char *) hash_value, sizeof(hash_value));
 #endif
-            insert_dynamic(hash_key_arr, (uchar *) &conn);
-        } else {
-            // TODO: print error, this because UTC time is overflow
-        }
+            append_dynamic_string_array(arr_info[1], (char *) conn->conn_key, conn->conn_key_length);
+        } 
 
         DBUG_VOID_RETURN;
     }
@@ -4013,41 +4019,53 @@ static void my_polling_last_visited(uchar *entry, void *data) {
 static void *spider_conn_recycle_action(void *arg)
 {
     DBUG_ENTER ("spider_conn_recycle_action");
+    DYNAMIC_STRING_ARRAY idle_conn_key_hash_value_arr;
+    DYNAMIC_STRING_ARRAY idle_conn_key_arr;
+
+    if (init_dynamic_string_array(&idle_conn_key_hash_value_arr, 64, 64) ||
+        init_dynamic_string_array(&idle_conn_key_arr, 64, 64)) {
+        DBUG_RETURN(NULL);
+    }
+
+    delegate_param param;
+    param.hash_info = &spider_open_connections;        
+    param.arr_info[0] = &idle_conn_key_hash_value_arr;
+    param.arr_info[1] = &idle_conn_key_arr;
     while (conn_rcyc_init) {
-        DYNAMIC_ARRAY idle_conn_key_arr;
-        my_init_dynamic_array(&idle_conn_key_arr, sizeof(uchar *), 64, 16);
-#ifdef NDEBUG
-again:
-#endif
-        my_hash_delegate(&spider_open_connections, my_polling_last_visited, &idle_conn_key_arr);
-#ifdef NDEBUG
-        if (!idle_conn_key_arr.elements) {
+        clear_dynamic_string_array(&idle_conn_key_hash_value_arr);
+        clear_dynamic_string_array(&idle_conn_key_arr);
+        
+        pthread_mutex_lock(&spider_conn_mutex);
+        my_hash_delegate(&spider_open_connections, my_polling_last_visited, &param);
+        pthread_mutex_unlock(&spider_conn_mutex);
+
+        if (empty_dynamic_string_array(&idle_conn_key_hash_value_arr)) {
             sleep(60);
-            goto again;
+            continue;
         }
-#endif
-        for (size_t i = 0; i < idle_conn_key_arr.elements; ++i) {
-            SPIDER_CONN *tmp_spider_conn = NULL;
-            get_dynamic(&idle_conn_key_arr, (uchar *)&tmp_spider_conn, i);
-            if (!tmp_spider_conn) {
-                // TODO: print some warning info.
-                continue;
+
+        for (size_t i = 0; i < idle_conn_key_hash_value_arr.cur_idx; ++i) {
+            my_hash_value_type conn_key_hash_value;
+            if (get_dynamic_string_array(&idle_conn_key_hash_value_arr, &conn_key_hash_value, NULL, i)) {
+                    // TODO: print warning info
+                    break;
             }
+
+            char *conn_key;
+            size_t conn_key_len;
+            get_dynamic_string_array(&idle_conn_key_arr, &conn_key, &conn_key_len, i);
             pthread_mutex_lock (&spider_conn_mutex);
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE           
             SPIDER_CONN *conn = (SPIDER_CONN *) my_hash_search_using_hash_value (
                             &spider_open_connections,
-                            tmp_spider_conn->conn_key_hash_value,
-                            (uchar *) tmp_spider_conn->conn_key, 
-                            tmp_spider_conn->conn_key_length);
+                            conn_key_hash_value,
+                            (uchar *) conn_key, 
+                            conn_key_len);
             
 #else
-            SPIDER_CONN *conn = (SPIDER_CONN *) my_hash_search(&spider_open_connections, tmp_spider_conn->conn_key, tmp_spider_conn->conn_key_length);            
+            SPIDER_CONN *conn = (SPIDER_CONN *) my_hash_search(&spider_open_connections, conn_key, conn_key_len);            
 #endif
-            if (!conn) {
-                // TODO: print some warn info, this means this conn obj is retrieved, leaving from hash pool.
-                
-            } else {
+            if (conn) {
 #ifdef HASH_UPDATE_WITH_HASH_VALUE
                 my_hash_delete_with_hash_value (&spider_open_connections,
                                                 conn->conn_key_hash_value, (uchar *) conn);
@@ -4058,12 +4076,12 @@ again:
             pthread_mutex_unlock(&spider_conn_mutex);
             spider_free_conn(conn);
         }
-        delete_dynamic(&idle_conn_key_arr);
-#ifdef NDEBUG /* harryczhang: debug mode sleep less, release mode sleep more */
-        sleep(IDLE_INTERVAL_IN_SECS);
-#endif
+        
+        sleep(spider_param_idle_conn_recycle_interval());
     }
 
+    free_dynamic_string_array(&idle_conn_key_hash_value_arr);
+    free_dynamic_string_array(&idle_conn_key_arr);
     DBUG_RETURN(NULL);
 }
 
