@@ -125,6 +125,15 @@ my_hash_delegate(HASH * hash, my_hash_delegate_func func, void* func_arg)
         (*func)((data++)->data, func_arg);
 }
 
+void
+my_hash_delegate_2args(HASH * hash, my_hash_delegate_func_2args func, void* func_args1, void* func_args2)
+{
+	HASH_LINK *data=dynamic_element(&hash->array,0,HASH_LINK*);
+	HASH_LINK *end= data + hash->records;
+	while (data < end)
+		(*func)((data++)->data, func_args1, func_args2);
+}
+
 
 /*
   Free memory used by hash.

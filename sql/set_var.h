@@ -321,5 +321,7 @@ int sys_var_init();
 int sys_var_add_options(DYNAMIC_ARRAY *long_options, int parse_flags);
 void sys_var_end(void);
 
+bool plugin_var_is_unsigned(sys_var_pluginvar *pluginvar);
+
 #endif
 

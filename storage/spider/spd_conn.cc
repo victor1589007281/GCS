@@ -457,6 +457,7 @@ SPIDER_CONN *spider_create_conn(
       goto error_alloc_conn;
     }
 
+	conn->retry_count_flag = 0; // 这个值默认为0 ，则在connect中retry的次数为默认值1000
     conn->default_database.init_calc_mem(75);
     conn->conn_key_length = share->conn_keys_lengths[link_idx];
     conn->conn_key = tmp_name;

@@ -3654,6 +3654,12 @@ err:
 }
 
 
+bool plugin_var_is_unsigned(sys_var_pluginvar *pluginvar)
+{
+  return pluginvar->plugin_var->flags & PLUGIN_VAR_UNSIGNED;
+}
+
+
 /****************************************************************************
   Help Verbose text with Plugin System Variables
 ****************************************************************************/

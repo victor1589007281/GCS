@@ -790,6 +790,10 @@ public:
   virtual int init() = 0;
   virtual bool is_connected() = 0;
   virtual void bg_connect() = 0;
+  virtual int set_net_read_write_time(uint net_read_timeout, uint net_write_timeout)
+  {
+	  return 0;
+  };
   virtual int connect(
     char *tgt_host,
     char *tgt_username,
@@ -1621,7 +1625,7 @@ typedef struct st_spider_result_list
   int                     bulk_update_size;
   spider_bulk_upd_start   bulk_update_start;
   bool                    check_direct_order_limit;
-  bool                    direct_order_limit;
+  bool                    direct_order_limit;           /* 显式指定order by和limit */
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
   bool                    direct_aggregate;
   bool                    snap_mrr_with_cnt;

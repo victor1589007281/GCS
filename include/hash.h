@@ -108,6 +108,13 @@ typedef void (*my_hash_delegate_func)(uchar * hash_data, void* maybe_unused_arg)
 void
 my_hash_delegate(HASH * hash, my_hash_delegate_func func, void* func_args);
 
+
+
+/* means all hash_data do something */
+typedef void (*my_hash_delegate_func_2args)(void* hash_data, void* maybe_unused_arg1, void *maybe_unsed_arg2);
+void
+my_hash_delegate_2args(HASH * hash, my_hash_delegate_func_2args func, void* func_args1, void* func_args2);
+
 #ifdef	__cplusplus
 }
 #endif

@@ -298,7 +298,8 @@ longlong spider_param_connect_retry_interval(
   THD *thd
 );
 int spider_param_connect_retry_count(
-  THD *thd
+  THD *thd,
+  int retry_count
 );
 char *spider_param_bka_engine(
   THD *thd,
