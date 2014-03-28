@@ -98,7 +98,7 @@ int spider_db_connect(
     conn->net_write_timeout = spider_param_net_write_timeout(thd,
       share->net_write_timeouts[link_idx]);
     connect_retry_interval = spider_param_connect_retry_interval(thd);
-    connect_retry_count = spider_param_connect_retry_count(thd, conn->retry_count);
+    connect_retry_count = spider_param_connect_retry_count(thd, conn->retry_count_flag);
   } else {
     conn->connect_timeout = spider_param_connect_timeout(NULL,
       share->connect_timeouts[link_idx]);
@@ -107,7 +107,7 @@ int spider_db_connect(
     conn->net_write_timeout = spider_param_net_write_timeout(NULL,
       share->net_write_timeouts[link_idx]);
     connect_retry_interval = spider_param_connect_retry_interval(NULL);
-    connect_retry_count = spider_param_connect_retry_count(NULL, conn->retry_count);
+    connect_retry_count = spider_param_connect_retry_count(NULL, conn->retry_count_flag);
   }
   DBUG_PRINT("info",("spider connect_timeout=%u", conn->connect_timeout));
   DBUG_PRINT("info",("spider net_read_timeout=%u", conn->net_read_timeout));
@@ -8268,7 +8268,7 @@ int spider_db_udf_direct_sql_connect(
     conn->net_write_timeout = spider_param_net_write_timeout(thd,
       direct_sql->net_write_timeout);
     connect_retry_interval = spider_param_connect_retry_interval(thd);
-    connect_retry_count = spider_param_connect_retry_count(thd, conn->retry_count);
+    connect_retry_count = spider_param_connect_retry_count(thd, conn->retry_count_flag);
   } else {
     conn->connect_timeout = spider_param_connect_timeout(NULL,
       direct_sql->connect_timeout);
@@ -8277,7 +8277,7 @@ int spider_db_udf_direct_sql_connect(
     conn->net_write_timeout = spider_param_net_write_timeout(NULL,
       direct_sql->net_write_timeout);
     connect_retry_interval = spider_param_connect_retry_interval(NULL);
-    connect_retry_count = spider_param_connect_retry_count(NULL, conn->retry_count);
+    connect_retry_count = spider_param_connect_retry_count(NULL, conn->retry_count_flag);
   }
   DBUG_PRINT("info",("spider connect_timeout=%u", conn->connect_timeout));
   DBUG_PRINT("info",("spider net_read_timeout=%u", conn->net_read_timeout));
