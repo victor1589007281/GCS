@@ -4284,6 +4284,7 @@ SPIDER_SHARE *spider_get_share(
       goto error_alloc_share;
     }
 
+    share->use_count++;
     uint old_elements = spider_open_tables.array.max_element;
 #ifdef HASH_UPDATE_WITH_HASH_VALUE
     if (my_hash_insert_with_hash_value(&spider_open_tables, hash_value,
@@ -4305,8 +4306,6 @@ SPIDER_SHARE *spider_get_share(
 
     spider->share = share;
     spider->conn_link_idx = &tmp_conn_link_idx;
-
-    share->use_count++;
     pthread_mutex_unlock(&spider_tbl_mutex);
 
     /* 1.1.2 从系统表spider_tables获得该表的相应信息 */
@@ -4354,6 +4353,7 @@ SPIDER_SHARE *spider_get_share(
           free_root(&mem_root, MYF(0));
           init_mem_root = FALSE;
         }
+        share->link_status_init = TRUE;
       }
       pthread_mutex_unlock(&share->mutex);
     }
@@ -4781,8 +4781,19 @@ SPIDER_SHARE *spider_get_share(
     share->use_count++;
     pthread_mutex_unlock(&spider_tbl_mutex);
 
+    int sleep_cnt = 0;
     while (!share->init)
     {
+      // 避免重试太多导致的死循环。
+      if (sleep_cnt++ > 1000)
+      {
+          spider_print_timestamp(stderr);
+          fprintf(stderr, " [WARN SPIDER RESULT] "
+              "Wait share->init too long, table_name %s %s %d\n",
+               share->table_name, share->tgt_hosts[0], share->tgt_ports[0]);
+          goto error_but_no_delete;
+      }
+
       my_sleep(10);
     }
 
@@ -4830,6 +4841,8 @@ SPIDER_SHARE *spider_get_share(
           free_root(&mem_root, MYF(0));
           init_mem_root = FALSE;
         }
+
+        share->link_status_init = TRUE;
       }
       pthread_mutex_unlock(&share->mutex);
     }
@@ -5255,6 +5268,12 @@ error_open_sys_table:
     init_mem_root = FALSE;
   }
 error_but_no_delete:
+  if (share)
+  {
+    pthread_mutex_lock(&spider_tbl_mutex);
+    share->use_count--;
+    pthread_mutex_unlock(&spider_tbl_mutex);
+  }
   DBUG_RETURN(NULL);
 }
 
@@ -8224,3 +8243,42 @@ int spider_discover_table_structure(
   DBUG_RETURN(error_num);
 }
 #endif
+
+void
+spider_print_timestamp(
+    FILE*  file) /*!< in: file where to print */
+{
+#ifdef __WIN__
+    SYSTEMTIME cal_tm;
+
+    GetLocalTime(&cal_tm);
+
+    fprintf(file,"%02d%02d%02d %2d:%02d:%02d",
+        (int)cal_tm.wYear % 100,
+        (int)cal_tm.wMonth,
+        (int)cal_tm.wDay,
+        (int)cal_tm.wHour,
+        (int)cal_tm.wMinute,
+        (int)cal_tm.wSecond);
+#else
+    struct tm  cal_tm;
+    struct tm* cal_tm_ptr;
+    time_t	   tm;
+
+    time(&tm);
+
+#ifdef HAVE_LOCALTIME_R
+    localtime_r(&tm, &cal_tm);
+    cal_tm_ptr = &cal_tm;
+#else
+    cal_tm_ptr = localtime(&tm);
+#endif
+    fprintf(file,"%02d%02d%02d %2d:%02d:%02d",
+        cal_tm_ptr->tm_year % 100,
+        cal_tm_ptr->tm_mon + 1,
+        cal_tm_ptr->tm_mday,
+        cal_tm_ptr->tm_hour,
+        cal_tm_ptr->tm_min,
+        cal_tm_ptr->tm_sec);
+#endif
+}
