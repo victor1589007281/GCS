@@ -339,6 +339,19 @@ typedef struct st_dynamic_string
   size_t length,max_length,alloc_increment;
 } DYNAMIC_STRING;
 
+typedef struct st_dynstr_pos_info
+{
+  size_t elem_off;
+  size_t elem_size;
+} dynstr_pos_info;
+
+typedef struct st_dynamic_string_array
+{
+  DYNAMIC_STRING *dynstr;
+  DYNAMIC_ARRAY *pos_info_arr;
+  size_t cur_idx;
+} DYNAMIC_STRING_ARRAY;
+
 struct st_io_cache;
 typedef int (*IO_CACHE_CALLBACK)(struct st_io_cache*);
 
@@ -862,6 +875,16 @@ extern ulonglong my_micro_time_and_time(time_t *time_arg);
 time_t my_time_possible_from_micro(ulonglong microtime);
 extern my_bool my_gethwaddr(uchar *to);
 extern int my_getncpus();
+
+extern my_bool clear_dynamic_array(DYNAMIC_ARRAY *array);
+extern my_bool empty_dynamic_array(DYNAMIC_ARRAY *array);
+extern my_bool init_dynamic_string_array(DYNAMIC_STRING_ARRAY *array, uint init_alloc, uint alloc_increment);
+extern my_bool clear_dynamic_string_array(DYNAMIC_STRING_ARRAY *array);
+extern my_bool free_dynamic_string_array(DYNAMIC_STRING_ARRAY *array);
+extern my_bool append_dynamic_string_array(DYNAMIC_STRING_ARRAY *array, const char *elem, size_t elem_len);
+extern my_bool get_dynamic_string_array(DYNAMIC_STRING_ARRAY *array, void *dst, size_t *dst_len, size_t idx);
+extern my_bool empty_dynamic_string_array(DYNAMIC_STRING_ARRAY *array);
+
 
 #ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>

@@ -140,7 +140,6 @@
   {(A)->thd = NULL; (A)->func_name = NULL; (A)->file_name = NULL; (A)->line_no = 0;}
 
 
-#define IDLE_INTERVAL_IN_SECS 3600 /* harryczhang: max idle time in secs */ 
 /* harryczhang: recycle connection thread initialized flag */
 extern volatile bool      conn_rcyc_init;
 extern pthread_t          conn_rcyc_thread;
