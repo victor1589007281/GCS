@@ -27,6 +27,8 @@
 #include "item_func.h"             /* Item_int_func, Item_bool_func */
 #include "my_regex.h"
 
+#define ITEM_FUNC_CASE_PARAMS_ARE_PUBLIC 1
+
 extern Item_result item_cmp_type(Item_result a,Item_result b);
 class Item_bool_func2;
 class Arg_comparator;
@@ -1166,6 +1168,7 @@ public:
 
 class Item_func_case :public Item_func
 {
+public:
   int first_expr_num, else_expr_num;
   enum Item_result cached_result_type, left_result_type;
   String tmp_value;

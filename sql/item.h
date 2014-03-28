@@ -3306,6 +3306,7 @@ public:
   Field* field() { return cached_field; }
 
   virtual void store(Item *item);
+  virtual Item *get_item() { return example; }
   virtual bool cache_value()= 0;
   bool basic_const_item() const
   { return test(example && example->basic_const_item());}

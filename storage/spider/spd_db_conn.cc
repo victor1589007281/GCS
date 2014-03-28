@@ -3061,6 +3061,7 @@ int spider_db_fetch_minimum_columns(
 
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
   /* for direct_aggregate */
+  // 聚集函数总是第一列，存在direct_item中，剩余列填充传给上层
   if (result_list->direct_aggregate)
   {
     if ((error_num = spider_db_fetch_for_item_sum_funcs(row, spider)))
