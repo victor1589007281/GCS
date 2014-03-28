@@ -2826,6 +2826,26 @@ my_bool spider_param_general_log()
   DBUG_RETURN(spider_general_log);
 }
 
+static int spider_idle_conn_recycle_interval;
+static MYSQL_SYSVAR_INT(
+  idle_conn_recycle_interval,
+  spider_idle_conn_recycle_interval,
+  PLUGIN_VAR_OPCMDARG,
+  "Max interval in seconds to be judged as idle connection",
+  NULL, /* check */
+  NULL, /* update */
+  3600, /* default */
+  1,    /* min */
+  86400, /* max */
+  0     /* blk */
+);
+
+int spider_param_idle_conn_recycle_interval()
+{
+  DBUG_ENTER("spider_param_idle_conn_recycle_interval");
+  DBUG_RETURN(spider_idle_conn_recycle_interval);
+}
+
 //  spider_with_sts_crd 控制spider在open table的时候，要不要直接
 // 调用 get table status与get index status 默认为false
 static my_bool spider_with_sts_crd;
@@ -2902,6 +2922,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(table_init_error_interval),
   MYSQL_SYSVAR(use_table_charset),
   MYSQL_SYSVAR(conn_recycle_mode),
+  MYSQL_SYSVAR(idle_conn_recycle_interval),
   MYSQL_SYSVAR(conn_recycle_strict),
   MYSQL_SYSVAR(sync_trx_isolation),
   MYSQL_SYSVAR(with_begin_commit),
