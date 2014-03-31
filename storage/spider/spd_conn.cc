@@ -4045,14 +4045,15 @@ static void *spider_conn_recycle_action(void *arg)
         }
 
         for (size_t i = 0; i < idle_conn_key_hash_value_arr.cur_idx; ++i) {
-            my_hash_value_type conn_key_hash_value;
-            if (get_dynamic_string_array(&idle_conn_key_hash_value_arr, &conn_key_hash_value, NULL, i)) {
+            my_hash_value_type *tmp_ptr;
+            if (get_dynamic_string_array(&idle_conn_key_hash_value_arr, (char **) &tmp_ptr, NULL, i)) {
                     // TODO: print warning info
                     break;
             }
 
             char *conn_key;
             size_t conn_key_len;
+            my_hash_value_type conn_key_hash_value = *tmp_ptr;
             get_dynamic_string_array(&idle_conn_key_arr, &conn_key, &conn_key_len, i);
             pthread_mutex_lock (&spider_conn_mutex);
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE           
@@ -4074,10 +4075,13 @@ static void *spider_conn_recycle_action(void *arg)
 #endif
             }
             pthread_mutex_unlock(&spider_conn_mutex);
-            spider_free_conn(conn);
+            if (conn) {
+                spider_free_conn(conn);
+            }
         }
         
-        sleep(spider_param_idle_conn_recycle_interval());
+        // NOTE: In worst case, idle connection would be freed in 1.25 * spider_param_idle_conn_recycle_interval
+        sleep(spider_param_idle_conn_recycle_interval() >> 2); 
     }
 
     free_dynamic_string_array(&idle_conn_key_hash_value_arr);

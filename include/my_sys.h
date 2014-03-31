@@ -882,7 +882,7 @@ extern my_bool init_dynamic_string_array(DYNAMIC_STRING_ARRAY *array, uint init_
 extern my_bool clear_dynamic_string_array(DYNAMIC_STRING_ARRAY *array);
 extern my_bool free_dynamic_string_array(DYNAMIC_STRING_ARRAY *array);
 extern my_bool append_dynamic_string_array(DYNAMIC_STRING_ARRAY *array, const char *elem, size_t elem_len);
-extern my_bool get_dynamic_string_array(DYNAMIC_STRING_ARRAY *array, void *dst, size_t *dst_len, size_t idx);
+extern my_bool get_dynamic_string_array(DYNAMIC_STRING_ARRAY *array, char **dst, size_t *dst_len, size_t idx);
 extern my_bool empty_dynamic_string_array(DYNAMIC_STRING_ARRAY *array);
 
 
