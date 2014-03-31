@@ -418,3 +418,8 @@ int spider_discover_table_structure(
   HA_CREATE_INFO *info
 );
 #endif
+
+void
+spider_print_timestamp(
+    FILE*  file /*!< in: file where to print */
+);

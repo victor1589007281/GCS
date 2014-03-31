@@ -8366,7 +8366,7 @@ ulonglong ha_spider::table_flags() const
     HA_CAN_INDEX_BLOBS |
     HA_AUTO_PART_KEY |
     HA_CAN_RTREEKEYS |
-    HA_PRIMARY_KEY_REQUIRED_FOR_DELETE |
+    // HA_PRIMARY_KEY_REQUIRED_FOR_DELETE | // 不含主键无法direct_update
     /* HA_NO_PREFIX_CHAR_KEYS | */
     HA_CAN_FULLTEXT |
     HA_CAN_SQL_HANDLER |
