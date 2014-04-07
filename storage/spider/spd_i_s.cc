@@ -39,7 +39,13 @@ extern longlong   spider_current_alloc_mem[SPIDER_MEM_CALC_LIST_NUM];
 extern ulonglong  spider_alloc_mem_count[SPIDER_MEM_CALC_LIST_NUM];
 extern ulonglong  spider_free_mem_count[SPIDER_MEM_CALC_LIST_NUM];
 
+extern HASH spider_conn_meta_info;
+extern pthread_mutex_t spider_conn_meta_mutex;
+
 static struct st_mysql_storage_engine spider_i_s_info =
+{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION };
+
+static struct st_mysql_storage_engine spider_i_s_info2 = 
 { MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION };
 
 static ST_FIELD_INFO spider_i_s_alloc_mem_fields_info[] =
@@ -59,6 +65,18 @@ static ST_FIELD_INFO spider_i_s_alloc_mem_fields_info[] =
     MY_I_S_UNSIGNED | MY_I_S_MAYBE_NULL, "alloc_mem_count", SKIP_OPEN_TABLE},
   {"FREE_MEM_COUNT", 20, MYSQL_TYPE_LONGLONG, 0,
     MY_I_S_UNSIGNED | MY_I_S_MAYBE_NULL, "free_mem_count", SKIP_OPEN_TABLE},
+  {NULL, 0,  MYSQL_TYPE_STRING, 0, 0, NULL, 0}
+};
+
+static ST_FIELD_INFO spider_i_s_conn_pool_info[] =
+{
+  {"CONN_ID", 10, MYSQL_TYPE_LONG, 0, MY_I_S_UNSIGNED, "conn_id", SKIP_OPEN_TABLE},
+  {"REMOTE", 32, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "remote", SKIP_OPEN_TABLE},
+  {"ALLOC_TIME", 32, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "start_time", SKIP_OPEN_TABLE},
+  {"LAST_VISIT_TIME", 32, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "last_visit_time", SKIP_OPEN_TABLE},
+  {"FREE_TIME", 32, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "end_time", SKIP_OPEN_TABLE},
+  /* active/idle/invalid */
+  {"STATUS", 16, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "status", SKIP_OPEN_TABLE},
   {NULL, 0,  MYSQL_TYPE_STRING, 0, 0, NULL, 0}
 };
 
@@ -110,6 +128,44 @@ static int spider_i_s_alloc_mem_fill_table(
   DBUG_RETURN(0);
 }
 
+static void my_fill_field(void *entry, void *data1, void *data2) {
+    DBUG_ENTER("my_fill_field");
+    SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *)entry;
+    TABLE *table = (TABLE *) data1;
+    THD *thd = (THD *)data2;
+    if (meta && table) {
+        table->field[0]->set_notnull();
+        table->field[1]->set_notnull();
+        table->field[2]->set_notnull();
+        table->field[3]->set_notnull();
+        table->field[4]->set_notnull();
+        table->field[5]->set_notnull();
+        table->field[0]->store(meta->conn_id, TRUE);
+        table->field[1]->store(meta->remote_str, strlen(meta->remote_str), system_charset_info);
+        table->field[2]->store(meta->alloc_time_str, strlen(meta->alloc_time_str), system_charset_info);
+        table->field[3]->store(meta->last_visit_time_str, strlen(meta->last_visit_time_str), system_charset_info);
+        table->field[4]->store(meta->free_time_str, strlen(meta->free_time_str), system_charset_info);
+        table->field[5]->store(meta->status_str, strlen(meta->status_str), system_charset_info);
+    }
+    if (schema_table_store_record(thd, table)) {
+       // logging error 
+    }
+
+    DBUG_VOID_RETURN;
+}
+
+static int spider_i_s_conn_pool_fill_table(
+  THD *thd,
+  TABLE_LIST *tables,
+  COND *cond
+) {
+  DBUG_ENTER("spider_i_s_conn_pool_fill_table");
+  pthread_mutex_lock(&spider_conn_meta_mutex);
+  my_hash_delegate_2args(&spider_conn_meta_info, my_fill_field, (void *)tables->table, (void *)thd);
+  pthread_mutex_unlock(&spider_conn_meta_mutex);
+  DBUG_RETURN(0);
+}
+
 static int spider_i_s_alloc_mem_init(
   void *p
 ) {
@@ -121,10 +177,28 @@ static int spider_i_s_alloc_mem_init(
   DBUG_RETURN(0);
 }
 
+static int spider_i_s_conn_pool_init(
+  void *p
+) {
+    ST_SCHEMA_TABLE *schema = (ST_SCHEMA_TABLE *)p;
+    DBUG_ENTER("spider_i_s_conn_pool_init");
+    schema->fields_info = spider_i_s_conn_pool_info;
+    schema->fill_table = spider_i_s_conn_pool_fill_table;
+    schema->idx_field1 = 0;
+    DBUG_RETURN(0);
+}
+
 static int spider_i_s_alloc_mem_deinit(
   void *p
 ) {
   DBUG_ENTER("spider_i_s_alloc_mem_deinit");
+  DBUG_RETURN(0);
+}
+
+static int spider_i_s_conn_pool_deinit(
+  void *p
+) {
+  DBUG_ENTER("spider_i_s_conn_pool_deinit");
   DBUG_RETURN(0);
 }
 
@@ -144,5 +218,24 @@ struct st_mysql_plugin spider_i_s_alloc_mem =
   NULL,
 #if MYSQL_VERSION_ID >= 50600
   0,
+#endif
+};
+
+struct st_mysql_plugin spider_i_s_conns =
+{
+    MYSQL_INFORMATION_SCHEMA_PLUGIN,
+    &spider_i_s_info2,
+    "SPIDER_CONNS",
+    "harryczhang",
+    "Spider connection pool viewer",
+    PLUGIN_LICENSE_GPL,
+    spider_i_s_conn_pool_init,
+    spider_i_s_conn_pool_deinit,
+    0x0001, /* plugin version */
+    NULL,
+    NULL,
+    NULL,
+#if MYSQL_VERSION_ID >= 50600
+    0,
 #endif
 };

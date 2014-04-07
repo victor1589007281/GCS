@@ -1191,3 +1191,29 @@ char *spider_create_string(
   const char *str,
   uint length
 );
+
+#define SPIDER_CONN_META_INIT_STATUS "INIT" /* just created */
+#define SPIDER_CONN_META_INIT2_STATUS "INIT2" /* re-use */
+#define SPIDER_CONN_META_ACTIVE_STATUS "ACTIVE" /* delete from conn pool and in use */
+#define SPIDER_CONN_META_INVALID_STATUS "INVALID" /* free */
+
+#define SPIDER_CONN_IS_INIT(a) !(strcmp(((a)->status_str), SPIDER_CONN_META_INIT_STATUS)) 
+#define SPIDER_CONN_IS_INIT2(a) !(strcmp(((a)->status_str), SPIDER_CONN_META_INIT2_STATUS)) 
+#define SPIDER_CONN_IS_ACTIVE(a) !(strcmp(((a)->status_str), SPIDER_CONN_META_ACTIVE_STATUS))
+#define SPIDER_CONN_IS_INVALID(a) !(strcmp(((a)->status_str), SPIDER_CONN_META_INVALID_STATUS))
+
+#define SPIDER_CONN_META_BUF_LEN 128
+
+typedef struct st_spider_conn_meta_info {
+    char *key;
+    size_t key_len;
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+    my_hash_value_type key_hash_value;
+#endif
+    ulonglong conn_id;
+    char remote_str[SPIDER_CONN_META_BUF_LEN];
+    char alloc_time_str[SPIDER_CONN_META_BUF_LEN];
+    char last_visit_time_str[SPIDER_CONN_META_BUF_LEN];
+    char free_time_str[SPIDER_CONN_META_BUF_LEN];
+    const char *status_str;
+} SPIDER_CONN_META_INFO;

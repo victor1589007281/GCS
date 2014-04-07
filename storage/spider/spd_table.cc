@@ -44,6 +44,8 @@
 #include "hash.h"
 
 
+extern HASH spider_conn_meta_info;
+
 // will. 下面的结构体及对应的函数，主要用来处理table name的保存
 // 用一个一维数组保存所有的表名，表名间用\0间隔。
 typedef struct name_array
@@ -169,6 +171,7 @@ PSI_mutex_key spd_key_mutex_init_error_tbl;
 PSI_mutex_key spd_key_mutex_pt_share;
 #endif
 PSI_mutex_key spd_key_mutex_conn;
+PSI_mutex_key spd_key_mutex_conn_meta;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 PSI_mutex_key spd_key_mutex_hs_r_conn;
 PSI_mutex_key spd_key_mutex_hs_w_conn;
@@ -215,6 +218,8 @@ static PSI_mutex_info all_spider_mutexes[]=
   { &spd_key_mutex_pt_share, "pt_share", PSI_FLAG_GLOBAL},
 #endif
   { &spd_key_mutex_conn, "conn", PSI_FLAG_GLOBAL},
+  /* harryczhang: */
+  { &spd_key_mutex_conn_meta, "conn_meta", PSI_FLAG_GLOBAL},
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   { &spd_key_mutex_hs_r_conn, "hs_r_conn", PSI_FLAG_GLOBAL},
   { &spd_key_mutex_hs_w_conn, "hs_w_conn", PSI_FLAG_GLOBAL},
@@ -308,6 +313,8 @@ extern const char *spider_open_connections_func_name;
 extern const char *spider_open_connections_file_name;
 extern ulong spider_open_connections_line_no;
 extern pthread_mutex_t spider_conn_mutex;
+/* harryczhang: */
+extern pthread_mutex_t spider_conn_meta_mutex;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 extern HASH spider_hs_r_conn_hash;
 extern uint spider_hs_r_conn_hash_id;
@@ -388,10 +395,6 @@ extern ulonglong  spider_free_mem_count[SPIDER_MEM_CALC_LIST_NUM];
 
 static char spider_wild_many = '%', spider_wild_one = '_',
   spider_wild_prefix='\\';
-
-/* harryczhang: */
-extern void spider_free_conn_recycle_thread(void);
-extern int spider_create_conn_recycle_thread(void);
 
 // for spider_open_tables
 uchar *spider_tbl_get_key(
@@ -6142,7 +6145,10 @@ int spider_db_done(
 /*
 DBUG_ASSERT(0);
 */
+  /* harryczhang: free memory */
   spider_free_conn_recycle_thread();
+  my_hash_free(&spider_conn_meta_info);
+  pthread_mutex_destroy(&spider_conn_meta_mutex);
   DBUG_RETURN(0);
 }
 
@@ -6316,6 +6322,19 @@ int spider_db_init(
     error_num = HA_ERR_OUT_OF_MEM;
     goto error_conn_mutex_init;
   }
+
+/* harryczhang: */
+#if MYSQL_VERSION_ID < 50500
+  if (pthread_mutex_init(&spider_conn_meta_mutex, MY_MUTEX_INIT_FAST))
+#else
+  if (mysql_mutex_init(spd_key_mutex_conn_meta,
+    &spider_conn_meta_mutex, MY_MUTEX_INIT_FAST))
+#endif
+  {
+    error_num = HA_ERR_OUT_OF_MEM;
+    goto error_conn_meta_mutex_init;
+  }
+
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 #if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&spider_global_trx_mutex, MY_MUTEX_INIT_FAST))
@@ -6442,6 +6461,17 @@ int spider_db_init(
     spider_open_connections,
     spider_open_connections.array.max_element *
     spider_open_connections.array.size_of_element);
+
+
+  /* harryczhang: memory allocated for spider_conn_meta_info is not calculated by spider_alloc_calc_mem like spider_open_connections */
+  if(
+    my_hash_init(&spider_conn_meta_info, spd_charset_utf8_bin, 32, 0, 0,
+                   (my_hash_get_key) spider_conn_meta_get_key, spider_free_conn_meta, 0)
+  ) {
+    error_num = HA_ERR_OUT_OF_MEM;
+    goto error_conn_meta_hash_init;
+  }
+
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if(
     my_hash_init(&spider_hs_r_conn_hash, spd_charset_utf8_bin, 32, 0, 0,
@@ -6644,6 +6674,8 @@ error_hs_w_conn_hash_init:
   my_hash_free(&spider_hs_r_conn_hash);
 error_hs_r_conn_hash_init:
 #endif
+  my_hash_free(&spider_conn_meta_info);
+error_conn_meta_hash_init:
   spider_free_mem_calc(NULL,
     spider_open_connections_id,
     spider_open_connections.array.max_element *
@@ -6688,6 +6720,8 @@ error_open_conn_mutex_init:
   pthread_mutex_destroy(&spider_global_trx_mutex);
 error_global_trx_mutex_init:
 #endif
+  pthread_mutex_destroy(&spider_conn_meta_mutex);
+error_conn_meta_mutex_init:
   pthread_mutex_destroy(&spider_conn_mutex);
 error_conn_mutex_init:
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -8274,6 +8308,46 @@ spider_print_timestamp(
     cal_tm_ptr = localtime(&tm);
 #endif
     fprintf(file,"%02d%02d%02d %2d:%02d:%02d",
+        cal_tm_ptr->tm_year % 100,
+        cal_tm_ptr->tm_mon + 1,
+        cal_tm_ptr->tm_mday,
+        cal_tm_ptr->tm_hour,
+        cal_tm_ptr->tm_min,
+        cal_tm_ptr->tm_sec);
+#endif
+}
+
+
+void
+spider_gettime_str(
+    char *dst, size_t len) 
+{
+#ifdef __WIN__
+    SYSTEMTIME cal_tm;
+
+    GetLocalTime(&cal_tm);
+
+    snprintf(dst, len, "%02d%02d%02d %2d:%02d:%02d",
+        (int)cal_tm.wYear % 100,
+        (int)cal_tm.wMonth,
+        (int)cal_tm.wDay,
+        (int)cal_tm.wHour,
+        (int)cal_tm.wMinute,
+        (int)cal_tm.wSecond);
+#else
+    struct tm  cal_tm;
+    struct tm* cal_tm_ptr;
+    time_t	   tm;
+
+    time(&tm);
+
+#ifdef HAVE_LOCALTIME_R
+    localtime_r(&tm, &cal_tm);
+    cal_tm_ptr = &cal_tm;
+#else
+    cal_tm_ptr = localtime(&tm);
+#endif
+    snprintf(dst, len, "%02d%02d%02d %2d:%02d:%02d",
         cal_tm_ptr->tm_year % 100,
         cal_tm_ptr->tm_mon + 1,
         cal_tm_ptr->tm_mday,
