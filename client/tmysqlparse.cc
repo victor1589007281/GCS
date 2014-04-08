@@ -3914,5 +3914,3 @@ static void print_quoted_xml(FILE *xml_file, const char *str, ulong len)
 		}
 	}
 }
-
-
