@@ -4164,44 +4164,45 @@ SPIDER_CONN_META_INFO *
 spider_create_conn_meta(SPIDER_CONN *conn) 
 {
     DBUG_ENTER("spider_create_conn_meta");
-    if (!conn) {
-        goto err_return_direct;
-    }
+    SPIDER_CONN_META_INFO *ret;
+    if (conn) {
+        ret = (SPIDER_CONN_META_INFO *) my_malloc(sizeof(*ret), MYF(0));
+        if (!ret) {
+            goto err_return_direct;
+        }
 
-    SPIDER_CONN_META_INFO *ret = (SPIDER_CONN_META_INFO *) my_malloc(sizeof(*ret), MYF(0));
-    if (!ret) {
-        goto err_return_direct;
-    }
+        ret->key_len = conn->conn_key_length;
+        if (ret->key_len <= 0) {
+            goto err_return_direct;
+        }
 
-    ret->key_len = conn->conn_key_length;
-    if (ret->key_len <= 0) {
-        goto err_return_direct;
-    }
+        ret->key = (char *) my_malloc(ret->key_len, MYF(0));
+        if (!ret->key) {
+            goto err_malloc_key;
+        }
 
-    ret->key = (char *) my_malloc(ret->key_len, MYF(0));
-    if (!ret->key) {
-        goto err_malloc_key;
-    }
-    
-    memcpy(ret->key, conn->conn_key, ret->key_len);
+        memcpy(ret->key, conn->conn_key, ret->key_len);
 
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
-    ret->key_hash_value = conn->conn_key_hash_value;
+        ret->key_hash_value = conn->conn_key_hash_value;
 #endif
-    
-    ret->conn_id = conn->conn_id;
-    bzero(ret->remote_str, SPIDER_CONN_META_BUF_LEN);
-    snprintf(ret->remote_str, SPIDER_CONN_META_BUF_LEN, "%s#%d", conn->tgt_host, conn->tgt_port);
-    bzero(ret->alloc_time_str, SPIDER_CONN_META_BUF_LEN);
-    spider_gettime_str(ret->alloc_time_str, SPIDER_CONN_META_BUF_LEN);
-    bzero(ret->last_visit_time_str, SPIDER_CONN_META_BUF_LEN);
-    ret->status_str = SPIDER_CONN_META_INIT_STATUS;
-    bzero(ret->free_time_str, SPIDER_CONN_META_BUF_LEN);
+        ret->conn_id = conn->conn_id;
+        bzero(ret->remote_str, SPIDER_CONN_META_BUF_LEN);
+        snprintf(ret->remote_str, SPIDER_CONN_META_BUF_LEN, "%s#%ld", conn->tgt_host, conn->tgt_port);
+        bzero(ret->alloc_time_str, SPIDER_CONN_META_BUF_LEN);
+        spider_gettime_str(ret->alloc_time_str, SPIDER_CONN_META_BUF_LEN);
+        bzero(ret->last_visit_time_str, SPIDER_CONN_META_BUF_LEN);
+        ret->status_str = SPIDER_CONN_META_INIT_STATUS;
+        bzero(ret->free_time_str, SPIDER_CONN_META_BUF_LEN);
 
-    DBUG_RETURN(ret);    
+        DBUG_RETURN(ret);    
+    
 err_malloc_key:
-    my_free(ret, MYF(0));
+        my_free(ret, MYF(0));
 err_return_direct:
+        DBUG_RETURN(NULL);
+    }
+
     DBUG_RETURN(NULL);
 }
 

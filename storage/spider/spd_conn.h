@@ -344,8 +344,8 @@ my_bool spider_add_conn_meta_info(SPIDER_CONN *);
 
 my_bool spider_update_conn_meta_info(SPIDER_CONN *, const char *);
 
-#define SPIDER_UPDATE_CONN_META(st_meta, time_member, new_status)\
-    do {\
-    (st_meta)->status_str = new_status;\
-    spider_gettime_str((st_meta)->time_member, SPIDER_CONN_META_BUF_LEN);\
+#define SPIDER_UPDATE_CONN_META(st_meta, time_member, new_status) \
+    do { \
+    (st_meta)->status_str = new_status; \
+    spider_gettime_str((st_meta)->time_member, SPIDER_CONN_META_BUF_LEN); \
     } while(0)
