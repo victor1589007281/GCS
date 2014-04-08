@@ -239,3 +239,4 @@ struct st_mysql_plugin spider_i_s_conns =
     0,
 #endif
 };
+

@@ -1545,7 +1545,7 @@ int spider_db_mysql::exec_query(
     spider_string tmp_query_str(length + conn->tgt_wrapper_length +
       tgt_len + (SPIDER_SQL_SPACE_LEN * 2));
 
-    snprintf(port_buf, sizeof(port_buf), "%d", conn->tgt_port);
+    snprintf(port_buf, sizeof(port_buf), "%ld", conn->tgt_port);
     tmp_query_str.init_calc_mem(230);
     tmp_query_str.length(0);
     tmp_query_str.q_append(conn->tgt_wrapper, conn->tgt_wrapper_length);
