@@ -423,3 +423,6 @@ void
 spider_print_timestamp(
     FILE*  file /*!< in: file where to print */
 );
+
+void
+spider_gettime_str(char *dst, size_t len);

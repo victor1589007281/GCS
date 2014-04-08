@@ -151,3 +151,4 @@ binglogex_query_parse(
 );
 
 #endif
+

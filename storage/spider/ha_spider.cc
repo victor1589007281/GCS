@@ -14061,3 +14061,4 @@ int ha_spider::spider_set_trx_status_info()
 
 	return(0);
 }
+

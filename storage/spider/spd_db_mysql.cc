@@ -1545,7 +1545,7 @@ int spider_db_mysql::exec_query(
     spider_string tmp_query_str(length + conn->tgt_wrapper_length +
       tgt_len + (SPIDER_SQL_SPACE_LEN * 2));
 
-    snprintf(port_buf, sizeof(port_buf), "%d", conn->tgt_port);
+    snprintf(port_buf, sizeof(port_buf), "%ld", conn->tgt_port);
     tmp_query_str.init_calc_mem(230);
     tmp_query_str.length(0);
     tmp_query_str.q_append(conn->tgt_wrapper, conn->tgt_wrapper_length);
@@ -1562,6 +1562,7 @@ int spider_db_mysql::exec_query(
 
   /* harryczhang: update last_visited field by using current timestamp in seconds. */
   this->conn->last_visited = (time_t) time((time_t *) 0);
+  spider_update_conn_meta_info(this->conn, SPIDER_CONN_META_ACTIVE_STATUS);
 
   if (spider_param_log_result_errors() >= 2 && db_conn->warning_count > 0)
   {

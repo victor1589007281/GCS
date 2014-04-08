@@ -79,6 +79,11 @@ const char *spider_open_connections_func_name;
 const char *spider_open_connections_file_name;
 ulong spider_open_connections_line_no;
 pthread_mutex_t spider_conn_mutex;
+/* harryczhang: mutex for spider_conn_meta_hash */
+pthread_mutex_t spider_conn_meta_mutex;
+HASH spider_conn_meta_info;
+
+
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 HASH spider_hs_r_conn_hash;
 uint spider_hs_r_conn_hash_id;
@@ -115,6 +120,19 @@ uchar *spider_conn_get_key(
   spider_print_keys(conn->conn_key, conn->conn_key_length);
 #endif
   DBUG_RETURN((uchar*) conn->conn_key);
+}
+
+uchar *spider_conn_meta_get_key(
+  SPIDER_CONN_META_INFO *meta,
+  size_t *length,
+  my_bool not_used __attribute__ ((unused))
+  ) {
+  DBUG_ENTER("spider_conn_meta_get_key");
+  *length = meta->key_len;
+#ifndef DBUG_OFF
+  spider_print_keys(meta->key, meta->key_len);
+#endif
+  DBUG_RETURN((uchar*) meta->key);
 }
 
 int spider_reset_conn_setted_parameter(
@@ -675,7 +693,11 @@ SPIDER_CONN *spider_create_conn(
   conn->conn_id = spider_conn_id;
   ++spider_conn_id;
   pthread_mutex_unlock(&spider_conn_id_mutex);
+  /* harryczhang: */
   conn->last_visited = time(NULL);
+  if (!spider_add_conn_meta_info(conn)) {
+      DBUG_RETURN(NULL);
+  }
   DBUG_RETURN(conn);
 
 /*
@@ -3999,13 +4021,13 @@ static void my_polling_last_visited(uchar *entry, void *data) {
     SPIDER_CONN *conn = (SPIDER_CONN *)entry;
     delegate_param *param = (delegate_param *) data;
     DYNAMIC_STRING_ARRAY **arr_info = param->arr_info;
-    HASH *spider_open_connections = param->hash_info;
     if (conn) {
         time_t time_now = time((time_t *) 0);
         if (time_now > 0 && time_now > conn->last_visited && time_now - conn->last_visited >= spider_param_idle_conn_recycle_interval()) {
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
             append_dynamic_string_array(arr_info[0], (char *) &conn->conn_key_hash_value, sizeof(conn->conn_key_hash_value));
 #else
+	    HASH *spider_open_connections = param->hash_info;
             my_hash_value_type hash_value = my_calc_hash(spider_open_connections, conn->conn_key, conn->conn_key_length);
             append_dynamic_string_array(arr_info[0], (char *) hash_value, sizeof(hash_value));
 #endif
@@ -4047,8 +4069,8 @@ static void *spider_conn_recycle_action(void *arg)
         for (size_t i = 0; i < idle_conn_key_hash_value_arr.cur_idx; ++i) {
             my_hash_value_type *tmp_ptr;
             if (get_dynamic_string_array(&idle_conn_key_hash_value_arr, (char **) &tmp_ptr, NULL, i)) {
-                    // TODO: print warning info
-                    break;
+                // TODO: print warning info
+                break;
             }
 
             char *conn_key;
@@ -4076,6 +4098,7 @@ static void *spider_conn_recycle_action(void *arg)
             }
             pthread_mutex_unlock(&spider_conn_mutex);
             if (conn) {
+                spider_update_conn_meta_info(conn, SPIDER_CONN_META_INVALID_STATUS);
                 spider_free_conn(conn);
             }
         }
@@ -4123,4 +4146,165 @@ void spider_free_conn_recycle_thread()
     }
 
     DBUG_VOID_RETURN;
+}
+
+void
+spider_free_conn_meta(void *meta)
+{
+    DBUG_ENTER("free_spider_conn_meta");
+    if (meta) {
+        SPIDER_CONN_META_INFO *p = (SPIDER_CONN_META_INFO *)meta;
+        my_free(p->key, MYF(0));
+    }
+
+    DBUG_VOID_RETURN;
+}
+
+SPIDER_CONN_META_INFO *
+spider_create_conn_meta(SPIDER_CONN *conn) 
+{
+    DBUG_ENTER("spider_create_conn_meta");
+    if (conn) {
+        SPIDER_CONN_META_INFO *ret = (SPIDER_CONN_META_INFO *) my_malloc(sizeof(*ret), MYF(0));
+        if (!ret) {
+            goto err_return_direct;
+        }
+
+        ret->key_len = conn->conn_key_length;
+        if (ret->key_len <= 0) {
+            goto err_return_direct;
+        }
+
+        ret->key = (char *) my_malloc(ret->key_len, MYF(0));
+        if (!ret->key) {
+            goto err_malloc_key;
+        }
+
+        memcpy(ret->key, conn->conn_key, ret->key_len);
+
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+        ret->key_hash_value = conn->conn_key_hash_value;
+#endif
+
+        ret->conn_id = conn->conn_id;
+        bzero(ret->remote_str, SPIDER_CONN_META_BUF_LEN);
+        snprintf(ret->remote_str, SPIDER_CONN_META_BUF_LEN, "%s#%ld", conn->tgt_host, conn->tgt_port);
+        bzero(ret->alloc_time_str, SPIDER_CONN_META_BUF_LEN);
+        spider_gettime_str(ret->alloc_time_str, SPIDER_CONN_META_BUF_LEN);
+        bzero(ret->last_visit_time_str, SPIDER_CONN_META_BUF_LEN);
+        ret->status_str = SPIDER_CONN_META_INIT_STATUS;
+        bzero(ret->free_time_str, SPIDER_CONN_META_BUF_LEN);
+
+        DBUG_RETURN(ret);    
+err_malloc_key:
+        my_free(ret, MYF(0));
+err_return_direct:
+        DBUG_RETURN(NULL);
+    }
+
+    DBUG_RETURN(NULL);
+}
+
+/*
+static my_bool 
+update_alloc_time(SPIDER_CONN_META_INFO *meta)
+{
+    DBUG_ENTER("update_alloc_time");
+    if (meta && SPIDER_CONN_IS_INVALID(meta)) {
+        meta->status_str = SPIDER_CONN_META_INIT2_STATUS;
+        spider_gettime_str(meta->alloc_time_str, SPIDER_CONN_META_BUF_LEN); 
+        DBUG_RETURN(TRUE);
+    }
+
+    DBUG_RETURN(FALSE);
+}
+
+my_bool
+update_visit_time(SPIDER_CONN_META_INFO *meta)
+{
+    DBUG_ENTER("update_visit_time");
+    if (meta && !SPIDER_CONN_IS_INVALID(meta)) {
+        meta->status_str = SPIDER_CONN_META_ACTIVE_STATUS;
+        spider_gettime_str(meta->last_visit_time_str, SPIDER_CONN_META_BUF_LEN);
+        DBUG_RETURN(TRUE);
+    }
+
+    DBUG_RETURN(FALSE);
+}
+*/
+
+my_bool spider_add_conn_meta_info(SPIDER_CONN *conn)
+{
+    DBUG_ENTER("spider_add_conn_meta_info");
+    SPIDER_CONN_META_INFO *meta_info;
+    pthread_mutex_lock(&spider_conn_meta_mutex);
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+    if (!(meta_info = (SPIDER_CONN_META_INFO *) my_hash_search_using_hash_value(
+        &spider_conn_meta_info, 
+        conn->conn_key_hash_value,
+        (uchar*) conn->conn_key,
+        conn->conn_key_length)))
+#else
+    if (!(meta_info = (SPIDER_CONN_META_INFO *) my_hash_search(&spider_conn_meta_info,
+        (uchar*) conn->conn_key,
+        conn->conn_key_length)))
+#endif
+    {
+        pthread_mutex_unlock(&spider_conn_meta_mutex);
+        meta_info = spider_create_conn_meta(conn);
+        if (!meta_info) {
+            DBUG_RETURN(FALSE);    
+        }
+        pthread_mutex_lock(&spider_conn_meta_mutex);
+        if (my_hash_insert(&spider_conn_meta_info, (uchar *)meta_info)) {
+            /* insert failed */
+            pthread_mutex_unlock(&spider_conn_meta_mutex);
+            DBUG_RETURN(FALSE);
+        } 
+        pthread_mutex_unlock(&spider_conn_meta_mutex);
+    } else {
+        pthread_mutex_unlock(&spider_conn_meta_mutex);
+        /* exist already */
+        if (SPIDER_CONN_IS_INVALID(meta_info)) {
+            SPIDER_UPDATE_CONN_META(meta_info, alloc_time_str, SPIDER_CONN_META_INIT2_STATUS);
+        } else {
+            /* TODO: logging error info */
+
+        }
+    }
+
+    DBUG_RETURN(TRUE);
+}
+
+my_bool spider_update_conn_meta_info(SPIDER_CONN *conn, const char *new_status) 
+{
+    DBUG_ENTER("spider_update_conn_meta_info");
+    SPIDER_CONN_META_INFO *meta_info;
+    pthread_mutex_lock(&spider_conn_meta_mutex);
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+    if (!(meta_info = (SPIDER_CONN_META_INFO *) my_hash_search_using_hash_value(
+        &spider_conn_meta_info, 
+        conn->conn_key_hash_value,
+        (uchar*) conn->conn_key,
+        conn->conn_key_length)))
+#else
+    if (!(meta_info = (SPIDER_CONN_META_INFO *) my_hash_search(&spider_conn_meta_info,
+        (uchar*) conn->conn_key,
+        conn->conn_key_length)))
+#endif
+    {
+        pthread_mutex_unlock(&spider_conn_meta_mutex);
+        DBUG_RETURN(FALSE);
+    } else {
+        pthread_mutex_unlock(&spider_conn_meta_mutex);
+        /* exist already */
+        if (!SPIDER_CONN_IS_INVALID(meta_info)) {
+            SPIDER_UPDATE_CONN_META(meta_info, last_visit_time_str, new_status);
+        } else {
+            /* TODO: logging error info */
+            DBUG_RETURN(FALSE);
+        }
+    }
+
+    DBUG_RETURN(TRUE);
 }
