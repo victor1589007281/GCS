@@ -478,3 +478,4 @@ my_pthread_get_tid()
 #endif // __WIN__
 
 }
+
