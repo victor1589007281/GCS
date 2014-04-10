@@ -4299,7 +4299,11 @@ my_bool spider_update_conn_meta_info(SPIDER_CONN *conn, const char *new_status)
         pthread_mutex_unlock(&spider_conn_meta_mutex);
         /* exist already */
         if (!SPIDER_CONN_IS_INVALID(meta_info)) {
-            SPIDER_UPDATE_CONN_META(meta_info, last_visit_time_str, new_status);
+            if (strcmp(new_status, SPIDER_CONN_META_ACTIVE_STATUS) == 0) {
+                SPIDER_UPDATE_CONN_META(meta_info, last_visit_time_str, SPIDER_CONN_META_ACTIVE_STATUS);
+            } else if (strcmp(new_status, SPIDER_CONN_META_INVALID_STATUS) == 0) {
+                SPIDER_UPDATE_CONN_META(meta_info, free_time_str, SPIDER_CONN_META_INVALID_STATUS);
+            }
         } else {
             /* TODO: logging error info */
             DBUG_RETURN(FALSE);
