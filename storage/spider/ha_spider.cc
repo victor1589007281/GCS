@@ -7290,8 +7290,10 @@ void ha_spider::position(
     {
       if (select_column_mode)
       {
-        spider_db_handler *dbton_hdl =
-          dbton_handler[result_list.current->result->dbton_id];
+     //   spider_db_handler *dbton_hdl =
+      //    dbton_handler[result_list.current->result->dbton_id];
+	  // will. 在spider_quick_mode为1的时候，此处会crash。 由于dbton_id只能为0，为此直接取0.
+		spider_db_handler *dbton_hdl = dbton_handler[0];
         dbton_hdl->copy_minimum_select_bitmap(position_bitmap);
       }
       position_bitmap_init = TRUE;
