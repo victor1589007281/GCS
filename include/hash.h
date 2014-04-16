@@ -115,6 +115,10 @@ typedef void (*my_hash_delegate_func_2args)(void* hash_data, void* maybe_unused_
 void
 my_hash_delegate_2args(HASH * hash, my_hash_delegate_func_2args func, void* func_args1, void* func_args2);
 
+typedef void (*my_hash_delegate_func_nargs)(void *hash_data, ...);
+void 
+my_hash_delegate_nargs(HASH *hash, my_hash_delegate_func_nargs func, ...);
+
 #ifdef	__cplusplus
 }
 #endif

@@ -2822,7 +2822,6 @@ static MYSQL_SYSVAR_BOOL(
   FALSE
 );
 
-
 my_bool spider_param_general_log()
 {
   DBUG_ENTER("spider_param_general_log");
@@ -2847,6 +2846,26 @@ int spider_param_idle_conn_recycle_interval()
 {
   DBUG_ENTER("spider_param_idle_conn_recycle_interval");
   DBUG_RETURN(spider_idle_conn_recycle_interval);
+}
+
+static int spider_conn_meta_invalid_max_count;
+static MYSQL_SYSVAR_INT( 
+  conn_meta_invalid_max_count, 
+  spider_conn_meta_invalid_max_count, 
+  PLUGIN_VAR_OPCMDARG, 
+  "Max count of invalid conn meta records in SPIDER_CONNS information_schema", 
+  NULL, 
+  NULL, 
+  10000, 
+  100, 
+  100000, 
+  0
+);
+
+int spider_param_conn_meta_invalid_max_count()
+{
+    DBUG_ENTER("spider_param_conn_meta_invalid_max_count");
+    DBUG_RETURN(spider_conn_meta_invalid_max_count);
 }
 
 //  spider_with_sts_crd 控制spider在open table的时候，要不要直接

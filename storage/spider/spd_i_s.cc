@@ -41,11 +41,9 @@ extern ulonglong  spider_free_mem_count[SPIDER_MEM_CALC_LIST_NUM];
 
 extern HASH spider_conn_meta_info;
 extern pthread_mutex_t spider_conn_meta_mutex;
-
+extern void spider_free_conn_meta(void *);
+extern int spider_param_conn_meta_invalid_max_count();
 static struct st_mysql_storage_engine spider_i_s_info =
-{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION };
-
-static struct st_mysql_storage_engine spider_i_s_info2 = 
 { MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION };
 
 static ST_FIELD_INFO spider_i_s_alloc_mem_fields_info[] =
@@ -140,15 +138,57 @@ static void my_fill_field(void *entry, void *data1, void *data2) {
         table->field[3]->set_notnull();
         table->field[4]->set_notnull();
         table->field[5]->set_notnull();
+        table->field[6]->set_notnull();
+        table->field[7]->set_notnull();
         table->field[0]->store(meta->conn_id, TRUE);
-        table->field[1]->store(meta->remote_str, strlen(meta->remote_str), system_charset_info);
-        table->field[2]->store(meta->alloc_time_str, strlen(meta->alloc_time_str), system_charset_info);
-        table->field[3]->store(meta->last_visit_time_str, strlen(meta->last_visit_time_str), system_charset_info);
-        table->field[4]->store(meta->free_time_str, strlen(meta->free_time_str), system_charset_info);
-        table->field[5]->store(meta->status_str, strlen(meta->status_str), system_charset_info);
+        table->field[1]->store(meta->remote_user_str, strlen(meta->remote_user_str), system_charset_info);
+        table->field[2]->store(meta->remote_ip_str, strlen(meta->remote_ip_str), system_charset_info);
+        char port_buf[SPIDER_CONN_META_BUF_LEN + 1];
+        if (snprintf(port_buf, SPIDER_CONN_META_BUF_LEN, "%d", meta->remote_port) < SPIDER_CONN_META_BUF_LEN) {
+            table->field[3]->store(port_buf, strlen(port_buf), system_charset_info);
+        }
+        char time_buf[(SPIDER_CONN_META_BUF_LEN << 2) + 1];
+        if (spider_time_to_str(time_buf, SPIDER_CONN_META_BUF_LEN << 2, &meta->alloc_tm)) {
+            table->field[4]->store(time_buf, strlen(time_buf), system_charset_info);
+        }
+        if (spider_time_to_str(time_buf, SPIDER_CONN_META_BUF_LEN << 2, &meta->last_visit_tm)) {
+            table->field[5]->store(time_buf, strlen(time_buf), system_charset_info);
+        }
+        if (spider_time_to_str(time_buf, SPIDER_CONN_META_BUF_LEN << 2, &meta->free_tm)) {
+            table->field[6]->store(time_buf, strlen(time_buf), system_charset_info);
+        }
+        table->field[7]->store(SPIDER_CONN_META_STATUS_TO_STR(meta), strlen(SPIDER_CONN_META_STATUS_TO_STR(meta)), system_charset_info);
     }
+
     if (schema_table_store_record(thd, table)) {
-       // logging error 
+        spider_my_err_logging("[ERROR] table store record for SPIDER_CONNS!\n");
+    }
+
+    DBUG_VOID_RETURN;
+}
+
+static void my_record_and_fill_field(void *entry, ...)
+{
+    DBUG_ENTER("my_record_and_fill_field");
+    va_list args;
+    va_start(args, entry);
+    SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *)entry;
+    HASH *hash = va_arg(args, HASH *);
+    TABLE *table = va_arg(args, TABLE *);
+    THD *thd = va_arg(args, THD *);
+    DYNAMIC_STRING_ARRAY *invalid_meta_hash_value_arr = va_arg(args, DYNAMIC_STRING_ARRAY *);
+    DYNAMIC_STRING_ARRAY *invalid_meta_key_arr = va_arg(args, DYNAMIC_STRING_ARRAY *);
+    va_end(args);
+    if (SPIDER_CONN_IS_INVALID(meta)) {
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+        append_dynamic_string_array(invalid_meta_hash_value_arr, (char *) &meta->key_hash_value, sizeof(meta->key_hash_value));
+#else
+        my_hash_value_type hash_value = my_calc_hash(hash, meta->key, meta->key_len);
+        append_dynamic_string_array(invalid_meta_hash_value_arr, (char *) &hash_value, sizeof(hash_value));
+#endif
+        append_dynamic_string_array(invalid_meta_key_arr, (char *)meta->key, meta->key_len);
+    } else {
+        my_fill_field(meta, table, thd);
     }
 
     DBUG_VOID_RETURN;
@@ -160,9 +200,57 @@ static int spider_i_s_conn_pool_fill_table(
   COND *cond
 ) {
   DBUG_ENTER("spider_i_s_conn_pool_fill_table");
+  DYNAMIC_STRING_ARRAY invalid_meta_hash_value_arr;
+  DYNAMIC_STRING_ARRAY invalid_meta_key_arr;
+  init_dynamic_string_array(&invalid_meta_hash_value_arr, 64, 64);
+  init_dynamic_string_array(&invalid_meta_key_arr, 64, 64);
   pthread_mutex_lock(&spider_conn_meta_mutex);
-  my_hash_delegate_2args(&spider_conn_meta_info, my_fill_field, (void *)tables->table, (void *)thd);
+  my_hash_delegate_nargs(&spider_conn_meta_info, 
+      my_record_and_fill_field, 
+      (void *)tables->table, 
+      (void *)thd,
+      (void *)&invalid_meta_hash_value_arr,
+      (void *)&invalid_meta_key_arr);
   pthread_mutex_unlock(&spider_conn_meta_mutex);
+  if (invalid_meta_key_arr.cur_idx >= (size_t)spider_param_conn_meta_invalid_max_count()) {
+      /* need delete invalid item from spider_conn_meta_info hash table */
+      for (size_t i = 0; i < invalid_meta_key_arr.cur_idx; ++i) {
+          my_hash_value_type *tmp_ptr;
+          if (get_dynamic_string_array(&invalid_meta_hash_value_arr, (char **) &tmp_ptr, NULL, i)) {
+              // TODO: print warning info
+              break;
+          }
+
+          my_hash_value_type meta_key_hash_value = *tmp_ptr;
+          char *meta_key;
+          size_t meta_key_len;
+          get_dynamic_string_array(&invalid_meta_key_arr, &meta_key, &meta_key_len, i);
+          pthread_mutex_lock (&spider_conn_meta_mutex);
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+          SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *) my_hash_search_using_hash_value (
+              &spider_conn_meta_info,
+              meta_key_hash_value,
+              (uchar *) meta_key, 
+              meta_key_len);
+#else
+          SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *) my_hash_search(&spider_conn_meta_info, meta_key, meta_key_len);            
+#endif
+          if (meta) {
+#ifdef HASH_UPDATE_WITH_HASH_VALUE
+              my_hash_delete_with_hash_value (&spider_conn_meta_info,
+                  meta->key_hash_value, (uchar *) meta);
+#else
+              my_hash_delete (&spider_conn_meta_info, (uchar *) meta);
+#endif
+          }
+          pthread_mutex_unlock(&spider_conn_meta_mutex);
+          if (meta) {
+              spider_free_conn_meta(meta);
+          }
+      }
+  }
+  free_dynamic_string_array(&invalid_meta_hash_value_arr);
+  free_dynamic_string_array(&invalid_meta_key_arr);
   DBUG_RETURN(0);
 }
 
@@ -224,7 +312,7 @@ struct st_mysql_plugin spider_i_s_alloc_mem =
 struct st_mysql_plugin spider_i_s_conns =
 {
     MYSQL_INFORMATION_SCHEMA_PLUGIN,
-    &spider_i_s_info2,
+    &spider_i_s_info,
     "SPIDER_CONNS",
     "harryczhang",
     "Spider connection pool viewer",

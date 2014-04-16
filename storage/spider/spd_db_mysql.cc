@@ -1562,7 +1562,7 @@ int spider_db_mysql::exec_query(
 
   /* harryczhang: update last_visited field by using current timestamp in seconds. */
   this->conn->last_visited = (time_t) time((time_t *) 0);
-  spider_update_conn_meta_info(this->conn, SPIDER_CONN_META_ACTIVE_STATUS);
+  spider_update_conn_meta_info(this->conn, SPIDER_CONN_ACTIVE_STATUS);
 
   if (spider_param_log_result_errors() >= 2 && db_conn->warning_count > 0)
   {
