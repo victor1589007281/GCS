@@ -301,6 +301,21 @@ public:
     return FALSE;
   }
 
+
+  bool has_char_args()
+  {
+	  DBUG_ASSERT(fixed == TRUE);
+	  for (uint i= 0; i < arg_count; i++)
+	  {
+		  if (args[i]->type() == Item::FIELD_ITEM &&
+			  (args[i]->field_type() == MYSQL_TYPE_VARCHAR ||
+			  args[i]->field_type() == MYSQL_TYPE_STRING ||
+			  args[i]->field_type() == MYSQL_TYPE_VAR_STRING))
+			  return TRUE;
+	  }
+	  return FALSE;
+  }
+
   bool has_datetime_args()
   {
     DBUG_ASSERT(fixed == TRUE);

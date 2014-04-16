@@ -907,6 +907,14 @@ public:
   const char *func_name() const { return "crc32"; }
   void fix_length_and_dec() { max_length=10; }
   longlong val_int();
+
+
+  enum_monotonicity_info get_monotonicity_info(){return NON_MONOTONIC;}
+  bool check_partition_func_processor(uchar *int_arg) {return FALSE;}
+  bool check_valid_arguments_processor(uchar *int_arg)
+  {
+	  return !has_char_args();
+  }
 };
 
 class Item_func_uncompressed_length : public Item_int_func

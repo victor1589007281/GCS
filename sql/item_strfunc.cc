@@ -3618,6 +3618,7 @@ longlong Item_func_uncompressed_length::val_int()
   return uint4korr(res->ptr()) & 0x3FFFFFFF;
 }
 
+
 longlong Item_func_crc32::val_int()
 {
   DBUG_ASSERT(fixed == 1);
