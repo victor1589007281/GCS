@@ -144,7 +144,7 @@ static void my_fill_field(void *entry, void *data1, void *data2) {
         table->field[1]->store(meta->remote_user_str, strlen(meta->remote_user_str), system_charset_info);
         table->field[2]->store(meta->remote_ip_str, strlen(meta->remote_ip_str), system_charset_info);
         char port_buf[SPIDER_CONN_META_BUF_LEN + 1];
-        if (snprintf(port_buf, SPIDER_CONN_META_BUF_LEN, "%d", meta->remote_port) < SPIDER_CONN_META_BUF_LEN) {
+        if (snprintf(port_buf, SPIDER_CONN_META_BUF_LEN, "%ld", meta->remote_port) < SPIDER_CONN_META_BUF_LEN) {
             table->field[3]->store(port_buf, strlen(port_buf), system_charset_info);
         }
         char time_buf[(SPIDER_CONN_META_BUF_LEN << 2) + 1];

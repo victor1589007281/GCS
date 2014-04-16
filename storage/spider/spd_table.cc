@@ -4792,7 +4792,7 @@ SPIDER_SHARE *spider_get_share(
       {
           spider_print_timestamp(stderr);
           fprintf(stderr, " [WARN SPIDER RESULT] "
-              "Wait share->init too long, table_name %s %s %d\n",
+              "Wait share->init too long, table_name %s %s %ld\n",
                share->table_name, share->tgt_hosts[0], share->tgt_ports[0]);
           goto error_but_no_delete;
       }
@@ -6333,7 +6333,8 @@ int spider_db_init(
     goto error_conn_meta_mutex_init;
   }
 
-  if (error_num = spider_create_conn_recycle_thread()) {
+  error_num = spider_create_conn_recycle_thread();
+  if (error_num != 0) {
       goto error_conn_recycle_thd_init;
   }
   
@@ -8412,7 +8413,8 @@ spider_diff_seconds(void *tm1, void *tm2)
     FileTimeToSystemTime(&v_ftime,&t_res);
     DBUG_RETURN(t_res.wSecond);
 #else
-    DBUG_RETURN((int)difftime((time_t *)tm1, (time_t *)tm2));
+    DBUG_RETURN((int)difftime(*((time_t *)tm1), *((time_t *)tm2)));
 #endif
 
 }
+
