@@ -2848,24 +2848,24 @@ int spider_param_idle_conn_recycle_interval()
   DBUG_RETURN(spider_idle_conn_recycle_interval);
 }
 
-static int spider_conn_meta_invalid_max_count;
+static int spider_conn_meta_max_invalid_duration;
 static MYSQL_SYSVAR_INT( 
-  conn_meta_invalid_max_count, 
-  spider_conn_meta_invalid_max_count, 
+  conn_meta_max_invalid_duration,
+  spider_conn_meta_max_invalid_duration, 
   PLUGIN_VAR_OPCMDARG, 
-  "Max count of invalid conn meta records in SPIDER_CONNS information_schema", 
+  "Max duration for conn-meta record within INVALID status in SPIDER_CONNS information_schema", 
   NULL, 
   NULL, 
-  10000, 
-  100, 
-  100000000, 
+  3600, 
+  1, 
+  86400, 
   0
 );
 
-int spider_param_conn_meta_invalid_max_count()
+int spider_param_conn_meta_max_invalid_duration()
 {
-    DBUG_ENTER("spider_param_conn_meta_invalid_max_count");
-    DBUG_RETURN(spider_conn_meta_invalid_max_count);
+    DBUG_ENTER("spider_param_conn_meta_max_invalid_duration");
+    DBUG_RETURN(spider_conn_meta_max_invalid_duration);
 }
 
 //  spider_with_sts_crd 控制spider在open table的时候，要不要直接
@@ -2945,7 +2945,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(use_table_charset),
   MYSQL_SYSVAR(conn_recycle_mode),
   MYSQL_SYSVAR(idle_conn_recycle_interval),
-  MYSQL_SYSVAR(conn_meta_invalid_max_count),
+  MYSQL_SYSVAR(conn_meta_max_invalid_duration),
   MYSQL_SYSVAR(conn_recycle_strict),
   MYSQL_SYSVAR(sync_trx_isolation),
   MYSQL_SYSVAR(with_begin_commit),

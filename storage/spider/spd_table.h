@@ -433,3 +433,5 @@ spider_time_to_str(char *dst, size_t len, void *tm);
 void
 spider_current_time(void *tm);
 
+int
+spider_diff_seconds(void *tm1, void *tm2);

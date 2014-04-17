@@ -498,9 +498,14 @@ my_bool get_dynamic_string_array(DYNAMIC_STRING_ARRAY *array,
 
     get_dynamic(array->pos_info_arr, (uchar *) &pos_info, idx);
     *dst = array->dynstr->str + pos_info.elem_off;
+	if (!*dst) {
+        DBUG_RETURN(TRUE);
+    }
+	
     if (dst_len) {
         *dst_len = pos_info.elem_size;
     }
+    
     DBUG_RETURN(FALSE);
 }
 
