@@ -2858,7 +2858,7 @@ static MYSQL_SYSVAR_INT(
   NULL, 
   10000, 
   100, 
-  100000, 
+  100000000, 
   0
 );
 
@@ -2945,6 +2945,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(use_table_charset),
   MYSQL_SYSVAR(conn_recycle_mode),
   MYSQL_SYSVAR(idle_conn_recycle_interval),
+  MYSQL_SYSVAR(conn_meta_invalid_max_count),
   MYSQL_SYSVAR(conn_recycle_strict),
   MYSQL_SYSVAR(sync_trx_isolation),
   MYSQL_SYSVAR(with_begin_commit),
