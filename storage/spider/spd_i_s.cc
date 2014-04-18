@@ -42,7 +42,7 @@ extern ulonglong  spider_free_mem_count[SPIDER_MEM_CALC_LIST_NUM];
 extern HASH spider_conn_meta_info;
 extern pthread_mutex_t spider_conn_meta_mutex;
 extern void spider_free_conn_meta(void *);
-extern int spider_param_conn_meta_invalid_max_count();
+extern int spider_param_conn_meta_max_invalid_duration();
 static struct st_mysql_storage_engine spider_i_s_info =
 { MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION };
 
@@ -187,10 +187,9 @@ static void my_record_and_fill_field(void *entry, ...)
         append_dynamic_string_array(invalid_meta_hash_value_arr, (char *) &hash_value, sizeof(hash_value));
 #endif
         append_dynamic_string_array(invalid_meta_key_arr, (char *)meta->key, meta->key_len);
-    } else {
-        my_fill_field(meta, table, thd);
-    }
+    } 
 
+    my_fill_field(meta, table, thd);
     DBUG_VOID_RETURN;
 }
 
@@ -212,30 +211,40 @@ static int spider_i_s_conn_pool_fill_table(
       (void *)&invalid_meta_hash_value_arr,
       (void *)&invalid_meta_key_arr);
   pthread_mutex_unlock(&spider_conn_meta_mutex);
-  if (invalid_meta_key_arr.cur_idx >= (size_t)spider_param_conn_meta_invalid_max_count()) {
       /* need delete invalid item from spider_conn_meta_info hash table */
-      for (size_t i = 0; i < invalid_meta_key_arr.cur_idx; ++i) {
-          my_hash_value_type *tmp_ptr;
-          if (get_dynamic_string_array(&invalid_meta_hash_value_arr, (char **) &tmp_ptr, NULL, i)) {
-              // TODO: print warning info
-              break;
-          }
+  for (size_t i = 0; i < invalid_meta_key_arr.cur_idx; ++i) {
+      my_hash_value_type *tmp_ptr = NULL;
+      if (get_dynamic_string_array(&invalid_meta_hash_value_arr, (char **) &tmp_ptr, NULL, i)) {
+          spider_my_err_logging("[ERROR] fill tmp_ptr pointer from invalid_meta_hash_value_arr error!\n");
+          break;
+      }
 
-          my_hash_value_type meta_key_hash_value = *tmp_ptr;
-          char *meta_key;
-          size_t meta_key_len;
-          get_dynamic_string_array(&invalid_meta_key_arr, &meta_key, &meta_key_len, i);
-          pthread_mutex_lock (&spider_conn_meta_mutex);
+      my_hash_value_type meta_key_hash_value = *tmp_ptr;
+      char *meta_key = NULL;
+      size_t meta_key_len;
+      if (get_dynamic_string_array(&invalid_meta_key_arr, &meta_key, &meta_key_len, i)) {
+          spider_my_err_logging("[ERROR] fill meta_key pointer from invalid_meta_key_arr error!\n");
+          break;
+      }
+      pthread_mutex_lock (&spider_conn_meta_mutex);
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
-          SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *) my_hash_search_using_hash_value (
-              &spider_conn_meta_info,
-              meta_key_hash_value,
-              (uchar *) meta_key, 
-              meta_key_len);
+      SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *) my_hash_search_using_hash_value (
+          &spider_conn_meta_info,
+          meta_key_hash_value,
+          (uchar *) meta_key, 
+          meta_key_len);
 #else
-          SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *) my_hash_search(&spider_conn_meta_info, meta_key, meta_key_len);            
+      SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *) my_hash_search(&spider_conn_meta_info, meta_key, meta_key_len);            
 #endif
-          if (meta) {
+      if (meta) {
+#ifdef __WIN__
+          SYSTEMTIME cur_tm;
+#else
+          time_t cur_tm;
+#endif  
+          spider_current_time(&cur_tm);
+          /* Compute cur_tm minus meta->free_tm in seconds unit. */
+          if (spider_diff_seconds(&meta->free_tm, &cur_tm) >= spider_param_conn_meta_max_invalid_duration()) {
 #ifdef HASH_UPDATE_WITH_HASH_VALUE
               my_hash_delete_with_hash_value (&spider_conn_meta_info,
                   meta->key_hash_value, (uchar *) meta);
@@ -243,12 +252,13 @@ static int spider_i_s_conn_pool_fill_table(
               my_hash_delete (&spider_conn_meta_info, (uchar *) meta);
 #endif
           }
-          pthread_mutex_unlock(&spider_conn_meta_mutex);
-          if (meta) {
-              spider_free_conn_meta(meta);
-          }
+      }
+      pthread_mutex_unlock(&spider_conn_meta_mutex);
+      if (meta) {
+          spider_free_conn_meta(meta);
       }
   }
+
   free_dynamic_string_array(&invalid_meta_hash_value_arr);
   free_dynamic_string_array(&invalid_meta_key_arr);
   DBUG_RETURN(0);

@@ -284,6 +284,13 @@ void spider_free_conn_from_trx(
                 (spider_open_connections.array.max_element - old_elements) *
                 spider_open_connections.array.size_of_element);
             }
+			/************************************************************************/
+            /* Create conn_meta whose status is updated then when CONN object is pushed
+            /* into spider_open_connections
+            /************************************************************************/
+            if (!spider_add_conn_meta_info(conn)) {
+                spider_my_err_logging("[ERROR] spider_add_conn_meta_info failed for conn within conn_id=[%ull]!\n", conn->conn_id);
+            }
             pthread_mutex_unlock(&spider_conn_mutex);
           }
         }
@@ -695,9 +702,7 @@ SPIDER_CONN *spider_create_conn(
   pthread_mutex_unlock(&spider_conn_id_mutex);
   /* harryczhang: */
   conn->last_visited = time(NULL);
-  if (!spider_add_conn_meta_info(conn)) {
-      spider_my_err_logging("[ERROR] spider_add_conn_meta_info failed for conn within conn_id=[%ull]!\n", conn->conn_id);
-  }
+  
   DBUG_RETURN(conn);
 
 /*
@@ -4061,22 +4066,20 @@ static void *spider_conn_recycle_action(void *arg)
         my_hash_delegate(&spider_open_connections, my_polling_last_visited, &param);
         pthread_mutex_unlock(&spider_conn_mutex);
 
-        if (empty_dynamic_string_array(&idle_conn_key_hash_value_arr)) {
-            sleep(60);
-            continue;
-        }
-
         for (size_t i = 0; i < idle_conn_key_hash_value_arr.cur_idx; ++i) {
-            my_hash_value_type *tmp_ptr;
+            my_hash_value_type *tmp_ptr = NULL;
             if (get_dynamic_string_array(&idle_conn_key_hash_value_arr, (char **) &tmp_ptr, NULL, i)) {
-                // TODO: print warning info
+                spider_my_err_logging("[ERROR] fill tmp_ptr error by idle_conn_key_hash_value_arr!\n");
                 break;
             }
 
-            char *conn_key;
+            char *conn_key = NULL;
             size_t conn_key_len;
             my_hash_value_type conn_key_hash_value = *tmp_ptr;
-            get_dynamic_string_array(&idle_conn_key_arr, &conn_key, &conn_key_len, i);
+            if (get_dynamic_string_array(&idle_conn_key_arr, &conn_key, &conn_key_len, i)) {
+                spider_my_err_logging("[ERROR] fill conn_key error from idle_conn_key_arr!\n");
+                break;
+            }
             pthread_mutex_lock (&spider_conn_mutex);
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE           
             SPIDER_CONN *conn = (SPIDER_CONN *) my_hash_search_using_hash_value (

@@ -1210,7 +1210,7 @@ char *spider_create_string(
     (SPIDER_CONN_IS_ACTIVE((a)) ? SPIDER_CONN_ACTIVE_STATUS_STR : \
     (SPIDER_CONN_IS_INVALID((a)) ? SPIDER_CONN_INVALID_STATUS_STR : "")))) 
 
-#define SPIDER_CONN_META_BUF_LEN 16 
+#define SPIDER_CONN_META_BUF_LEN 64
 
 typedef struct st_spider_conn_meta_info {
     char *key;
@@ -1233,6 +1233,12 @@ typedef struct st_spider_conn_meta_info {
     */
 
     uint status;
+    /************************************************************************/
+    /* The relationship between xx_tm members and CONN_META_XXX_STATUS
+    /* alloc_tm -> { INIT | INIT2 }                                                                     */
+    /* last_visit_tm -> { ACTIVE }
+    /* free_tm -> { INVALID }
+    /************************************************************************/
 #ifdef __WIN__
     SYSTEMTIME alloc_tm;
     SYSTEMTIME last_visit_tm;
