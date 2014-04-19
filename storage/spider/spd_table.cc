@@ -8386,35 +8386,15 @@ spider_current_time(void *tm)
     DBUG_VOID_RETURN;
 }
 
-int
-spider_diff_seconds(void *tm1, void *tm2)
+void
+spider_make_mysql_time(MYSQL_TIME *ts, time_t *tm)
 {
-    DBUG_ENTER("spider_diff_seconds");
-#ifdef __WIN__
-    SYSTEMTIME t_res;
-    FILETIME v_ftime;
-    ULARGE_INTEGER v_ui;
-    __int64 v_right,v_left,v_res;
-    SystemTimeToFileTime((SYSTEMTIME *)tm1, &v_ftime);
-    v_ui.LowPart=v_ftime.dwLowDateTime;
-    v_ui.HighPart=v_ftime.dwHighDateTime;
-    v_right=v_ui.QuadPart;
-
-    SystemTimeToFileTime((SYSTEMTIME *)tm2, &v_ftime);
-    v_ui.LowPart=v_ftime.dwLowDateTime;
-    v_ui.HighPart=v_ftime.dwHighDateTime;
-    v_left=v_ui.QuadPart;
-
-    v_res=v_right-v_left;
-
-    v_ui.QuadPart=v_res;
-    v_ftime.dwLowDateTime=v_ui.LowPart;
-    v_ftime.dwHighDateTime=v_ui.HighPart;
-    FileTimeToSystemTime(&v_ftime,&t_res);
-    DBUG_RETURN(t_res.wSecond);
-#else
-    DBUG_RETURN((int)difftime(*((time_t *)tm1), *((time_t *)tm2)));
-#endif
-
+    struct tm a_tm_struct; 
+    localtime_r(tm, &a_tm_struct);    
+    ts->year = a_tm_struct.tm_year + 1900;    
+    ts->month = a_tm_struct.tm_mon + 1;    
+    ts->day = a_tm_struct.tm_mday;    
+    ts->hour = a_tm_struct.tm_hour;    
+    ts->minute = a_tm_struct.tm_min;
+    ts->second = a_tm_struct.tm_sec;
 }
-

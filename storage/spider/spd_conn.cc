@@ -4195,7 +4195,8 @@ spider_create_conn_meta(SPIDER_CONN *conn)
 
         ret->status = SPIDER_CONN_INIT_STATUS;
         ret->conn_id = conn->conn_id;
-        spider_current_time(&ret->alloc_tm);
+        ret->alloc_tm = time(NULL);
+        ret->reusage_counter = 0;
         DBUG_RETURN(ret);    
 err_malloc_key:
         my_free(ret, MYF(0));
@@ -4234,7 +4235,8 @@ update_visit_time(SPIDER_CONN_META_INFO *meta)
 }
 */
 
-my_bool spider_add_conn_meta_info(SPIDER_CONN *conn)
+my_bool
+spider_add_conn_meta_info(SPIDER_CONN *conn)
 {
     DBUG_ENTER("spider_add_conn_meta_info");
     SPIDER_CONN_META_INFO *meta_info;
@@ -4267,18 +4269,20 @@ my_bool spider_add_conn_meta_info(SPIDER_CONN *conn)
         pthread_mutex_unlock(&spider_conn_meta_mutex);
         /* exist already */
         if (SPIDER_CONN_IS_INVALID(meta_info)) {
-            spider_current_time(&meta_info->alloc_tm);
+            meta_info->alloc_tm = time(NULL);
             meta_info->status = SPIDER_CONN_INIT2_STATUS;
+            meta_info->reusage_counter = 0;
         } else {
-            /* TODO: logging error info */
-            spider_my_err_logging("[ERROR] runtime exception with meta status [%s]!\n", SPIDER_CONN_META_STATUS_TO_STR(meta_info));
+            /* NOTE: deleted from spider_open_connections for in-place usage, not be freed. */
+            ++meta_info->reusage_counter;
         }
     }
 
     DBUG_RETURN(TRUE);
 }
 
-my_bool spider_update_conn_meta_info(SPIDER_CONN *conn, uint new_status) 
+void
+spider_update_conn_meta_info(SPIDER_CONN *conn, uint new_status) 
 {
     DBUG_ENTER("spider_update_conn_meta_info");
     SPIDER_CONN_META_INFO *meta_info;
@@ -4296,23 +4300,19 @@ my_bool spider_update_conn_meta_info(SPIDER_CONN *conn, uint new_status)
 #endif
     {
         pthread_mutex_unlock(&spider_conn_meta_mutex);
-        DBUG_RETURN(FALSE);
+        DBUG_VOID_RETURN;
     } else {
         pthread_mutex_unlock(&spider_conn_meta_mutex);
         /* exist already */
         if (!SPIDER_CONN_IS_INVALID(meta_info)) {
             if (new_status == SPIDER_CONN_ACTIVE_STATUS) {
-                spider_current_time(&meta_info->last_visit_tm);
+                meta_info->last_visit_tm = time(NULL);
             } else if (new_status == SPIDER_CONN_INVALID_STATUS) {
-                spider_current_time(&meta_info->free_tm);
+                meta_info->free_tm = time(NULL);
             }
             meta_info->status = new_status;
-        } else {
-            /* TODO: logging error info */
-            spider_my_err_logging("[ERROR] unexpected spider status [%u]!\n", meta_info->status);
-            DBUG_RETURN(FALSE);
-        }
+        } 
     }
 
-    DBUG_RETURN(TRUE);
+    DBUG_VOID_RETURN;
 }
