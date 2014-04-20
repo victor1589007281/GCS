@@ -43,7 +43,7 @@
 #include "spd_malloc.h"
 #include "hash.h"
 
-
+#include "my_stacktrace.h"
 extern HASH spider_conn_meta_info;
 
 // will. 下面的结构体及对应的函数，主要用来处理table name的保存
@@ -4792,7 +4792,7 @@ SPIDER_SHARE *spider_get_share(
       {
           spider_print_timestamp(stderr);
           fprintf(stderr, " [WARN SPIDER RESULT] "
-              "Wait share->init too long, table_name %s %s %d\n",
+              "Wait share->init too long, table_name %s %s %ld\n",
                share->table_name, share->tgt_hosts[0], share->tgt_ports[0]);
           goto error_but_no_delete;
       }
@@ -6167,9 +6167,7 @@ int spider_db_init(
   uint dbton_id = 0;
   handlerton *spider_hton = (handlerton *)p;
   DBUG_ENTER("spider_db_init");
-  if (error_num = spider_create_conn_recycle_thread()) {
-      return error_num;
-  }
+  
   spider_hton_ptr = spider_hton;
 
   spider_hton->state = SHOW_OPTION_YES;
@@ -6335,6 +6333,11 @@ int spider_db_init(
     goto error_conn_meta_mutex_init;
   }
 
+  error_num = spider_create_conn_recycle_thread();
+  if (error_num != 0) {
+      goto error_conn_recycle_thd_init;
+  }
+  
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 #if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&spider_global_trx_mutex, MY_MUTEX_INIT_FAST))
@@ -6720,8 +6723,10 @@ error_open_conn_mutex_init:
   pthread_mutex_destroy(&spider_global_trx_mutex);
 error_global_trx_mutex_init:
 #endif
+  spider_free_conn_recycle_thread();
+error_conn_recycle_thd_init:
   pthread_mutex_destroy(&spider_conn_meta_mutex);
-error_conn_meta_mutex_init:
+error_conn_meta_mutex_init: 
   pthread_mutex_destroy(&spider_conn_mutex);
 error_conn_mutex_init:
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -8282,6 +8287,7 @@ void
 spider_print_timestamp(
     FILE*  file) /*!< in: file where to print */
 {
+    DBUG_ENTER("spider_print_timestamp");
 #ifdef __WIN__
     SYSTEMTIME cal_tm;
 
@@ -8315,44 +8321,80 @@ spider_print_timestamp(
         cal_tm_ptr->tm_min,
         cal_tm_ptr->tm_sec);
 #endif
+    DBUG_VOID_RETURN;
 }
 
-
-void
-spider_gettime_str(
-    char *dst, size_t len) 
+void 
+spider_my_err_logging(const char *fmt, ...) 
 {
-#ifdef __WIN__
-    SYSTEMTIME cal_tm;
+    DBUG_ENTER("spider_my_err_logging");
+    va_list args;
+    spider_print_timestamp(stderr);
+    va_start(args, fmt);
+    my_safe_printf_stderr(fmt, args);
+    va_end(args);
+    DBUG_VOID_RETURN;
+}
 
-    GetLocalTime(&cal_tm);
-
-    snprintf(dst, len, "%02d%02d%02d %2d:%02d:%02d",
-        (int)cal_tm.wYear % 100,
-        (int)cal_tm.wMonth,
-        (int)cal_tm.wDay,
-        (int)cal_tm.wHour,
-        (int)cal_tm.wMinute,
-        (int)cal_tm.wSecond);
+my_bool
+spider_time_to_str(char *dst, size_t len, void *tm)
+{
+    DBUG_ENTER("spider_time_to_str");
+#ifdef __WIN__ 
+    SYSTEMTIME *cal_tm = (SYSTEMTIME *)tm;
+    if (my_snprintf(dst, len, "%02d%02d%02d %2d:%02d:%02d",
+        (int)cal_tm->wYear % 100,
+        (int)cal_tm->wMonth,
+        (int)cal_tm->wDay,
+        (int)cal_tm->wHour,
+        (int)cal_tm->wMinute,
+        (int)cal_tm->wSecond) < len) {
+        DBUG_RETURN(TRUE);
+    }
 #else
     struct tm  cal_tm;
     struct tm* cal_tm_ptr;
-    time_t	   tm;
-
-    time(&tm);
 
 #ifdef HAVE_LOCALTIME_R
-    localtime_r(&tm, &cal_tm);
+    localtime_r((time_t *)tm, &cal_tm);
     cal_tm_ptr = &cal_tm;
 #else
-    cal_tm_ptr = localtime(&tm);
+    cal_tm_ptr = localtime((time_t *)tm);
 #endif
-    snprintf(dst, len, "%02d%02d%02d %2d:%02d:%02d",
+    if (my_snprintf(dst, len, "%02d%02d%02d %2d:%02d:%02d",
         cal_tm_ptr->tm_year % 100,
         cal_tm_ptr->tm_mon + 1,
         cal_tm_ptr->tm_mday,
         cal_tm_ptr->tm_hour,
         cal_tm_ptr->tm_min,
-        cal_tm_ptr->tm_sec);
+        cal_tm_ptr->tm_sec) >= len) {
+        DBUG_RETURN(TRUE);
+    }
 #endif
+    DBUG_RETURN(FALSE);
+}
+
+void 
+spider_current_time(void *tm)
+{
+    DBUG_ENTER("spider_current_time");
+#ifdef __WIN__
+    GetLocalTime((SYSTEMTIME *)tm);
+#else
+    time((time_t *)tm);
+#endif
+    DBUG_VOID_RETURN;
+}
+
+void
+spider_make_mysql_time(MYSQL_TIME *ts, time_t *tm)
+{
+    struct tm a_tm_struct; 
+    localtime_r(tm, &a_tm_struct);    
+    ts->year = a_tm_struct.tm_year + 1900;    
+    ts->month = a_tm_struct.tm_mon + 1;    
+    ts->day = a_tm_struct.tm_mday;    
+    ts->hour = a_tm_struct.tm_hour;    
+    ts->minute = a_tm_struct.tm_min;
+    ts->second = a_tm_struct.tm_sec;
 }

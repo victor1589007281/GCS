@@ -7948,7 +7948,7 @@ int spider_db_open_item_string(
   DBUG_ENTER("spider_db_open_item_string");
   if (str)
   {
-    char tmp_buf[MAX_FIELD_WIDTH];
+    /* char tmp_buf[MAX_FIELD_WIDTH];
     spider_string tmp_str(tmp_buf, MAX_FIELD_WIDTH, str->charset());
     String *tmp_str2;
     tmp_str.init_calc_mem(126);
@@ -7957,15 +7957,17 @@ int spider_db_open_item_string(
       str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN * 2 + tmp_str2->length() * 2)
     )
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    tmp_str.mem_calc();
-    str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
-    if (
-      append_escaped(str->get_str(), tmp_str2) ||
+    tmp_str.mem_calc(); */
+    //str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+    item->print(str->get_str(), (enum_query_type)QT_TO_SPECIFIED_CHARSET);
+    /*if (
+      //append_escaped(str->get_str(), tmp_str2) ||
       str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN)
     )
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    */
     str->mem_calc();
-    str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+    //str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
   }
   DBUG_RETURN(0);
 }

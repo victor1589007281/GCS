@@ -440,7 +440,9 @@ enum enum_query_type
   /// In utf8.
   QT_TO_SYSTEM_CHARSET= (1 << 0),
   /// Without character set introducers.
-  QT_WITHOUT_INTRODUCERS= (1 << 1)
+  QT_WITHOUT_INTRODUCERS= (1 << 1),
+  /// CONVERT TO SPECIFIED CHARSET
+  QT_TO_SPECIFIED_CHARSET= ((1 << 2) | QT_WITHOUT_INTRODUCERS),
 };
 
 /* query_id */

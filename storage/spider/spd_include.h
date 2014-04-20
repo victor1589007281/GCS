@@ -1192,17 +1192,25 @@ char *spider_create_string(
   uint length
 );
 
-#define SPIDER_CONN_META_INIT_STATUS "INIT" /* just created */
-#define SPIDER_CONN_META_INIT2_STATUS "INIT2" /* re-use */
-#define SPIDER_CONN_META_ACTIVE_STATUS "ACTIVE" /* delete from conn pool and in use */
-#define SPIDER_CONN_META_INVALID_STATUS "INVALID" /* free */
+#define SPIDER_CONN_IS_INIT(a) ((a->status) & 0x0001)
+#define SPIDER_CONN_IS_INIT2(a) ((a->status) & 0x0010)
+#define SPIDER_CONN_IS_ACTIVE(a) ((a->status) & 0x0100)
+#define SPIDER_CONN_IS_INVALID(a) ((a->status) & 0x1000)
+#define SPIDER_CONN_INIT_STATUS 0x0001
+#define SPIDER_CONN_INIT2_STATUS 0x0010
+#define SPIDER_CONN_ACTIVE_STATUS 0x0100
+#define SPIDER_CONN_INVALID_STATUS 0x1000
+#define SPIDER_CONN_INIT_STATUS_STR "INIT" /* just created */
+#define SPIDER_CONN_INIT2_STATUS_STR "INIT2" /* re-use */
+#define SPIDER_CONN_ACTIVE_STATUS_STR "ACTIVE" /* delete from conn pool and in use */
+#define SPIDER_CONN_INVALID_STATUS_STR "INVALID" /* free */
+#define SPIDER_CONN_META_STATUS_TO_STR(a) \
+    (SPIDER_CONN_IS_INIT((a)) ? SPIDER_CONN_INIT_STATUS_STR : \
+    (SPIDER_CONN_IS_INIT2((a)) ? SPIDER_CONN_INIT2_STATUS_STR : \
+    (SPIDER_CONN_IS_ACTIVE((a)) ? SPIDER_CONN_ACTIVE_STATUS_STR : \
+    (SPIDER_CONN_IS_INVALID((a)) ? SPIDER_CONN_INVALID_STATUS_STR : "")))) 
 
-#define SPIDER_CONN_IS_INIT(a) !(strcmp(((a)->status_str), SPIDER_CONN_META_INIT_STATUS)) 
-#define SPIDER_CONN_IS_INIT2(a) !(strcmp(((a)->status_str), SPIDER_CONN_META_INIT2_STATUS)) 
-#define SPIDER_CONN_IS_ACTIVE(a) !(strcmp(((a)->status_str), SPIDER_CONN_META_ACTIVE_STATUS))
-#define SPIDER_CONN_IS_INVALID(a) !(strcmp(((a)->status_str), SPIDER_CONN_META_INVALID_STATUS))
-
-#define SPIDER_CONN_META_BUF_LEN 128
+#define SPIDER_CONN_META_BUF_LEN 64
 
 typedef struct st_spider_conn_meta_info {
     char *key;
@@ -1211,9 +1219,31 @@ typedef struct st_spider_conn_meta_info {
     my_hash_value_type key_hash_value;
 #endif
     ulonglong conn_id;
-    char remote_str[SPIDER_CONN_META_BUF_LEN];
+    /* remote_str: user@ip#port*/
+    char remote_user_str[SPIDER_CONN_META_BUF_LEN];
+    char remote_ip_str[SPIDER_CONN_META_BUF_LEN];
+    long remote_port;
+    // char remote_str[SPIDER_CONN_META_BUF_LEN];
+    
+/*
     char alloc_time_str[SPIDER_CONN_META_BUF_LEN];
     char last_visit_time_str[SPIDER_CONN_META_BUF_LEN];
     char free_time_str[SPIDER_CONN_META_BUF_LEN];
     const char *status_str;
+    */
+
+    uint status;
+
+    /* record the count of deleted from connection pool and inserted into back again then. */
+    ulonglong reusage_counter; 
+
+    /************************************************************************/
+    /* The relationship between xx_tm members and CONN_META_XXX_STATUS
+    /* alloc_tm -> { INIT | INIT2 }                                                                     */
+    /* last_visit_tm -> { ACTIVE }
+    /* free_tm -> { INVALID }
+    /************************************************************************/
+    time_t alloc_tm;
+    time_t last_visit_tm;
+    time_t free_tm;
 } SPIDER_CONN_META_INFO;
