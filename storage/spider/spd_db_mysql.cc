@@ -1542,8 +1542,9 @@ int spider_db_mysql::exec_query(
     char port_buf[10];
     const char *tgt_str = conn->tgt_host;
     uint32 tgt_len = conn->tgt_host_length;
+	// 长度加上10，表示端口
     spider_string tmp_query_str(length + conn->tgt_wrapper_length +
-      tgt_len + (SPIDER_SQL_SPACE_LEN * 2));
+      tgt_len + (SPIDER_SQL_SPACE_LEN * 2) + 10);
 
     snprintf(port_buf, sizeof(port_buf), "%ld", conn->tgt_port);
     tmp_query_str.init_calc_mem(230);
