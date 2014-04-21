@@ -139,12 +139,12 @@ my_hash_delegate_nargs(HASH *hash, my_hash_delegate_func_nargs func, ...)
 {
     HASH_LINK *data=dynamic_element(&hash->array,0,HASH_LINK*);
     HASH_LINK *end= data + hash->records;
-    va_list args;
-    va_start(args, func);
-    while (data < end)
+    while (data < end) {
+        va_list args;
+        va_start(args, func);
         (*func)((data++)->data, hash, args);
-
-    va_end(args);
+        va_end(args);
+    } 
 }
 
 /*
