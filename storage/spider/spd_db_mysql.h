@@ -99,7 +99,8 @@ public:
     ha_spider *spider,
     spider_string *str,
     const char *alias,
-    uint alias_length
+    uint alias_length,
+    CHARSET_INFO *field_charset
   );
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
   int open_item_sum_func(
@@ -107,7 +108,8 @@ public:
     ha_spider *spider,
     spider_string *str,
     const char *alias,
-    uint alias_length
+    uint alias_length,
+    CHARSET_INFO *field_charset
   );
 #endif
   int append_escaped_util(

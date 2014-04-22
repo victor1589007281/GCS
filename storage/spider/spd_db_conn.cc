@@ -7573,6 +7573,23 @@ int spider_db_flush_logs(
   DBUG_RETURN(0);
 }
 
+int spider_db_print_item_type_and_check_charset(
+  Item *item,
+  ha_spider *spider,
+  spider_string *str,
+  const char *alias,
+  uint alias_length,
+  uint dbton_id,
+  CHARSET_INFO *field_charset
+)
+{
+    int err = spider_db_check_invalid_charset(item, spider);
+    if (err)
+        return err;
+
+    return spider_db_print_item_type(item, spider, str, alias, alias_length, dbton_id, field_charset);
+}
+
 int spider_db_print_item_type(
   Item *item,
   ha_spider *spider,
@@ -7580,6 +7597,19 @@ int spider_db_print_item_type(
   const char *alias,
   uint alias_length,
   uint dbton_id
+)
+{
+    return spider_db_print_item_type(item, spider, str, alias, alias_length, dbton_id, NULL);
+}
+
+int spider_db_print_item_type(
+  Item *item,
+  ha_spider *spider,
+  spider_string *str,
+  const char *alias,
+  uint alias_length,
+  uint dbton_id,
+  CHARSET_INFO *field_charset
 ) {
   DBUG_ENTER("spider_db_print_item_type");
   DBUG_PRINT("info",("spider COND type=%d", item->type()));
@@ -7587,15 +7617,15 @@ int spider_db_print_item_type(
   {
     case Item::FUNC_ITEM:
       DBUG_RETURN(spider_db_open_item_func((Item_func *) item, spider, str,
-        alias, alias_length, dbton_id));
+        alias, alias_length, dbton_id, field_charset));
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
     case Item::SUM_FUNC_ITEM:
       DBUG_RETURN(spider_db_open_item_sum_func((Item_sum *)item, spider, str,
-        alias, alias_length, dbton_id));
+        alias, alias_length, dbton_id, field_charset));
 #endif
     case Item::COND_ITEM:
       DBUG_RETURN(spider_db_open_item_cond((Item_cond *) item, spider, str,
-        alias, alias_length, dbton_id));
+        alias, alias_length, dbton_id, field_charset));
     case Item::FIELD_ITEM:
       DBUG_RETURN(spider_db_open_item_field((Item_field *) item, spider, str,
         alias, alias_length, dbton_id));
@@ -7607,7 +7637,7 @@ int spider_db_print_item_type(
         alias, alias_length, dbton_id));
     case Item::STRING_ITEM:
       DBUG_RETURN(spider_db_open_item_string(item, spider, str,
-        alias, alias_length, dbton_id));
+        alias, alias_length, dbton_id, field_charset));
     case Item::INT_ITEM:
     case Item::REAL_ITEM:
     case Item::DECIMAL_ITEM:
@@ -7650,7 +7680,8 @@ int spider_db_open_item_cond(
   spider_string *str,
   const char *alias,
   uint alias_length,
-  uint dbton_id
+  uint dbton_id,
+  CHARSET_INFO *field_charset
 ) {
   int error_num = 0;
   List_iterator_fast<Item> lif(*(item_cond->argument_list()));
@@ -7670,8 +7701,8 @@ restart_first:
   {
     if (str)
       restart_pos = str->length();
-    if ((error_num = spider_db_print_item_type(item, spider, str,
-      alias, alias_length, dbton_id)))
+    if ((error_num = spider_db_print_item_type_and_check_charset(item, spider, str,
+      alias, alias_length, dbton_id, field_charset)))
     {
       if (
         str &&
@@ -7704,8 +7735,8 @@ restart_first:
       str->q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
     }
 
-    if ((error_num = spider_db_print_item_type(item, spider, str,
-      alias, alias_length, dbton_id)))
+    if ((error_num = spider_db_print_item_type_and_check_charset(item, spider, str,
+      alias, alias_length, dbton_id, field_charset)))
     {
       if (
         str &&
@@ -7733,11 +7764,12 @@ int spider_db_open_item_func(
   spider_string *str,
   const char *alias,
   uint alias_length,
-  uint dbton_id
+  uint dbton_id,
+  CHARSET_INFO *field_charset
 ) {
   DBUG_ENTER("spider_db_open_item_func");
   DBUG_RETURN(spider_dbton[dbton_id].db_util->open_item_func(
-    item_func, spider, str, alias, alias_length));
+    item_func, spider, str, alias, alias_length, field_charset));
 }
 
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
@@ -7747,11 +7779,12 @@ int spider_db_open_item_sum_func(
   spider_string *str,
   const char *alias,
   uint alias_length,
-  uint dbton_id
+  uint dbton_id,
+  CHARSET_INFO *field_charset
 ) {
   DBUG_ENTER("spider_db_open_item_func");
   DBUG_RETURN(spider_dbton[dbton_id].db_util->open_item_sum_func(
-    item_sum, spider, str, alias, alias_length));
+    item_sum, spider, str, alias, alias_length, field_charset));
 }
 #endif
 
@@ -7943,7 +7976,8 @@ int spider_db_open_item_string(
   spider_string *str,
   const char *alias,
   uint alias_length,
-  uint dbton_id
+  uint dbton_id,
+  CHARSET_INFO* field_charset
 ) {
   DBUG_ENTER("spider_db_open_item_string");
   if (str)
@@ -7959,15 +7993,27 @@ int spider_db_open_item_string(
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     tmp_str.mem_calc(); */
     //str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
-    item->print(str->get_str(), (enum_query_type)QT_TO_SPECIFIED_CHARSET);
     /*if (
       //append_escaped(str->get_str(), tmp_str2) ||
       str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN)
     )
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     */
-    str->mem_calc();
+    //str->mem_calc();
     //str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+
+    assert(!field_charset || my_charset_same(field_charset, str->charset()) || my_charset_same(field_charset, &my_charset_bin));
+
+    // 对于blob等二进制内容，字符串中的内容不需转换为表字符集
+    if (field_charset && my_charset_same(field_charset, &my_charset_bin))
+    {
+        item->print(str->get_str(), (enum_query_type)QT_ORDINARY);
+    }
+    else
+    {
+        item->print(str->get_str(), (enum_query_type)QT_TO_SPECIFIED_CHARSET);
+    }
+    str->mem_calc();
   }
   DBUG_RETURN(0);
 }
@@ -8008,7 +8054,7 @@ int spider_db_open_item_cache(
   {
     case STRING_RESULT:
       DBUG_RETURN(spider_db_open_item_string(item_cache, spider, str,
-        alias, alias_length, dbton_id));
+        alias, alias_length, dbton_id, NULL));
     case ROW_RESULT:
       {
         int error_num;
@@ -8093,6 +8139,106 @@ int spider_db_append_condition(
   DBUG_RETURN(0);
 }
 
+/*
+    获取item_field的字符集
+    
+    如果是binary/varbinary/char/varchar/blob/text等类型，返回其字符集
+
+    否则返回NULL
+
+*/
+CHARSET_INFO*
+spider_get_item_field_charset(
+    Item* item,
+    ha_spider* spider
+)
+{
+    switch (item->type())
+    {
+    case Item::FIELD_ITEM:
+    {
+        Item_field* item_field=(Item_field*)item;
+
+        //item->collation.collation
+        if (item_field->result_type() == STRING_RESULT)
+        {
+            TABLE*  table = spider ? spider->get_table() : NULL;
+            TABLE_SHARE* table_share = table ? table->s : NULL;
+
+            THD* thd = current_thd;
+
+            // 如果collation_connection与表字符集一致，就不需检查列字符集
+            if (table_share && table_share->table_charset && 
+                my_charset_same(thd->variables.collation_connection, table_share->table_charset))
+                return NULL;
+
+            Field* field = item_field->field;
+            // 目前只处理这些类型
+            if (field &&
+                (
+                field->type() == MYSQL_TYPE_VARCHAR || 
+                field->type() == MYSQL_TYPE_TINY_BLOB ||
+                field->type() == MYSQL_TYPE_MEDIUM_BLOB  || 
+                field->type() == MYSQL_TYPE_LONG_BLOB ||
+                field->type() == MYSQL_TYPE_BLOB ||        
+                field->type() == MYSQL_TYPE_VAR_STRING ||
+                field->type() == MYSQL_TYPE_STRING       
+                )
+                /*
+                MYSQL_TYPE_NULL         
+
+                // my_charset_numeric
+                MYSQL_TYPE_TIMESTAMP
+                MYSQL_TYPE_DATE         
+                MYSQL_TYPE_TIME
+                MYSQL_TYPE_DATETIME         
+                MYSQL_TYPE_NEWDATE           
+
+                // TODO
+                MYSQL_TYPE_BIT   
+                MYSQL_TYPE_ENUM
+                MYSQL_TYPE_SET             
+                MYSQL_TYPE_GEOMETRY       
+                */
+                )
+            {
+                return item_field->field->charset();
+            }
+        }
+
+        break;
+    }
+
+    default:
+        return NULL;
+    }
+    
+    return NULL;
+}
+
+
+uint 
+spider_db_check_invalid_charset(
+    Item      *item,
+    ha_spider *spider
+)
+{
+    TABLE*  table = spider ? spider->get_table() : NULL;
+    TABLE_SHARE* table_share = table ? table->s : NULL;
+
+    if (!table_share || !table_share->table_charset)
+        return 0;
+    
+    CHARSET_INFO* ics = spider_get_item_field_charset(item, spider);
+
+    /* 存储不同字符集，返回false */
+    if (ics && !my_charset_same(ics, table_share->table_charset))
+        return ER_SPIDER_COND_SKIP_NUM;
+
+    return 0;
+}
+
+
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
 int spider_db_append_update_columns(
   ha_spider *spider,
@@ -8127,7 +8273,7 @@ int spider_db_append_update_columns(
       str->q_append(SPIDER_SQL_EQUAL_STR, SPIDER_SQL_EQUAL_LEN);
     }
     if ((error_num = spider_db_print_item_type(
-      (Item *) value, spider, str, alias, alias_length, dbton_id)))
+      (Item *) value, spider, str, alias, alias_length, dbton_id, spider_get_item_field_charset(field, spider))))
       DBUG_RETURN(error_num);
     if (str)
     {

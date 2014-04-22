@@ -792,13 +792,34 @@ int spider_db_print_item_type(
   uint dbton_id
 );
 
+int spider_db_print_item_type(
+  Item *item,
+  ha_spider *spider,
+  spider_string *str,
+  const char *alias,
+  uint alias_length,
+  uint dbton_id,
+  CHARSET_INFO *field_charset
+);
+
+int spider_db_print_item_type_and_check_charset(
+  Item *item,
+  ha_spider *spider,
+  spider_string *str,
+  const char *alias,
+  uint alias_length,
+  uint dbton_id,
+  CHARSET_INFO *field_charset
+);
+
 int spider_db_open_item_cond(
   Item_cond *item_cond,
   ha_spider *spider,
   spider_string *str,
   const char *alias,
   uint alias_length,
-  uint dbton_id
+  uint dbton_id,
+  CHARSET_INFO *field_charset
 );
 
 int spider_db_open_item_func(
@@ -807,7 +828,8 @@ int spider_db_open_item_func(
   spider_string *str,
   const char *alias,
   uint alias_length,
-  uint dbton_id
+  uint dbton_id,
+  CHARSET_INFO *field_charset
 );
 
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
@@ -817,7 +839,8 @@ int spider_db_open_item_sum_func(
   spider_string *str,
   const char *alias,
   uint alias_length,
-  uint dbton_id
+  uint dbton_id,
+  CHARSET_INFO *field_charset
 );
 #endif
 
@@ -863,7 +886,8 @@ int spider_db_open_item_string(
   spider_string *str,
   const char *alias,
   uint alias_length,
-  uint dbton_id
+  uint dbton_id,
+  CHARSET_INFO *field_charset
 );
 
 int spider_db_open_item_int(
@@ -903,6 +927,12 @@ int spider_db_append_update_columns(
 
 uint spider_db_check_ft_idx(
   Item_func *item_func,
+  ha_spider *spider
+);
+
+uint 
+spider_db_check_invalid_charset(
+  Item      *item,
   ha_spider *spider
 );
 
