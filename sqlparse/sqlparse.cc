@@ -831,8 +831,8 @@ query_parse_audit_tsqlparse(
 				{
 					pra->result_type = 1;
 					pra->warning_type = CREATE_TABLE_NOT_INNODB;
+					break;
 				}
-				break;
 			}
 
 			/* 建表不带主键告警 */
@@ -908,6 +908,8 @@ query_parse_audit_tsqlparse(
 					case MYSQL_TYPE_VARCHAR:
 					case MYSQL_TYPE_VAR_STRING:
 					case MYSQL_TYPE_STRING:
+					case MYSQL_TYPE_ENUM:
+					case MYSQL_TYPE_SET:
 
 						if(cur_field->charset && cur_field->charset->csname)
 						{
