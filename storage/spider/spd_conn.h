@@ -342,4 +342,4 @@ SPIDER_CONN_META_INFO *spider_create_conn_meta(SPIDER_CONN *);
 
 my_bool spider_add_conn_meta_info(SPIDER_CONN *);
 
-my_bool spider_update_conn_meta_info(SPIDER_CONN *, uint); 
+void spider_update_conn_meta_info(SPIDER_CONN *, uint); 

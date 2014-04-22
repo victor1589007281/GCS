@@ -69,10 +69,13 @@ static ST_FIELD_INFO spider_i_s_alloc_mem_fields_info[] =
 static ST_FIELD_INFO spider_i_s_conn_pool_info[] =
 {
   {"CONN_ID", 10, MYSQL_TYPE_LONG, 0, MY_I_S_UNSIGNED, "conn_id", SKIP_OPEN_TABLE},
-  {"REMOTE", 32, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "remote", SKIP_OPEN_TABLE},
-  {"ALLOC_TIME", 32, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "start_time", SKIP_OPEN_TABLE},
-  {"LAST_VISIT_TIME", 32, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "last_visit_time", SKIP_OPEN_TABLE},
-  {"FREE_TIME", 32, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "end_time", SKIP_OPEN_TABLE},
+  {"USER", 64, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "user", SKIP_OPEN_TABLE},
+  {"IP", 64, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "ip", SKIP_OPEN_TABLE},
+  {"PORT", 10, MYSQL_TYPE_LONG, 0, MY_I_S_UNSIGNED, "port", SKIP_OPEN_TABLE},
+  {"ALLOC_TIME", 32, MYSQL_TYPE_DATETIME, 0, MY_I_S_MAYBE_NULL, "start_time", SKIP_OPEN_TABLE},
+  {"LAST_VISIT_TIME", 32, MYSQL_TYPE_DATETIME, 0, MY_I_S_MAYBE_NULL, "last_visit_time", SKIP_OPEN_TABLE},
+  {"FREE_TIME", 32, MYSQL_TYPE_DATETIME, 0, MY_I_S_MAYBE_NULL, "end_time", SKIP_OPEN_TABLE},
+  {"REUSAGE_COUNTER", 10, MYSQL_TYPE_LONGLONG, 0, MY_I_S_UNSIGNED, "reusage_counter", SKIP_OPEN_TABLE},
   /* active/idle/invalid */
   {"STATUS", 16, MYSQL_TYPE_STRING, 0, MY_I_S_MAYBE_NULL, "status", SKIP_OPEN_TABLE},
   {NULL, 0,  MYSQL_TYPE_STRING, 0, 0, NULL, 0}
@@ -136,28 +139,31 @@ static void my_fill_field(void *entry, void *data1, void *data2) {
         table->field[1]->set_notnull();
         table->field[2]->set_notnull();
         table->field[3]->set_notnull();
-        table->field[4]->set_notnull();
-        table->field[5]->set_notnull();
-        table->field[6]->set_notnull();
-        table->field[7]->set_notnull();
-        table->field[0]->store(meta->conn_id, TRUE);
+        
+        table->field[0]->store(meta->conn_id, true);
         table->field[1]->store(meta->remote_user_str, strlen(meta->remote_user_str), system_charset_info);
         table->field[2]->store(meta->remote_ip_str, strlen(meta->remote_ip_str), system_charset_info);
-        char port_buf[SPIDER_CONN_META_BUF_LEN + 1];
-        if (snprintf(port_buf, SPIDER_CONN_META_BUF_LEN, "%ld", meta->remote_port) < SPIDER_CONN_META_BUF_LEN) {
-            table->field[3]->store(port_buf, strlen(port_buf), system_charset_info);
+        table->field[3]->store(meta->remote_port, true);
+        MYSQL_TIME ts;
+        if (meta->alloc_tm > 0) {
+            table->field[4]->set_notnull();
+            spider_make_mysql_time(&ts, &meta->alloc_tm);
+            table->field[4]->store_time(&ts, MYSQL_TIMESTAMP_DATETIME);
         }
-        char time_buf[(SPIDER_CONN_META_BUF_LEN << 2) + 1];
-        if (spider_time_to_str(time_buf, SPIDER_CONN_META_BUF_LEN << 2, &meta->alloc_tm)) {
-            table->field[4]->store(time_buf, strlen(time_buf), system_charset_info);
+        if (meta->last_visit_tm > 0) {
+            table->field[5]->set_notnull();
+            spider_make_mysql_time(&ts, &meta->last_visit_tm);
+            table->field[5]->store_time(&ts, MYSQL_TIMESTAMP_DATETIME);
         }
-        if (spider_time_to_str(time_buf, SPIDER_CONN_META_BUF_LEN << 2, &meta->last_visit_tm)) {
-            table->field[5]->store(time_buf, strlen(time_buf), system_charset_info);
+        if (meta->free_tm > 0) {
+            table->field[6]->set_notnull();
+            spider_make_mysql_time(&ts, &meta->free_tm);
+            table->field[6]->store_time(&ts, MYSQL_TIMESTAMP_DATETIME);
         }
-        if (spider_time_to_str(time_buf, SPIDER_CONN_META_BUF_LEN << 2, &meta->free_tm)) {
-            table->field[6]->store(time_buf, strlen(time_buf), system_charset_info);
-        }
-        table->field[7]->store(SPIDER_CONN_META_STATUS_TO_STR(meta), strlen(SPIDER_CONN_META_STATUS_TO_STR(meta)), system_charset_info);
+        table->field[7]->set_notnull();
+        table->field[7]->store(meta->reusage_counter, true);
+        table->field[8]->set_notnull();
+        table->field[8]->store(SPIDER_CONN_META_STATUS_TO_STR(meta), strlen(SPIDER_CONN_META_STATUS_TO_STR(meta)), system_charset_info);
     }
 
     if (schema_table_store_record(thd, table)) {
@@ -167,18 +173,15 @@ static void my_fill_field(void *entry, void *data1, void *data2) {
     DBUG_VOID_RETURN;
 }
 
-static void my_record_and_fill_field(void *entry, ...)
+static void my_record_and_fill_field(void *entry, void *pool, va_list args)
 {
     DBUG_ENTER("my_record_and_fill_field");
-    va_list args;
-    va_start(args, entry);
     SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *)entry;
-    HASH *hash = va_arg(args, HASH *);
+    HASH *hash = (HASH *)pool;
     TABLE *table = va_arg(args, TABLE *);
     THD *thd = va_arg(args, THD *);
     DYNAMIC_STRING_ARRAY *invalid_meta_hash_value_arr = va_arg(args, DYNAMIC_STRING_ARRAY *);
     DYNAMIC_STRING_ARRAY *invalid_meta_key_arr = va_arg(args, DYNAMIC_STRING_ARRAY *);
-    va_end(args);
     if (SPIDER_CONN_IS_INVALID(meta)) {
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
         append_dynamic_string_array(invalid_meta_hash_value_arr, (char *) &meta->key_hash_value, sizeof(meta->key_hash_value));
@@ -187,7 +190,7 @@ static void my_record_and_fill_field(void *entry, ...)
         append_dynamic_string_array(invalid_meta_hash_value_arr, (char *) &hash_value, sizeof(hash_value));
 #endif
         append_dynamic_string_array(invalid_meta_key_arr, (char *)meta->key, meta->key_len);
-    } 
+    }
 
     my_fill_field(meta, table, thd);
     DBUG_VOID_RETURN;
@@ -237,26 +240,20 @@ static int spider_i_s_conn_pool_fill_table(
       SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *) my_hash_search(&spider_conn_meta_info, meta_key, meta_key_len);            
 #endif
       if (meta) {
-#ifdef __WIN__
-          SYSTEMTIME cur_tm;
-#else
-          time_t cur_tm;
-#endif  
-          spider_current_time(&cur_tm);
-          /* Compute cur_tm minus meta->free_tm in seconds unit. */
-          if (spider_diff_seconds(&meta->free_tm, &cur_tm) >= spider_param_conn_meta_max_invalid_duration()) {
+          time_t cur_tm = time(NULL);
+          if (cur_tm - meta->free_tm >= spider_param_conn_meta_max_invalid_duration()) {
 #ifdef HASH_UPDATE_WITH_HASH_VALUE
               my_hash_delete_with_hash_value (&spider_conn_meta_info,
                   meta->key_hash_value, (uchar *) meta);
 #else
               my_hash_delete (&spider_conn_meta_info, (uchar *) meta);
 #endif
+              if (meta) {
+                  spider_free_conn_meta(meta);
+              }
           }
       }
       pthread_mutex_unlock(&spider_conn_meta_mutex);
-      if (meta) {
-          spider_free_conn_meta(meta);
-      }
   }
 
   free_dynamic_string_array(&invalid_meta_hash_value_arr);
