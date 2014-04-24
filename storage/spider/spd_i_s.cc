@@ -248,9 +248,6 @@ static int spider_i_s_conn_pool_fill_table(
 #else
               my_hash_delete (&spider_conn_meta_info, (uchar *) meta);
 #endif
-              if (meta) {
-                  spider_free_conn_meta(meta);
-              }
           }
       }
       pthread_mutex_unlock(&spider_conn_meta_mutex);
