@@ -224,6 +224,7 @@ For gztab
 #define GB_IN_BYTES ((my_ulonglong)1 << 30) /* harryczhang: 1g=1024*1024*1024 bytes*/
 #define MB_IN_BYTES ((my_ulonglong)1 << 20) /* harryczhang: 1m=1024*1024 bytes*/
 #define KB_IN_BYTES ((my_ulonglong)1 << 10) /* harryczhang: 1k=1024 bytes*/
+static int do_show_processlist(MYSQL *);
 
 #ifdef __WIN__
 #define ZFILE gzFile
@@ -1415,9 +1416,10 @@ sig_handler handle_sig_timeout(int sig)
           mysql_thread_id(&mysql_connection));
   fprintf(stderr, "kill query -- sending \"%s\" to server ...\n", kill_buffer);
   ret=mysql_real_query(kill_mysql, kill_buffer, (uint) strlen(kill_buffer));
-  mysql_close(kill_mysql);
   fprintf(stderr, "kill query return: %d.\n",ret);
-
+  ret=do_show_processlist(kill_mysql);
+  fprintf(stderr, "show processlist return: %d.\n",ret);
+  mysql_close(kill_mysql);
   return;
 
 err:
@@ -5881,6 +5883,32 @@ static int do_show_slave_status(MYSQL *mysql_con)
   return 0;
 }
 
+static int do_show_processlist(MYSQL *mysql_con)
+{
+  MYSQL_RES *res= NULL;
+  if (mysql_query_with_error_report(mysql_con, &res, "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
+      "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > 30 AND USER NOT IN ('REPL', 'SYSTEM USER') "
+      "AND COMMAND != SLEEP"))
+  {
+    if (!ignore_errors)
+    {
+      my_printf_error(0, "Error: Query processlist error", MYF(0));
+    }
+    mysql_free_result(res);
+    return 1;
+  }
+  else
+  {
+    MYSQL_ROW row= mysql_fetch_row(res);
+    if (row)
+    {
+        fprintf(stderr, "%ull %s %s %s %s %ull %s %s\n", row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]);
+    }
+    mysql_free_result(res);
+  }
+  return 0;
+}
+
 static int do_start_slave_sql(MYSQL *mysql_con)
 {
   MYSQL_RES *slave;
@@ -5916,18 +5944,18 @@ static int do_start_slave_sql(MYSQL *mysql_con)
 
 static int do_flush_tables_read_lock(MYSQL *mysql_con)
 {
-  my_bool timeout_flag = FALSE;
-  if (opt_flush_wait_timeout > 0 &&
-      mysql_get_server_version(mysql) >= 50503)
-  {
-    char buf[1024];
+//  my_bool timeout_flag = FALSE;
+//  if (opt_flush_wait_timeout > 0 &&
+//      mysql_get_server_version(mysql) >= 50503)
+//  {
+//    char buf[1024];
 
-    timeout_flag = TRUE;
-    sprintf(buf, "/*!50503 SET lock_wait_timeout = %u; */", opt_flush_wait_timeout);
-    if (mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET @OLD_FLUSH_WAIT_TIMEOUT = @@lock_wait_timeout; */") || 
-        mysql_query_with_error_report(mysql_con, 0, buf))
-        return 1;
-  }
+//    timeout_flag = TRUE;
+//    sprintf(buf, "/*!50503 SET lock_wait_timeout = %u */", opt_flush_wait_timeout);
+//    if (mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET @OLD_FLUSH_WAIT_TIMEOUT = @@lock_wait_timeout; */") || 
+//        mysql_query_with_error_report(mysql_con, 0, buf))
+//        return 1;
+//  }
 
   /*
     We do first a FLUSH TABLES. If a long update is running, the FLUSH TABLES
@@ -5942,21 +5970,13 @@ static int do_flush_tables_read_lock(MYSQL *mysql_con)
                                     ((opt_master_data != 0) ? 
                                         "FLUSH /*!40101 LOCAL */ TABLES" : 
                                         "FLUSH TABLES"), opt_flush_wait_timeout) ||
-     mysql_query_with_timeout_report(mysql_con, 0, 
-                                    ((opt_master_data != 0) ? 
-                                        "FLUSH /*!40101 LOCAL */ TABLES" : 
-                                        "FLUSH TABLES"), opt_flush_wait_timeout) ||
-     mysql_query_with_timeout_report(mysql_con, 0, 
-                                    ((opt_master_data != 0) ? 
-                                        "FLUSH /*!40101 LOCAL */ TABLES" : 
-                                        "FLUSH TABLES"), opt_flush_wait_timeout) ||
       mysql_query_with_timeout_report(mysql_con, 0,
                                     "FLUSH TABLES WITH READ LOCK", opt_flush_wait_timeout) )
     return 1;
 
-  if (timeout_flag && 
-        mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET lock_wait_timeout = @OLD_FLUSH_WAIT_TIMEOUT; */"))
-      return 1;
+ // if (timeout_flag && 
+ //       mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET lock_wait_timeout = @OLD_FLUSH_WAIT_TIMEOUT */"))
+ //     return 1;
 
   return 0;
 }
