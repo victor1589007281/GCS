@@ -9779,6 +9779,38 @@ ha_partition::if_support_advance_upgrade()
         DBUG_RETURN(is_in_partition);	
 }
 
+//add by will. 在spider上限制列上指定字符类型
+bool ha_partition::is_support_column_charset()
+{
+	DBUG_ENTER("ha_partition::is_support_column_charset");	
+	handler ** file;
+	bool    is_support_column_charset = TRUE;
+
+	for(file=m_file; *file; file++)
+	{
+		is_support_column_charset = (*file)->is_support_column_charset();
+		if(!is_support_column_charset) 
+			DBUG_RETURN(is_support_column_charset);
+	}	
+	DBUG_RETURN(is_support_column_charset);	
+}
+
+// will. spider存储引擎限制使用auto_increment
+bool ha_partition::is_support_auto_increment()
+{
+	DBUG_ENTER("ha_partition::is_support_auto_increment");	
+	handler ** file;
+	bool    is_support_auto_increment = TRUE;
+
+	for(file=m_file; *file; file++)
+	{
+		is_support_auto_increment = (*file)->is_support_auto_increment();
+		if(!is_support_auto_increment) 
+			DBUG_RETURN(is_support_auto_increment);
+	}	
+	DBUG_RETURN(is_support_auto_increment);	
+}
+
 /* partition inplace alter table */
 int
 ha_partition::inplace_alter_table(

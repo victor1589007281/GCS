@@ -2816,13 +2816,50 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
   List_iterator<Create_field> it(alter_info->create_list);
   List_iterator<Create_field> it2(alter_info->create_list);
   uint total_uneven_bit_length= 0;
+  my_bool is_support_column_charset = TRUE;    // 存储引擎是否支持列在指定字符集
+  my_bool is_support_auto_increment = TRUE;  // 存储引擎是否支持自增列
   DBUG_ENTER("mysql_prepare_create_table");
+
+  is_support_column_charset = file->is_support_column_charset();
+  is_support_auto_increment = file->is_support_auto_increment();
 
   select_field_pos= alter_info->create_list.elements - select_field_count;
   null_fields=blob_columns=0;
   create_info->varchar= 0;
   max_key_length= file->max_key_length();
 
+
+  // 对spider存储引擎，不能在列上指定charset；
+  if (!is_support_column_charset)
+  {// 在spider存储引擎时，列在禁止指定字符集
+	  List_iterator<Create_field> it_field(alter_info->create_list);
+	  Create_field *cur_field = NULL;
+	  while(!!(cur_field = it_field++))
+	  {
+		  if(cur_field->charset && cur_field->charset->csname)
+		  {// 对列指定字符类型
+			  my_error(ER_COLUMN_CAN_NOT_CHARSET_IN_CURRENT_STORAGE, MYF(0), cur_field->field_name);
+			  DBUG_RETURN(1);
+		  }
+	  }
+  }
+
+// 在spider中，限制使用auto_increment；
+  if(!is_support_auto_increment)
+  {
+	  List_iterator<Create_field> it_field(alter_info->create_list);
+	  Create_field *cur_field = NULL;
+	  while(!!(cur_field = it_field++))
+	  {
+		  if ( cur_field->flags & AUTO_INCREMENT_FLAG )
+		  {// 列中使用中auto_increment
+			  my_error(ER_COLUMN_CAN_NOT_AUTOINCREMENT_IN_CURRENT_STORAGE, MYF(0), cur_field->field_name);
+			  DBUG_RETURN(1);
+		  }
+	  }
+  }
+
+ 
   for (field_no=0; (sql_field=it++) ; field_no++)
   {
     CHARSET_INFO *save_cs;
@@ -2832,6 +2869,7 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
       which was set in the parser. This is necessary if we're
       executing a prepared statement for the second time.
     */
+	 /*  如果字段没有指定字符信息，则在此处继承表的字符信息  */
     sql_field->length= sql_field->char_length;
     save_cs= sql_field->charset= get_sql_field_charset(sql_field,
                                                        create_info);

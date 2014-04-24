@@ -9035,6 +9035,7 @@ int ha_spider::direct_update_rows_init(
     }
 
     trx->direct_update_count++;
+	thd->status_var.global_direct_update++;
     DBUG_PRINT("info",("spider OK"));
     DBUG_RETURN(0);
   }
@@ -9067,6 +9068,7 @@ int ha_spider::direct_update_rows_init(
     }
 #endif
     trx->direct_update_count++;
+	thd->status_var.global_direct_update++;
     DBUG_PRINT("info",("spider OK"));
     DBUG_RETURN(0);
   }
@@ -9302,6 +9304,7 @@ int ha_spider::direct_delete_rows_init(
     }
 
     trx->direct_delete_count++;
+	thd->status_var.global_direct_delete++;
     DBUG_PRINT("info",("spider OK"));
     DBUG_RETURN(0);
   }
@@ -9319,6 +9322,7 @@ int ha_spider::direct_delete_rows_init(
     do_direct_update
   ) {
     trx->direct_delete_count++;
+	thd->status_var.global_direct_delete++;
     DBUG_PRINT("info",("spider OK"));
     DBUG_RETURN(0);
   }

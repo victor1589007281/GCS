@@ -2558,6 +2558,16 @@ public:
    notify_table_changed();
  }
 
+ //add by will. 用于在spider上限制列上指定字符类型
+ virtual bool is_support_column_charset()
+ {
+	 return true;
+ }
+ virtual bool is_support_auto_increment()
+ {
+	 return true;
+ }
+
 protected:
   /* Service methods for use by storage engines. */
   void ha_statistic_increment(ulong SSV::*offset) const;

@@ -6514,6 +6514,12 @@ ER_FIELD_CAN_NOT_COMPRESSED_IN_CURRENT_ENGINESS
 
 ER_FIELD_CAN_NOT_COMPRESSED_IN_CURRENT_FORMAT
   eng "Field '%-.192s' can not have compressed property in this row format"
+
+ER_COLUMN_CAN_NOT_CHARSET_IN_CURRENT_STORAGE
+  eng "Field '%-.192s' can not charset for column in this storage"
+
+ER_COLUMN_CAN_NOT_AUTOINCREMENT_IN_CURRENT_STORAGE
+  eng "Field '%-.192s' can not set auto_increment for column in this storage"
 #
 #  End of 5.5 error messages.
 #

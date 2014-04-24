@@ -313,6 +313,12 @@ public:
   virtual bool check_if_supported_inplace_alter(THD *thd, TABLE *table,Alter_inplace_info *inplace_info);
   virtual bool if_support_advance_upgrade();
 
+  //add by will. 用于在spider上限制列上指定字符类型
+  bool is_support_column_charset();
+
+  // 用于限制在spider上使用auto_increment
+  bool is_support_auto_increment();
+  
 
   /* fast inplace alter partition table,we just support fast add column(s) yet */
   int inplace_alter_table(

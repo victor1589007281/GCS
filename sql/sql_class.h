@@ -570,6 +570,8 @@ typedef struct system_status_var
   ulong com_stmt_fetch;
   ulong com_stmt_reset;
   ulong com_stmt_close;
+  ulong global_direct_update;
+  ulong global_direct_delete;
   /*
     Number of statements sent from the client
   */
@@ -577,6 +579,7 @@ typedef struct system_status_var
 
   ulonglong bytes_received;
   ulonglong bytes_sent;
+
   /*
     IMPORTANT!
     SEE last_system_status_var DEFINITION BELOW.
