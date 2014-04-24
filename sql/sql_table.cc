@@ -2836,11 +2836,40 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	  Create_field *cur_field = NULL;
 	  while(!!(cur_field = it_field++))
 	  {
-		  if(cur_field->charset && cur_field->charset->csname)
-		  {// 对列指定字符类型
-			  my_error(ER_COLUMN_CAN_NOT_CHARSET_IN_CURRENT_STORAGE, MYF(0), cur_field->field_name);
-			  DBUG_RETURN(1);
+
+		  switch(cur_field->sql_type)
+		  {
+		  case MYSQL_TYPE_BLOB:
+		  case MYSQL_TYPE_TINY_BLOB:
+		  case MYSQL_TYPE_MEDIUM_BLOB:
+		  case MYSQL_TYPE_LONG_BLOB:
+			  if(cur_field->charset && cur_field->charset->csname)
+			  {// 列上指定了字符集
+				  if(strcmp(cur_field->charset->csname, "binary") && strcmp(cur_field->charset->csname, create_info->default_table_charset->csname))
+				  { // 对于blob类型，必须为binary字符；对于text必须和表的字符集保持一致
+					  my_error(ER_COLUMN_CAN_NOT_CHARSET_IN_CURRENT_STORAGE, MYF(0), cur_field->field_name);
+					  DBUG_RETURN(1);
+				  }
+			  }
+			  break;
+		  case MYSQL_TYPE_VARCHAR:
+		  case MYSQL_TYPE_VAR_STRING:
+		  case MYSQL_TYPE_STRING:
+		  case MYSQL_TYPE_ENUM:
+		  case MYSQL_TYPE_SET:
+			  if(cur_field->charset && cur_field->charset->csname)
+			  {// 列上指定了字符集
+				  if(strcmp(cur_field->charset->csname, create_info->default_table_charset->csname))
+				  { // 并且指定的字符集与table 的字符集不一致
+					  my_error(ER_COLUMN_CAN_NOT_CHARSET_IN_CURRENT_STORAGE, MYF(0), cur_field->field_name);
+					  DBUG_RETURN(1);
+				  }
+			  }
+			  break;
+		  default:
+			  break;
 		  }
+
 	  }
   }
 
