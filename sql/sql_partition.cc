@@ -1680,7 +1680,7 @@ bool check_part_func_fields(Field **ptr, bool ok_with_charsets)
     {
       CHARSET_INFO *cs= ((Field_str*)field)->charset();
       if (!ok_with_charsets ||
-          cs->mbmaxlen > 1 ||
+//          cs->mbmaxlen > 1 ||
           cs->strxfrm_multiply > 1)
       {
         DBUG_RETURN(TRUE);
@@ -1850,7 +1850,7 @@ bool fix_partition_func(THD *thd, TABLE *table,
        check_part_func_fields(part_info->part_field_array, TRUE)) ||
       (part_info->list_of_subpart_fields == FALSE &&
        part_info->is_sub_partitioned() &&
-       check_part_func_fields(part_info->subpart_field_array, TRUE)))
+      check_part_func_fields(part_info->subpart_field_array, TRUE)))
   {
     /*
       Range/List/HASH (but not KEY) and not COLUMNS or HASH subpartitioning
