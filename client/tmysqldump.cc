@@ -5889,7 +5889,7 @@ static int do_show_processlist(MYSQL *mysql_con)
   char buf[1024];
   if (my_snprintf(buf, sizeof(buf), "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
       "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > %u AND USER NOT IN ('REPL', 'SYSTEM USER') "
-      "AND COMMAND != SLEEP", opt_flush_wait_timeout) < 0) {
+      "AND COMMAND != 'SLEEP'", opt_flush_wait_timeout) < 0) {
     return 1;
   }
 
@@ -5905,14 +5905,14 @@ static int do_show_processlist(MYSQL *mysql_con)
   else
   {
     MYSQL_ROW row = NULL;
-    while (row = mysql_fetch_row(res)) {
-        fprintf(stderr, "%ull %s %s %s %s %ull %s %s\n", 
-            row[0] ? row[0] : 0, 
+    while ((row = mysql_fetch_row(res))) {
+        fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
+            row[0] ? (my_ulonglong)atol(row[0]) : 0, 
             row[1] ? row[1] : "NULL", 
             row[2] ? row[2] : "NULL", 
             row[3] ? row[3] : "NULL", 
             row[4] ? row[4] : "NULL", 
-            row[5] ? row[5] : 0, 
+            row[5] ? (my_ulonglong)atol(row[5]) : 0, 
             row[6] ? row[6] : "NULL", 
             row[7] ? row[7] : "NULL");
     }
