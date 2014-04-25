@@ -814,7 +814,7 @@ static void print_version(void)
 {
   printf("%s  Ver %s Distrib %s, for %s (%s)\n",my_progname,DUMP_VERSION,
          MYSQL_SERVER_VERSION,SYSTEM_TYPE,MACHINE_TYPE);
-  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.5");
+  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.6");
 } /* print_version */
 
 
@@ -5886,9 +5886,14 @@ static int do_show_slave_status(MYSQL *mysql_con)
 static int do_show_processlist(MYSQL *mysql_con)
 {
   MYSQL_RES *res= NULL;
-  if (mysql_query_with_error_report(mysql_con, &res, "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
-      "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > 30 AND USER NOT IN ('REPL', 'SYSTEM USER') "
-      "AND COMMAND != SLEEP"))
+  char buf[1024];
+  if (my_snprintf(buf, sizeof(buf), "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
+      "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > %u AND USER NOT IN ('REPL', 'SYSTEM USER') "
+      "AND COMMAND != SLEEP", opt_flush_wait_timeout) < 0) {
+    return 1;
+  }
+
+  if (mysql_query_with_error_report(mysql_con, &res, buf))
   {
     if (!ignore_errors)
     {
@@ -5899,10 +5904,17 @@ static int do_show_processlist(MYSQL *mysql_con)
   }
   else
   {
-    MYSQL_ROW row= mysql_fetch_row(res);
-    if (row)
-    {
-        fprintf(stderr, "%ull %s %s %s %s %ull %s %s\n", row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]);
+    MYSQL_ROW row = NULL;
+    while (row = mysql_fetch_row(res)) {
+        fprintf(stderr, "%ull %s %s %s %s %ull %s %s\n", 
+            row[0] ? row[0] : 0, 
+            row[1] ? row[1] : "NULL", 
+            row[2] ? row[2] : "NULL", 
+            row[3] ? row[3] : "NULL", 
+            row[4] ? row[4] : "NULL", 
+            row[5] ? row[5] : 0, 
+            row[6] ? row[6] : "NULL", 
+            row[7] ? row[7] : "NULL");
     }
     mysql_free_result(res);
   }
@@ -5965,7 +5977,6 @@ static int do_flush_tables_read_lock(MYSQL *mysql_con)
     and most client connections are stalled. Of course, if a second long
     update starts between the two FLUSHes, we have that bad stall.
   */
-  /* flush tables 3 times */
   if( mysql_query_with_timeout_report(mysql_con, 0, 
                                     ((opt_master_data != 0) ? 
                                         "FLUSH /*!40101 LOCAL */ TABLES" : 
