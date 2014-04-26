@@ -224,6 +224,7 @@ For gztab
 #define GB_IN_BYTES ((my_ulonglong)1 << 30) /* harryczhang: 1g=1024*1024*1024 bytes*/
 #define MB_IN_BYTES ((my_ulonglong)1 << 20) /* harryczhang: 1m=1024*1024 bytes*/
 #define KB_IN_BYTES ((my_ulonglong)1 << 10) /* harryczhang: 1k=1024 bytes*/
+static int do_show_processlist(MYSQL *);
 
 #ifdef __WIN__
 #define ZFILE gzFile
@@ -813,7 +814,7 @@ static void print_version(void)
 {
   printf("%s  Ver %s Distrib %s, for %s (%s)\n",my_progname,DUMP_VERSION,
          MYSQL_SERVER_VERSION,SYSTEM_TYPE,MACHINE_TYPE);
-  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.5");
+  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.6");
 } /* print_version */
 
 
@@ -1415,9 +1416,10 @@ sig_handler handle_sig_timeout(int sig)
           mysql_thread_id(&mysql_connection));
   fprintf(stderr, "kill query -- sending \"%s\" to server ...\n", kill_buffer);
   ret=mysql_real_query(kill_mysql, kill_buffer, (uint) strlen(kill_buffer));
-  mysql_close(kill_mysql);
   fprintf(stderr, "kill query return: %d.\n",ret);
-
+  ret=do_show_processlist(kill_mysql);
+  fprintf(stderr, "show processlist return: %d.\n",ret);
+  mysql_close(kill_mysql);
   return;
 
 err:
@@ -5881,6 +5883,44 @@ static int do_show_slave_status(MYSQL *mysql_con)
   return 0;
 }
 
+static int do_show_processlist(MYSQL *mysql_con)
+{
+  MYSQL_RES *res= NULL;
+  char buf[1024];
+  if (my_snprintf(buf, sizeof(buf), "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
+      "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > %u AND USER NOT IN ('REPL', 'SYSTEM USER') "
+      "AND COMMAND != 'SLEEP'", opt_flush_wait_timeout) < 0) {
+    return 1;
+  }
+
+  if (mysql_query_with_error_report(mysql_con, &res, buf))
+  {
+    if (!ignore_errors)
+    {
+      my_printf_error(0, "Error: Query processlist error", MYF(0));
+    }
+    mysql_free_result(res);
+    return 1;
+  }
+  else
+  {
+    MYSQL_ROW row = NULL;
+    while ((row = mysql_fetch_row(res))) {
+        fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
+            row[0] ? (my_ulonglong)atol(row[0]) : 0, 
+            row[1] ? row[1] : "NULL", 
+            row[2] ? row[2] : "NULL", 
+            row[3] ? row[3] : "NULL", 
+            row[4] ? row[4] : "NULL", 
+            row[5] ? (my_ulonglong)atol(row[5]) : 0, 
+            row[6] ? row[6] : "NULL", 
+            row[7] ? row[7] : "NULL");
+    }
+    mysql_free_result(res);
+  }
+  return 0;
+}
+
 static int do_start_slave_sql(MYSQL *mysql_con)
 {
   MYSQL_RES *slave;
@@ -5916,18 +5956,18 @@ static int do_start_slave_sql(MYSQL *mysql_con)
 
 static int do_flush_tables_read_lock(MYSQL *mysql_con)
 {
-  my_bool timeout_flag = FALSE;
-  if (opt_flush_wait_timeout > 0 &&
-      mysql_get_server_version(mysql) >= 50503)
-  {
-    char buf[1024];
+//  my_bool timeout_flag = FALSE;
+//  if (opt_flush_wait_timeout > 0 &&
+//      mysql_get_server_version(mysql) >= 50503)
+//  {
+//    char buf[1024];
 
-    timeout_flag = TRUE;
-    sprintf(buf, "/*!50503 SET lock_wait_timeout = %u; */", opt_flush_wait_timeout);
-    if (mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET @OLD_FLUSH_WAIT_TIMEOUT = @@lock_wait_timeout; */") || 
-        mysql_query_with_error_report(mysql_con, 0, buf))
-        return 1;
-  }
+//    timeout_flag = TRUE;
+//    sprintf(buf, "/*!50503 SET lock_wait_timeout = %u */", opt_flush_wait_timeout);
+//    if (mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET @OLD_FLUSH_WAIT_TIMEOUT = @@lock_wait_timeout; */") || 
+//        mysql_query_with_error_report(mysql_con, 0, buf))
+//        return 1;
+//  }
 
   /*
     We do first a FLUSH TABLES. If a long update is running, the FLUSH TABLES
@@ -5937,16 +5977,7 @@ static int do_flush_tables_read_lock(MYSQL *mysql_con)
     and most client connections are stalled. Of course, if a second long
     update starts between the two FLUSHes, we have that bad stall.
   */
-  /* flush tables 3 times */
   if( mysql_query_with_timeout_report(mysql_con, 0, 
-                                    ((opt_master_data != 0) ? 
-                                        "FLUSH /*!40101 LOCAL */ TABLES" : 
-                                        "FLUSH TABLES"), opt_flush_wait_timeout) ||
-     mysql_query_with_timeout_report(mysql_con, 0, 
-                                    ((opt_master_data != 0) ? 
-                                        "FLUSH /*!40101 LOCAL */ TABLES" : 
-                                        "FLUSH TABLES"), opt_flush_wait_timeout) ||
-     mysql_query_with_timeout_report(mysql_con, 0, 
                                     ((opt_master_data != 0) ? 
                                         "FLUSH /*!40101 LOCAL */ TABLES" : 
                                         "FLUSH TABLES"), opt_flush_wait_timeout) ||
@@ -5954,9 +5985,9 @@ static int do_flush_tables_read_lock(MYSQL *mysql_con)
                                     "FLUSH TABLES WITH READ LOCK", opt_flush_wait_timeout) )
     return 1;
 
-  if (timeout_flag && 
-        mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET lock_wait_timeout = @OLD_FLUSH_WAIT_TIMEOUT; */"))
-      return 1;
+ // if (timeout_flag && 
+ //       mysql_query_with_error_report(mysql_con, 0, "/*!50503 SET lock_wait_timeout = @OLD_FLUSH_WAIT_TIMEOUT */"))
+ //     return 1;
 
   return 0;
 }
