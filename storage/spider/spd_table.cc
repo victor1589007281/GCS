@@ -4257,6 +4257,7 @@ SPIDER_SHARE *spider_get_share(
   MEM_ROOT mem_root;
   TABLE *table_tables = NULL;
   bool init_mem_root = FALSE;
+  bool spider_free_flag = FALSE;
   DBUG_ENTER("spider_get_share");
 
   length = (uint) strlen(table_name);
@@ -4333,6 +4334,7 @@ SPIDER_SHARE *spider_get_share(
           ) {
             pthread_mutex_unlock(&share->mutex);
             spider_free_share(share);
+			spider_free_flag = TRUE;
             goto error_open_sys_table;
           }
           *error_num = spider_get_link_statuses(table_tables, share,
@@ -4341,6 +4343,7 @@ SPIDER_SHARE *spider_get_share(
           {
             pthread_mutex_unlock(&share->mutex);
             spider_free_share(share);
+			spider_free_flag = TRUE;
             goto error_get_link_statuses;
           }
         }
@@ -4376,6 +4379,7 @@ SPIDER_SHARE *spider_get_share(
       share->init_error_time = (time_t) time((time_t*) 0);
       share->init = TRUE;
       spider_free_share(share);
+	  spider_free_flag = TRUE;
       goto error_but_no_delete;
     }
     spider->set_error_mode();
@@ -4392,6 +4396,7 @@ SPIDER_SHARE *spider_get_share(
       share->init_error_time = (time_t) time((time_t*) 0);
       share->init = TRUE;
       spider_free_share(share);
+	  spider_free_flag = TRUE;
       goto error_but_no_delete;
     }
 #endif
@@ -4473,6 +4478,7 @@ SPIDER_SHARE *spider_get_share(
       share->init_error_time = (time_t) time((time_t*) 0);
       share->init = TRUE;
       spider_free_share(share);
+	  spider_free_flag = TRUE;
       goto error_but_no_delete;
     }
     memcpy(tmp_name, share->conn_keys[0], share->conn_keys_charlen);
@@ -4588,6 +4594,7 @@ SPIDER_SHARE *spider_get_share(
 								share->init_error_time = (time_t) time((time_t*) 0);
 								share->init = TRUE;
 								spider_free_share(share);
+								spider_free_flag = TRUE;
 								goto error_but_no_delete;
 						}
 						spider->conns[roop_count]->error_mode &= spider->error_mode;
@@ -4613,6 +4620,7 @@ SPIDER_SHARE *spider_get_share(
         share->init_error_time = (time_t) time((time_t*) 0);
         share->init = TRUE;
         spider_free_share(share);
+		spider_free_flag = TRUE;
         goto error_but_no_delete;
       }
 #else
@@ -4634,6 +4642,7 @@ SPIDER_SHARE *spider_get_share(
       share->init_error_time = (time_t) time((time_t*) 0);
       share->init = TRUE;
       spider_free_share(share);
+	  spider_free_flag = TRUE;
       goto error_but_no_delete;
     }
     spider->search_link_idx = search_link_idx;
@@ -4684,6 +4693,7 @@ SPIDER_SHARE *spider_get_share(
           pthread_mutex_unlock(&share->crd_mutex);
           pthread_mutex_unlock(&share->sts_mutex);
           spider_free_share(share);
+		  spider_free_flag = TRUE;
           goto error_but_no_delete;
         }
       }
@@ -4821,6 +4831,7 @@ SPIDER_SHARE *spider_get_share(
           ) {
             pthread_mutex_unlock(&share->mutex);
             spider_free_share(share);
+			spider_free_flag = TRUE;
             goto error_open_sys_table;
           }
           *error_num = spider_get_link_statuses(table_tables, share,
@@ -4829,6 +4840,7 @@ SPIDER_SHARE *spider_get_share(
           {
             pthread_mutex_unlock(&share->mutex);
             spider_free_share(share);
+			spider_free_flag = TRUE;
             goto error_get_link_statuses;
           }
         }
@@ -4862,6 +4874,7 @@ SPIDER_SHARE *spider_get_share(
     if (!(spider->trx = spider_get_trx(thd, TRUE, error_num)))
     {
       spider_free_share(share);
+	  spider_free_flag = TRUE;
       goto error_but_no_delete;
     }
     spider->set_error_mode();
@@ -4874,6 +4887,7 @@ SPIDER_SHARE *spider_get_share(
       (*error_num = spider_create_mon_threads(spider->trx, share))
     ) {
       spider_free_share(share);
+	  spider_free_flag = TRUE;
       goto error_but_no_delete;
     }
 #endif
@@ -4951,6 +4965,7 @@ SPIDER_SHARE *spider_get_share(
         NullS))
     ) {
       spider_free_share(share);
+	  spider_free_flag = TRUE;
       goto error_but_no_delete;
     }
     memcpy(tmp_name, share->conn_keys[0], share->conn_keys_charlen);
@@ -5061,6 +5076,7 @@ SPIDER_SHARE *spider_get_share(
 										);
 								}
 								spider_free_share(share);
+								spider_free_flag = TRUE;
 								goto error_but_no_delete;
 						}
 						spider->conns[roop_count]->error_mode &= spider->error_mode;
@@ -5082,6 +5098,7 @@ SPIDER_SHARE *spider_get_share(
       ) {
         *error_num = HA_ERR_OUT_OF_MEM;
         spider_free_share(share);
+		spider_free_flag = TRUE;
         goto error_but_no_delete;
       }
 #else
@@ -5100,6 +5117,7 @@ SPIDER_SHARE *spider_get_share(
 #endif
       *error_num = ER_SPIDER_ALL_LINKS_FAILED_NUM;
       spider_free_share(share);
+	  spider_free_flag = TRUE;
       goto error_but_no_delete;
     }
     spider->search_link_idx = search_link_idx;
@@ -5151,6 +5169,7 @@ SPIDER_SHARE *spider_get_share(
               pthread_mutex_unlock(&share->crd_mutex);
               pthread_mutex_unlock(&share->sts_mutex);
               spider_free_share(share);
+			  spider_free_flag = TRUE;
               goto error_but_no_delete;
             }
           }
@@ -5271,7 +5290,7 @@ error_open_sys_table:
     init_mem_root = FALSE;
   }
 error_but_no_delete:
-  if (share)
+  if (share && !spider_free_flag)
   {
     pthread_mutex_lock(&spider_tbl_mutex);
     share->use_count--;
