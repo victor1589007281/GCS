@@ -225,6 +225,7 @@ For gztab
 #define MB_IN_BYTES ((my_ulonglong)1 << 20) /* harryczhang: 1m=1024*1024 bytes*/
 #define KB_IN_BYTES ((my_ulonglong)1 << 10) /* harryczhang: 1k=1024 bytes*/
 static int do_show_processlist(MYSQL *);
+static int sig_timeout_handler_called = 0;
 
 #ifdef __WIN__
 #define ZFILE gzFile
@@ -1420,9 +1421,11 @@ sig_handler handle_sig_timeout(int sig)
   ret=do_show_processlist(kill_mysql);
   fprintf(stderr, "show processlist return: %d.\n",ret);
   mysql_close(kill_mysql);
+  sig_timeout_handler_called = 1;
   return;
 
 err:
+  sig_timeout_handler_called = 1;
   return;
 }
 
@@ -1446,7 +1449,7 @@ err:
 static int mysql_query_with_timeout_report(MYSQL *mysql_con, MYSQL_RES **res,
                                          const char *query, uint timeout)
 {
-  int ret = 0;;
+  int ret = 0;
 
   /* set the query timeout for query, if timeout, send kill query to stop the query and return */
   if( timeout > 0 ){
@@ -1472,7 +1475,7 @@ static int mysql_query_with_timeout_report(MYSQL *mysql_con, MYSQL_RES **res,
     return 1;
   }
 
-  return 0;
+  return sig_timeout_handler_called;
 }
 
 
@@ -5889,7 +5892,7 @@ static int do_show_processlist(MYSQL *mysql_con)
   char buf[1024];
   if (my_snprintf(buf, sizeof(buf), "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
       "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > %u AND USER NOT IN ('REPL', 'SYSTEM USER') "
-      "AND COMMAND != SLEEP", opt_flush_wait_timeout) < 0) {
+      "AND COMMAND != 'SLEEP'", opt_flush_wait_timeout) < 0) {
     return 1;
   }
 
