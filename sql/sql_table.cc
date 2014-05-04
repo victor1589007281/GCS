@@ -2872,7 +2872,7 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 
 	  }
   }
-
+/*
 // 在spider中，限制使用auto_increment；
   if(!is_support_auto_increment)
   {
@@ -2887,7 +2887,7 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 		  }
 	  }
   }
-
+*/
  
   for (field_no=0; (sql_field=it++) ; field_no++)
   {

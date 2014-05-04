@@ -487,6 +487,7 @@ const char* get_warnings_type_str(int type)
 	case ALTER_TABLE_ADD_MUCH_BLOB: return "ALTER_TABLE_ADD_MUCH_BLOB";
 	case CREATE_TABLE_NOT_INNODB: return "CREATE_TABLE_NOT_INNODB";
 	case CREATE_TABLE_NO_INDEX: return "CREATE_TABLE_NO_INDEX";
+	case CREATE_TABLE_NO_PRIMARYKEY: return "CREATE_TABLE_NO_PRIMARYKEY";
 	case ALTER_TABLE_WITH_AFTER: return "ALTER_TABLE_WITH_AFTER";
 	case ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL: return "ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL";
 	case CREATE_TABLE_WITH_OTHER_CHARACTER: return "CREATE_TABLE_WITH_OTHER_CHARACTER";
@@ -835,11 +836,11 @@ query_parse_audit_tsqlparse(
 				}
 			}
 
-			/* 建表不带主键告警 */
+			/* 建表不带主键或者索引告警 */
 			key = key_iterator++;
 			if(key == NULL)
 			{
-				/* 没有索引，显然没有主键*/
+				/* 没有索引，建表不带索引告警*/
 				pra->result_type = 1;
 				pra->warning_type = CREATE_TABLE_NO_INDEX;
 			}
@@ -847,7 +848,7 @@ query_parse_audit_tsqlparse(
 			{
 				/* 建表不带主键 */
 				pra->result_type = 1;
-				pra->warning_type = CREATE_TABLE_NO_INDEX;
+				pra->warning_type = CREATE_TABLE_NO_PRIMARYKEY;  // 如果没有主建，则告警为建表不带主键
 				if(key->type == Key::PRIMARY)
 				{
 					pra->result_type = 0;
