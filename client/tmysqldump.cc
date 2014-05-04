@@ -80,6 +80,7 @@
 #define EX_EOM 4
 #define EX_EOF 5 /* ferror for output file was got */
 #define EX_ILLEGAL_TABLE 6
+#define EX_QUERY_TIMEOUT 123 
 
 /* index into 'show fields from table' */
 
@@ -1467,9 +1468,8 @@ static int mysql_query_with_timeout_report(MYSQL *mysql_con, MYSQL_RES **res,
   if ( ret || 
 		(res && !((*res)= mysql_store_result(mysql_con))))
   {
-    maybe_die(EX_MYSQLERR, "Error: Couldn't execute '%s': %s (%d)",
+    die(EX_QUERY_TIMEOUT, "Error: Couldn't execute '%s': %s (%d)",
             query, mysql_error(mysql_con), mysql_errno(mysql_con));
-    maybe_exit(mysql_errno(mysql_con));
   }
 
   return 0;
