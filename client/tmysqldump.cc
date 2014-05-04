@@ -225,7 +225,6 @@ For gztab
 #define MB_IN_BYTES ((my_ulonglong)1 << 20) /* harryczhang: 1m=1024*1024 bytes*/
 #define KB_IN_BYTES ((my_ulonglong)1 << 10) /* harryczhang: 1k=1024 bytes*/
 static int do_show_processlist(MYSQL *);
-static int sig_timeout_handler_called = 0;
 
 #ifdef __WIN__
 #define ZFILE gzFile
@@ -1419,13 +1418,11 @@ sig_handler handle_sig_timeout(int sig)
   ret=mysql_real_query(kill_mysql, kill_buffer, (uint) strlen(kill_buffer));
   fprintf(stderr, "kill query return: %d.\n",ret);
   ret=do_show_processlist(kill_mysql);
-  fprintf(stderr, "show processlist return: %d.\n",ret);
+  // fprintf(stderr, "show processlist return: %d.\n",ret);
   mysql_close(kill_mysql);
-  sig_timeout_handler_called = 1;
   return;
 
 err:
-  sig_timeout_handler_called = 1;
   return;
 }
 
@@ -1472,10 +1469,10 @@ static int mysql_query_with_timeout_report(MYSQL *mysql_con, MYSQL_RES **res,
   {
     maybe_die(EX_MYSQLERR, "Error: Couldn't execute '%s': %s (%d)",
             query, mysql_error(mysql_con), mysql_errno(mysql_con));
-    return 1;
+    maybe_exit(mysql_errno(mysql_con));
   }
 
-  return sig_timeout_handler_called;
+  return 0;
 }
 
 
