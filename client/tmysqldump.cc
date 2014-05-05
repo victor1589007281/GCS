@@ -5885,40 +5885,65 @@ static int do_show_slave_status(MYSQL *mysql_con)
 
 static int do_show_processlist(MYSQL *mysql_con)
 {
-  MYSQL_RES *res= NULL;
-  char buf[1024];
-  if (my_snprintf(buf, sizeof(buf), "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
-      "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > %u AND USER NOT IN ('REPL', 'SYSTEM USER') "
-      "AND COMMAND != 'SLEEP'", opt_flush_wait_timeout) < 0) {
-    return 1;
-  }
-
-  if (mysql_query_with_error_report(mysql_con, &res, buf))
-  {
-    if (!ignore_errors)
-    {
-      my_printf_error(0, "Error: Query processlist error", MYF(0));
+    MYSQL_RES *res= NULL;
+    char buf[1024];
+    int flag = 0;
+    if (mysql_get_server_version(mysql) >= FIRST_INFORMATION_SCHEMA_VERSION) {
+        if (my_snprintf(buf, sizeof(buf), "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
+            "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > %u AND USER NOT IN ('REPL', 'SYSTEM USER') "
+            "AND COMMAND != 'SLEEP'", opt_flush_wait_timeout) < 0) {
+                return 1;
+        }
+        flag = 1;
+    } else {
+        if (my_snprintf(buf, sizeof(buf), "SHOW PROCESSLIST") < 0) {
+            return 1;
+        }
     }
-    mysql_free_result(res);
-    return 1;
-  }
-  else
-  {
+
+    if (mysql_query_with_error_report(mysql_con, &res, buf)) {
+        if (!ignore_errors) {
+            my_printf_error(0, "Error: Query processlist error", MYF(0));
+        }
+        mysql_free_result(res);
+        return 1;
+    }
+
     MYSQL_ROW row = NULL;
     while ((row = mysql_fetch_row(res))) {
-        fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
-            row[0] ? (my_ulonglong)atol(row[0]) : 0, 
-            row[1] ? row[1] : "NULL", 
-            row[2] ? row[2] : "NULL", 
-            row[3] ? row[3] : "NULL", 
-            row[4] ? row[4] : "NULL", 
-            row[5] ? (my_ulonglong)atol(row[5]) : 0, 
-            row[6] ? row[6] : "NULL", 
-            row[7] ? row[7] : "NULL");
+        if (!flag) {
+            my_ulonglong t_time = (my_ulonglong)atol(row[5]);
+            if (strncasecmp(row[1], "REPL", strlen("REPL")) 
+                && strncasecmp(row[1], "SYSTEM USER", strlen("SYSTEM USER"))
+                && strncasecmp(row[4], "SLEEP", strlen("SLEEP"))
+                && t_time > 30
+                ) {
+                    fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
+                        row[0] ? (my_ulonglong)atol(row[0]) : 0, 
+                        row[1] ? row[1] : "NULL", 
+                        row[2] ? row[2] : "NULL", 
+                        row[3] ? row[3] : "NULL", 
+                        row[4] ? row[4] : "NULL", 
+                        row[5] ? t_time : 0, 
+                        row[6] ? row[6] : "NULL", 
+                        row[7] ? row[7] : "NULL");
+            }
+        } else {
+            // mysql_get_server_version(mysql) >= FIRST_INFORMATION_SCHEMA_VERSION
+            fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
+                row[0] ? (my_ulonglong)atol(row[0]) : 0, 
+                row[1] ? row[1] : "NULL", 
+                row[2] ? row[2] : "NULL", 
+                row[3] ? row[3] : "NULL", 
+                row[4] ? row[4] : "NULL", 
+                row[5] ? (my_ulonglong)atol(row[5]) : 0, 
+                row[6] ? row[6] : "NULL", 
+                row[7] ? row[7] : "NULL");
+        }
     }
+
     mysql_free_result(res);
-  }
-  return 0;
+    return 0;
 }
 
 static int do_start_slave_sql(MYSQL *mysql_con)
