@@ -5888,7 +5888,7 @@ static int do_show_processlist(MYSQL *mysql_con)
     MYSQL_RES *res= NULL;
     char buf[1024];
     int flag = 0;
-    if (mysql_get_server_version(mysql) >= FIRST_INFORMATION_SCHEMA_VERSION) {
+    if (mysql_get_server_version(mysql) > 50107) {
         if (my_snprintf(buf, sizeof(buf), "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
             "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > %u AND USER NOT IN ('REPL', 'SYSTEM USER') "
             "AND COMMAND != 'SLEEP'", opt_flush_wait_timeout) < 0) {
@@ -5929,7 +5929,7 @@ static int do_show_processlist(MYSQL *mysql_con)
                         row[7] ? row[7] : "NULL");
             }
         } else {
-            // mysql_get_server_version(mysql) >= FIRST_INFORMATION_SCHEMA_VERSION
+            // mysql_get_server_version(mysql) > 50107
             fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
                 row[0] ? (my_ulonglong)atol(row[0]) : 0, 
                 row[1] ? row[1] : "NULL", 
