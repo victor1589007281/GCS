@@ -80,6 +80,7 @@
 #define EX_EOM 4
 #define EX_EOF 5 /* ferror for output file was got */
 #define EX_ILLEGAL_TABLE 6
+#define EX_QUERY_TIMEOUT 123 
 
 /* index into 'show fields from table' */
 
@@ -1418,7 +1419,7 @@ sig_handler handle_sig_timeout(int sig)
   ret=mysql_real_query(kill_mysql, kill_buffer, (uint) strlen(kill_buffer));
   fprintf(stderr, "kill query return: %d.\n",ret);
   ret=do_show_processlist(kill_mysql);
-  fprintf(stderr, "show processlist return: %d.\n",ret);
+  // fprintf(stderr, "show processlist return: %d.\n",ret);
   mysql_close(kill_mysql);
   return;
 
@@ -1446,7 +1447,7 @@ err:
 static int mysql_query_with_timeout_report(MYSQL *mysql_con, MYSQL_RES **res,
                                          const char *query, uint timeout)
 {
-  int ret = 0;;
+  int ret = 0;
 
   /* set the query timeout for query, if timeout, send kill query to stop the query and return */
   if( timeout > 0 ){
@@ -1467,9 +1468,8 @@ static int mysql_query_with_timeout_report(MYSQL *mysql_con, MYSQL_RES **res,
   if ( ret || 
 		(res && !((*res)= mysql_store_result(mysql_con))))
   {
-    maybe_die(EX_MYSQLERR, "Error: Couldn't execute '%s': %s (%d)",
+    die(EX_QUERY_TIMEOUT, "Error: Couldn't execute '%s': %s (%d)",
             query, mysql_error(mysql_con), mysql_errno(mysql_con));
-    return 1;
   }
 
   return 0;
@@ -5885,40 +5885,65 @@ static int do_show_slave_status(MYSQL *mysql_con)
 
 static int do_show_processlist(MYSQL *mysql_con)
 {
-  MYSQL_RES *res= NULL;
-  char buf[1024];
-  if (my_snprintf(buf, sizeof(buf), "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
-      "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > %u AND USER NOT IN ('REPL', 'SYSTEM USER') "
-      "AND COMMAND != 'SLEEP'", opt_flush_wait_timeout) < 0) {
-    return 1;
-  }
-
-  if (mysql_query_with_error_report(mysql_con, &res, buf))
-  {
-    if (!ignore_errors)
-    {
-      my_printf_error(0, "Error: Query processlist error", MYF(0));
+    MYSQL_RES *res= NULL;
+    char buf[1024];
+    int flag = 0;
+    if (mysql_get_server_version(mysql) > 50107) {
+        if (my_snprintf(buf, sizeof(buf), "SELECT ID,USER,HOST,DB,COMMAND,TIME,STATE,INFO " 
+            "FROM INFORMATION_SCHEMA.PROCESSLIST WHERE TIME > %u AND USER NOT IN ('REPL', 'SYSTEM USER') "
+            "AND COMMAND != 'SLEEP'", opt_flush_wait_timeout) < 0) {
+                return 1;
+        }
+        flag = 1;
+    } else {
+        if (my_snprintf(buf, sizeof(buf), "SHOW PROCESSLIST") < 0) {
+            return 1;
+        }
     }
-    mysql_free_result(res);
-    return 1;
-  }
-  else
-  {
+
+    if (mysql_query_with_error_report(mysql_con, &res, buf)) {
+        if (!ignore_errors) {
+            my_printf_error(0, "Error: Query processlist error", MYF(0));
+        }
+        mysql_free_result(res);
+        return 1;
+    }
+
     MYSQL_ROW row = NULL;
     while ((row = mysql_fetch_row(res))) {
-        fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
-            row[0] ? (my_ulonglong)atol(row[0]) : 0, 
-            row[1] ? row[1] : "NULL", 
-            row[2] ? row[2] : "NULL", 
-            row[3] ? row[3] : "NULL", 
-            row[4] ? row[4] : "NULL", 
-            row[5] ? (my_ulonglong)atol(row[5]) : 0, 
-            row[6] ? row[6] : "NULL", 
-            row[7] ? row[7] : "NULL");
+        if (!flag) {
+            my_ulonglong t_time = (my_ulonglong)atol(row[5]);
+            if (strncasecmp(row[1], "REPL", strlen("REPL")) 
+                && strncasecmp(row[1], "SYSTEM USER", strlen("SYSTEM USER"))
+                && strncasecmp(row[4], "SLEEP", strlen("SLEEP"))
+                && t_time > 30
+                ) {
+                    fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
+                        row[0] ? (my_ulonglong)atol(row[0]) : 0, 
+                        row[1] ? row[1] : "NULL", 
+                        row[2] ? row[2] : "NULL", 
+                        row[3] ? row[3] : "NULL", 
+                        row[4] ? row[4] : "NULL", 
+                        row[5] ? t_time : 0, 
+                        row[6] ? row[6] : "NULL", 
+                        row[7] ? row[7] : "NULL");
+            }
+        } else {
+            // mysql_get_server_version(mysql) > 50107
+            fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
+                row[0] ? (my_ulonglong)atol(row[0]) : 0, 
+                row[1] ? row[1] : "NULL", 
+                row[2] ? row[2] : "NULL", 
+                row[3] ? row[3] : "NULL", 
+                row[4] ? row[4] : "NULL", 
+                row[5] ? (my_ulonglong)atol(row[5]) : 0, 
+                row[6] ? row[6] : "NULL", 
+                row[7] ? row[7] : "NULL");
+        }
     }
+
     mysql_free_result(res);
-  }
-  return 0;
+    return 0;
 }
 
 static int do_start_slave_sql(MYSQL *mysql_con)
