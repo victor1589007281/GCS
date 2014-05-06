@@ -1581,7 +1581,7 @@ static struct my_option my_long_options[] =
 
 static void usage(int version)
 {
-	printf("tmysqlparse Ver 1.2.1\n");
+	printf("tmysqlparse Ver 1.2.2\n");
 	if (version)
 		return;
 //	puts(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000, 2011"));

@@ -912,9 +912,9 @@ query_parse_audit_tsqlparse(
 					case MYSQL_TYPE_ENUM:
 					case MYSQL_TYPE_SET:
 
-						if(cur_field->charset && cur_field->charset->csname)
+						if(cur_field->charset && cur_field->charset->csname && pra->db_charset)
 						{
-							if(strcmp(cur_field->charset->csname, pra->db_charset))
+							if(strcmp(cur_field->charset->csname, pra->db_charset) && strcmp(cur_field->charset->csname, "binary"))
 							{// 字段中指定了与db不同的字符集，告警
 								pra->result_type = 1;
 								pra->warning_type = CREATE_TABLE_WITH_OTHER_CHARACTER;
