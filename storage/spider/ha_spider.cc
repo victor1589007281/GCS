@@ -7948,7 +7948,7 @@ int ha_spider::info(
 			) {
 				this->conns[roop_count] = NULL;
 		}
-		if (sts_crd_errornum_flag = spider_get_crd(share, search_link_idx, tmp_time,
+		if (spider_get_crd(share, search_link_idx, tmp_time,
 			this, table, crd_interval, crd_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 			0,
