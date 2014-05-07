@@ -1237,12 +1237,12 @@ typedef struct st_spider_conn_meta_info {
     /* record the count of deleted from connection pool and inserted into back again then. */
     ulonglong reusage_counter; 
 
-    /************************************************************************/
-    /* The relationship between xx_tm members and CONN_META_XXX_STATUS
-    /* alloc_tm -> { INIT | INIT2 }                                                                     */
-    /* last_visit_tm -> { ACTIVE }
-    /* free_tm -> { INVALID }
-    /************************************************************************/
+    /************************************************************************
+     The relationship between xx_tm members and CONN_META_XXX_STATUS
+     alloc_tm -> { INIT | INIT2 }                                                                     
+     last_visit_tm -> { ACTIVE }
+     free_tm -> { INVALID }
+    ***********************************************************************/
     time_t alloc_tm;
     time_t last_visit_tm;
     time_t free_tm;

@@ -7846,7 +7846,7 @@ int ha_spider::ft_read(
 int ha_spider::info(
   uint flag
 ) {
-//  int error_num;
+  int error_num;
   THD *thd = ha_thd();
   double sts_interval = spider_param_sts_interval(thd, share->sts_interval);
   int sts_mode = spider_param_sts_mode(thd, share->sts_mode);
@@ -7915,7 +7915,7 @@ int ha_spider::info(
 			) {
 				this->conns[roop_count] = NULL;
 		}
-		if (spider_get_sts(share, search_link_idx, tmp_time,
+		if (error_num = spider_get_sts(share, search_link_idx, tmp_time,
 			this, sts_interval, sts_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 			0,
@@ -7926,9 +7926,9 @@ int ha_spider::info(
 			struct tm lt;
 			struct tm *l_time = localtime_r(&cur_time, &lt);
 			fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
-				"error to spider_get_sts in ha_spider::info\n",
+				"error to spider_get_sts in ha_spider::info. table name: %s, errnum: %d.\n",
 				l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-				l_time->tm_hour, l_time->tm_min, l_time->tm_sec);
+				l_time->tm_hour, l_time->tm_min, l_time->tm_sec, share->table_name, error_num);
 
 			sts_crd_errornum_flag = 0; // 如果spider_get_sts出错，则不走spider_get_crd
 		}
@@ -7948,7 +7948,7 @@ int ha_spider::info(
 			) {
 				this->conns[roop_count] = NULL;
 		}
-		if (spider_get_crd(share, search_link_idx, tmp_time,
+		if (error_num = spider_get_crd(share, search_link_idx, tmp_time,
 			this, table, crd_interval, crd_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 			0,
@@ -7959,9 +7959,9 @@ int ha_spider::info(
 			struct tm lt;
 			struct tm *l_time = localtime_r(&cur_time, &lt);
 			fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
-				"error to spider_get_crd in ha_spider::info\n",
+				"error to spider_get_crd in ha_spider::info. table name: %s, errnum: %d.\n",
 				l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-				l_time->tm_hour, l_time->tm_min, l_time->tm_sec);
+				l_time->tm_hour, l_time->tm_min, l_time->tm_sec, share->table_name, error_num);
  		}
 	}
 

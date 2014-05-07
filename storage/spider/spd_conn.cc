@@ -284,10 +284,10 @@ void spider_free_conn_from_trx(
                 (spider_open_connections.array.max_element - old_elements) *
                 spider_open_connections.array.size_of_element);
             }
-			/************************************************************************/
-            /* Create conn_meta whose status is updated then when CONN object is pushed
-            /* into spider_open_connections
-            /************************************************************************/
+			/************************************************************************
+             Create conn_meta whose status is updated then when CONN object is pushed
+             into spider_open_connections
+            ************************************************************************/
             if (!spider_add_conn_meta_info(conn)) {
                 spider_my_err_logging("[ERROR] spider_add_conn_meta_info failed for conn within conn_id=[%ull]!\n", conn->conn_id);
             }
