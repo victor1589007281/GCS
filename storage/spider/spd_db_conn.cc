@@ -5235,8 +5235,9 @@ int spider_db_bulk_insert_init(
       spider->conn_link_idx, roop_count, share->link_count,
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
-    if (spider->conns[roop_count])
-      spider->conns[roop_count]->ignore_dup_key = spider->ignore_dup_key;
+	spider->conns[roop_count] = spider->spider_get_conn_by_idx(roop_count);
+	spider->conns[roop_count]->ignore_dup_key = TRUE;
+	
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     if (
       spider_conn_use_handler(spider, spider->lock_mode, roop_count) &&

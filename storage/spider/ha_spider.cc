@@ -7931,6 +7931,7 @@ int ha_spider::info(
 				l_time->tm_hour, l_time->tm_min, l_time->tm_sec, share->table_name, error_num);
 
 			sts_crd_errornum_flag = 0; // 如果spider_get_sts出错，则不走spider_get_crd
+			share->crd_get_time = tmp_time; //sts失败，则crd逻辑不走
 		}
 	}
 
