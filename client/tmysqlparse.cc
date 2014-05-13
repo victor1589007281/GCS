@@ -137,8 +137,8 @@ static uint my_end_arg;
 static char * opt_mysql_unix_port=0;
 static int connect_flag=CLIENT_INTERACTIVE;
 static char *current_host,*current_db,*current_user=0,*opt_password=0,
-*current_prompt=0, *delimiter_str= 0,*audit_output_file=0,*set_version=0,
-*set_charset=0, *default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME;
+*current_prompt=0, *delimiter_str= 0,*audit_output_file=0,*all_dml_output_file=0,
+*set_version=0,*set_charset=0, *default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME;
 static char *histfile;
 static char *histfile_tmp;
 static String glob_buffer,old_buffer;
@@ -203,6 +203,7 @@ static result_output_audit roa;
 static void tmysqlparse_result_init(result_output_audit *roa);
 static void tmysqlparse_result_destory(result_output_audit *roa);
 static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file);
+static void tmysqlparse_is_all_dml_sql(result_output_audit *roa, FILE *xml_file);
 static void print_quoted_xml(FILE *xml_file, const char *str, ulong len);
 static void tmysqlparse_add_pra(result_output_audit *roa, char *sql, parse_result_audit *pra);
 
@@ -1226,6 +1227,7 @@ int main(int argc,char *argv[])
 	/* add by willhan. 2013-06-17                                                                     */
 	/************************************************************************/
 	FILE *fp = stderr;
+	FILE *dml_fp = stderr;
 	if(audit_output_file)//use -f or --file
 		fp = fopen(audit_output_file,"w+");
 	if(!fp)
@@ -1233,7 +1235,17 @@ int main(int argc,char *argv[])
 		fprintf(stderr, "failed to open file %s\n", audit_output_file);
 		exit(-1);
 	}
+
+	if(all_dml_output_file)
+		dml_fp = fopen(all_dml_output_file, "w+");
+	if(!dml_fp)
+	{
+		fprintf(stderr, "failed to open file %s\n", all_dml_output_file);
+		exit(-1);
+	}
+
 	tmysqlparse_print_xml(&roa,fp);
+	tmysqlparse_is_all_dml_sql(&roa, dml_fp);
 	parse_result_audit_destroy(&pra);
 	parse_global_destroy();
 	tmysqlparse_result_destory(&roa);
@@ -1518,6 +1530,8 @@ static struct my_option my_long_options[] =
 #endif
 */	{"file", 'f', "assign the file name of audit result.", &audit_output_file, 
 	&audit_output_file, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+	{"all_dml_output", 'd', "output the result if all sql is DML, 0 or 1.", &all_dml_output_file, 
+	&all_dml_output_file, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 /*	{"safe-updates", 'U', "Only allow UPDATE and DELETE that uses keys.",
 	&safe_updates, &safe_updates, 0, GET_BOOL, NO_ARG, 0, 0,
 	0, 0, 0, 0},
@@ -1581,7 +1595,7 @@ static struct my_option my_long_options[] =
 
 static void usage(int version)
 {
-	printf("tmysqlparse Ver 1.2.2\n");
+	printf("tmysqlparse Ver 1.3\n");
 	if (version)
 		return;
 //	puts(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000, 2011"));
@@ -3888,6 +3902,28 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 
 	fputs("</result>\n",xml_file);
 }
+
+
+static void tmysqlparse_is_all_dml_sql(result_output_audit *roa, FILE *xml_file)
+{// 文件输出所有的SQL语句，是不是都是DML操作
+// 若都是dml，则输出1，否则输出0；
+	int flag = 0;
+	fputs("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n",xml_file);
+	for(int i=0; i<roa->len; ++i)
+	{
+		if(!((roa->ra)[i].pra.info.is_all_dml))
+		{
+			fputs("<is_all_dml>",xml_file);
+			fprintf(xml_file,"FALSE");
+			fputs("</is_all_dml>\n",xml_file);
+			return ;
+		}
+	}
+	fputs("<is_all_dml>",xml_file);
+	fprintf(xml_file,"TRUE");
+	fputs("</is_all_dml>\n",xml_file);
+}
+
 
 static void print_quoted_xml(FILE *xml_file, const char *str, ulong len)
 {

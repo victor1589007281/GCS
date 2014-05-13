@@ -138,6 +138,7 @@ typedef struct parse_result_struct parse_result_t;
 typedef struct info_audit
 {
 	int non_ascii; //1 means has not ascii, 0 means has only ascii
+	bool is_all_dml;  // true means all sql is dml, false means not all sql id dml
 }info_audit;
 
 
