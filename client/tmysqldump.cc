@@ -815,7 +815,7 @@ static void print_version(void)
 {
   printf("%s  Ver %s Distrib %s, for %s (%s)\n",my_progname,DUMP_VERSION,
          MYSQL_SERVER_VERSION,SYSTEM_TYPE,MACHINE_TYPE);
-  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.6");
+  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.7");
 } /* print_version */
 
 
