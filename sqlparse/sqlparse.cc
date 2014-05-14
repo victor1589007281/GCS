@@ -684,6 +684,7 @@ int parse_result_audit_init(parse_result_audit* pra, char *version, char *charse
 	pra->n_tables = 0;
 	pra->line_number = 0;
 	pra->info.non_ascii = 0;
+	pra->info.is_all_dml = TRUE;
 	pra->table_arr = (parse_table_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_table_t));
 	pra->mysql_version = current_version;
 	pra->only_output_ntables = only_output_ntables;
@@ -760,6 +761,18 @@ query_parse_audit_tsqlparse(
 	it_field = lex->alter_info.create_list;
 
 	list_field_drop = lex->alter_info.drop_list;
+
+	switch(lex->sql_command)
+	{// 用于判定pra->info.is_all_dml值，即是否所有语句都为dml语句。  有一条语句非下面几种增删改查，则表示非dml
+	case SQLCOM_SELECT:
+	case SQLCOM_UPDATE:
+	case SQLCOM_INSERT:
+	case SQLCOM_DELETE:
+		break;
+	default:
+		pra->info.is_all_dml = FALSE;
+		break;
+	}
 
 	switch (lex->sql_command)
     {
