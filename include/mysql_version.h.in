@@ -25,6 +25,7 @@
 #define TMYSQL_VERSION_START_ID	99000
 /* current TMySQL version, may change with TMySQL version: 5 numbers start from 99000 */
 #define TMYSQL_VERSION_ID  99104
+#define TMYSQL_IGNORE_ID  12345
 
 /* mysqld compile time options */
 #endif /* _CUSTOMCONFIG_ */
