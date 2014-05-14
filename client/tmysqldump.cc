@@ -6251,7 +6251,8 @@ char check_if_ignore_table(const char *db, const char *table_name, char *table_t
     if (!opt_no_data &&
         (!my_strcasecmp(&my_charset_latin1, table_type, "MRG_MyISAM") ||
          !strcmp(table_type,"MRG_ISAM") ||
-         !strcmp(table_type,"FEDERATED")))
+         !strcmp(table_type,"FEDERATED") ||
+	 !my_strcasecmp(&my_charset_latin1, table_type, "SPIDER")))
       result= IGNORE_DATA;
   }
   mysql_free_result(res);
