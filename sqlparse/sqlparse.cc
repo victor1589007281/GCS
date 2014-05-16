@@ -977,7 +977,7 @@ query_parse_audit_tsqlparse(
 
 				if(lex->alter_info.flags & ALTER_COLUMN_ORDER)
 				{// 使用after来增加字段，则不能使用快速加字段功能，告警
-					pra->result = 1;
+					pra->result_type = 1;
 					pra->warning_type = ALTER_TABLE_WITH_AFTER;
 					break;
 				}
