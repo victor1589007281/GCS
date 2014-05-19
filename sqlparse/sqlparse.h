@@ -151,7 +151,7 @@ enum enum_warning_types {WARNINGS_DEFAULT, DROP_DB, DROP_TABLE, DROP_VIEW, DROP_
 struct parse_result_audit {
 	void* thd_org;
 	int query_type;
-	int result;
+//	int result;
 	int warning_type;
 	int result_type;
 	/**0 success; 1 risking warning; 2 parse fail; 3 other fail***/
