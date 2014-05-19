@@ -7584,7 +7584,8 @@ void Item_cache::store(Item *item)
 
 void Item_cache::print(String *str, enum_query_type query_type)
 {
-  str->append(STRING_WITH_LEN("<cache>("));
+//  str->append(STRING_WITH_LEN("<cache>("));
+  str->append(STRING_WITH_LEN("/* <cache> */ ("));
   if (example)
     example->print(str, query_type);
   else
