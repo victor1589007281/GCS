@@ -163,8 +163,6 @@ static char  *opt_password=0,*current_user=0,
 
 /* harryczhang: Variable to control the scale of recovery concurrency. */
 static uint split_count = 0; 
-static uint alarm_timeout_counter = 0;
-#define MAX_TIMEOUT_TRY_COUNT 3
 
 /* harryczhang: use my_snprintf instead of sprintf */
 /*#define my_snprintf(buf, n, fmt, arg) \
@@ -817,7 +815,7 @@ static void print_version(void)
 {
   printf("%s  Ver %s Distrib %s, for %s (%s)\n",my_progname,DUMP_VERSION,
          MYSQL_SERVER_VERSION,SYSTEM_TYPE,MACHINE_TYPE);
-  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.6");
+  printf("%s %s Ver %s\n", my_progname, "with GZTAB/flush_waittime/SQL_COMPRESSED/big table concurrent recovery/binary charset dump support.", "2.0.7");
 } /* print_version */
 
 
@@ -1396,40 +1394,37 @@ static int mysql_query_with_error_report(MYSQL *mysql_con, MYSQL_RES **res,
  */
 sig_handler handle_sig_timeout(int sig)
 {
-    if (alarm_timeout_counter++ < MAX_TIMEOUT_TRY_COUNT) {
-        return;
-    }
-    char kill_buffer[40];
-    MYSQL *kill_mysql= NULL;
-    int  ret = 0;
+  char kill_buffer[40];
+  MYSQL *kill_mysql= NULL;
+  int  ret = 0;
 
-    kill_mysql= mysql_init(kill_mysql);
-    if (!mysql_real_connect(kill_mysql,current_host, current_user, opt_password,
-        "", opt_mysql_port, opt_mysql_unix_port,0))
-    {
-        fprintf(stderr, "%s: Error: cannot connect to server to kill query, giving up ...\n", my_progname);
-        fflush(stderr);
-        goto err;
-    }
+  kill_mysql= mysql_init(kill_mysql);
+  if (!mysql_real_connect(kill_mysql,current_host, current_user, opt_password,
+                          "", opt_mysql_port, opt_mysql_unix_port,0))
+  {
+    fprintf(stderr, "%s: Error: cannot connect to server to kill query, giving up ...\n", my_progname);
+    fflush(stderr);
+    goto err;
+  }
 
-    /* mysqld < 5 does not understand KILL QUERY, skip to KILL CONNECTION */
-    if (mysql_get_server_version(&mysql_connection) < 50000)
-        is_before_50000 = 1;
+  /* mysqld < 5 does not understand KILL QUERY, skip to KILL CONNECTION */
+  if (mysql_get_server_version(&mysql_connection) < 50000)
+    is_before_50000 = 1;
 
-    /* kill_buffer is always big enough because max length of %lu is 15 */
-    sprintf(kill_buffer, "KILL %s%lu",
-        (is_before_50000 == 0) ? "QUERY " : "",
-        mysql_thread_id(&mysql_connection));
-    fprintf(stderr, "kill query -- sending \"%s\" to server ...\n", kill_buffer);
-    ret=mysql_real_query(kill_mysql, kill_buffer, (uint) strlen(kill_buffer));
-    fprintf(stderr, "kill query return: %d.\n",ret);
-    ret=do_show_processlist(kill_mysql);
-    // fprintf(stderr, "show processlist return: %d.\n",ret);
-    mysql_close(kill_mysql);
-    return;
+  /* kill_buffer is always big enough because max length of %lu is 15 */
+  sprintf(kill_buffer, "KILL %s%lu",
+          (is_before_50000 == 0) ? "QUERY " : "",
+          mysql_thread_id(&mysql_connection));
+  fprintf(stderr, "kill query -- sending \"%s\" to server ...\n", kill_buffer);
+  ret=mysql_real_query(kill_mysql, kill_buffer, (uint) strlen(kill_buffer));
+  fprintf(stderr, "kill query return: %d.\n",ret);
+  ret=do_show_processlist(kill_mysql);
+  // fprintf(stderr, "show processlist return: %d.\n",ret);
+  mysql_close(kill_mysql);
+  return;
 
 err:
-    return;
+  return;
 }
 
 /*
@@ -1452,40 +1447,32 @@ err:
 static int mysql_query_with_timeout_report(MYSQL *mysql_con, MYSQL_RES **res,
                                          const char *query, uint timeout)
 {
-    int ret = 1;
+  int ret = 0;
 
+  /* set the query timeout for query, if timeout, send kill query to stop the query and return */
+  if( timeout > 0 ){
 #ifndef __WIN__
-    /* set the query timeout for query, if timeout, send kill query to stop the query and return */
-    if( timeout > 0 ) {
-        alarm_timeout_counter = 0;
-        uint real_timeout = timeout;
-        uint loop_counter = 0;
-        for (;;) {
-            fprintf(stderr, "mysql query with real timeout : %u (s)\n", real_timeout);
-            alarm(real_timeout);
+		  alarm(timeout);
 #endif
-            /* run the query, if timeout would trigger the  handle_sig_timeout operation */
-            ret = mysql_query(mysql_con, query);
-#ifndef __WIN__
-            if (!ret || alarm_timeout_counter >= MAX_TIMEOUT_TRY_COUNT
-                || loop_counter >= MAX_TIMEOUT_TRY_COUNT) {
-                break;
-            }
-            ++loop_counter;
-            real_timeout = real_timeout << alarm_timeout_counter;
-        }
-        alarm(0);
-    }
-#endif
+  }
 
-    if ( ret || 
-        (res && !((*res)= mysql_store_result(mysql_con))))
-    {
-        die(EX_QUERY_TIMEOUT, "Error: Couldn't execute '%s': %s (%d)",
+  /* run the query, if timeout would trigger the  handle_sig_timeout operation */
+  ret = mysql_query(mysql_con, query);
+
+  if( timeout > 0 ){
+#ifndef __WIN__
+		  alarm(0);
+#endif
+  }
+
+  if ( ret || 
+		(res && !((*res)= mysql_store_result(mysql_con))))
+  {
+    die(EX_QUERY_TIMEOUT, "Error: Couldn't execute '%s': %s (%d)",
             query, mysql_error(mysql_con), mysql_errno(mysql_con));
-    }
+  }
 
-    return 0;
+  return 0;
 }
 
 
@@ -6264,7 +6251,8 @@ char check_if_ignore_table(const char *db, const char *table_name, char *table_t
     if (!opt_no_data &&
         (!my_strcasecmp(&my_charset_latin1, table_type, "MRG_MyISAM") ||
          !strcmp(table_type,"MRG_ISAM") ||
-         !strcmp(table_type,"FEDERATED")))
+         !strcmp(table_type,"FEDERATED") ||
+	 !my_strcasecmp(&my_charset_latin1, table_type, "SPIDER")))
       result= IGNORE_DATA;
   }
   mysql_free_result(res);
