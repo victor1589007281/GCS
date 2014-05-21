@@ -2924,7 +2924,7 @@ static MYSQL_SYSVAR_UINT(
   "Log error from remote server in error log",
   NULL,
   NULL,
-  0,
+  1,
   0,
   4,
   0
