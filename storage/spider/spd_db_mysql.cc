@@ -1562,22 +1562,6 @@ int spider_db_mysql::exec_query(
   error_num = mysql_real_query(db_conn, query, length);
 
 
-  if(error_num)
-  {//  如果远程执行sql出错
-	  time_t cur_time = (time_t) time((time_t*) 0);
-	  struct tm lt;
-	  struct tm *l_time = localtime_r(&cur_time, &lt);
-	  fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR SPIDER RESULT] "
-		  "from [%s] %ld to %ld:  "
-		  "affected_rows: %llu  id: %llu  status: %u  warning_count: %u query: %s\n",
-		  l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-		  l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
-		  conn->tgt_host, db_conn->thread_id, current_thd->thread_id,
-		  db_conn->affected_rows, db_conn->insert_id,
-		  db_conn->server_status, db_conn->warning_count, query);
-
-  }
-
   /* harryczhang: update last_visited field by using current timestamp in seconds. */
   this->conn->last_visited = (time_t) time((time_t *) 0);
   spider_update_conn_meta_info(this->conn, SPIDER_CONN_ACTIVE_STATUS);

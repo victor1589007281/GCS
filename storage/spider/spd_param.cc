@@ -898,7 +898,7 @@ static MYSQL_THDVAR_BOOL(
   "Sync time_zone", /* comment */
   NULL, /* check */
   NULL, /* update */
-  FALSE /* def */
+  TRUE/* def */
 );
 
 bool spider_param_sync_time_zone(
