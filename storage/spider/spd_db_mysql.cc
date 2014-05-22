@@ -1559,6 +1559,30 @@ int spider_db_mysql::exec_query(
     general_log_write(current_thd, COM_QUERY, tmp_query_str.ptr(),
       tmp_query_str.length());
   }
+
+  if (spider_param_log_result_errors() >= 2 && db_conn->warning_count > 0)
+  {// just for test, for log
+	  int i,j, k;
+	  MYSQL_RES *res;
+	  MYSQL_ROW row;
+	  MYSQL *db_conn;
+
+	  mysql_real_query(db_conn, "show warnings;",30);
+
+	  res=mysql_store_result(db_conn);
+
+	  for(i=0;i <mysql_num_rows(res);i++)
+	  {
+		  row=mysql_fetch_row(res);
+		  if(row <0) break;
+		  for(j=0;j <mysql_num_fields(res);j++)
+			  fprintf(stderr, "%s ",row[j]);
+		  fprintf(stderr, "\n");
+	  }
+	  mysql_free_result(res);
+  }
+
+
   error_num = mysql_real_query(db_conn, query, length);
 
 
@@ -1573,12 +1597,13 @@ int spider_db_mysql::exec_query(
     struct tm *l_time = localtime_r(&cur_time, &lt);
     fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
       "from [%s] %ld to %ld:  "
-      "affected_rows: %llu  id: %llu  status: %u  warning_count: %u\n",
+	  "affected_rows: %llu  id: %llu  status: %u  warning_count: %u  query: %s \n",
       l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
       l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
       conn->tgt_host, db_conn->thread_id, current_thd->thread_id,
       db_conn->affected_rows, db_conn->insert_id,
-      db_conn->server_status, db_conn->warning_count);
+      db_conn->server_status, db_conn->warning_count, query);
+
   } else if (spider_param_log_result_errors() >= 4)
   {
     time_t cur_time = (time_t) time((time_t*) 0);
