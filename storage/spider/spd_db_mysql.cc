@@ -1562,10 +1562,10 @@ int spider_db_mysql::exec_query(
 
   if (spider_param_log_result_errors() >= 2 && db_conn->warning_count > 0)
   {// just for test, for log
-	  int i,j, k;
+	  int i,j;
 	  MYSQL_RES *res;
 	  MYSQL_ROW row;
-	  char *sql = "sow warnings";
+	  char *sql = "show warnings";
 	  int sql_len = strlen(sql);
 	  int err_num;
 
