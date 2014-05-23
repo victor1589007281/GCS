@@ -1566,20 +1566,28 @@ int spider_db_mysql::exec_query(
 	  MYSQL_RES *res;
 	  MYSQL_ROW row;
 	  MYSQL *db_conn;
+	  char *sql = "sow warnings";
+	  int sql_len = strlen(sql);
+	  int err_num;
 
-	  mysql_real_query(db_conn, "show warnings;",30);
+	  err_num = mysql_real_query(db_conn, sql, sql_len);
 
-	  res=mysql_store_result(db_conn);
-
-	  for(i=0;i <mysql_num_rows(res);i++)
-	  {
-		  row=mysql_fetch_row(res);
-		  if(row <0) break;
-		  for(j=0;j <mysql_num_fields(res);j++)
-			  fprintf(stderr, "%s ",row[j]);
-		  fprintf(stderr, "\n");
+	  if(!err_num)
+	  {// show warnings成功执行
+		  res=mysql_store_result(db_conn);
+		  if(res)
+		  {// 存在结果，否则res为null，会引发crash
+			  for(i=0;i <mysql_num_rows(res);i++)
+			  {
+				  row=mysql_fetch_row(res);
+				  if(row <0) break;
+				  for(j=0;j <mysql_num_fields(res);j++)
+					  fprintf(stderr, "%s ",row[j]);
+				  fprintf(stderr, "\n");
+			  }
+		  }
+		  mysql_free_result(res);
 	  }
-	  mysql_free_result(res);
   }
 
 
