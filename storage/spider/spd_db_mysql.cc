@@ -1565,7 +1565,6 @@ int spider_db_mysql::exec_query(
 	  int i,j, k;
 	  MYSQL_RES *res;
 	  MYSQL_ROW row;
-	  MYSQL *db_conn;
 	  char *sql = "sow warnings";
 	  int sql_len = strlen(sql);
 	  int err_num;
