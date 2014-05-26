@@ -3799,6 +3799,7 @@ static my_ulonglong get_bytes_by_str(const char *src) {
 
 static my_bool z_post_dump_content(MYSQL_RES *res,
     char *buf,
+    size_t buf_len,
     ulong row_break,
     ulong rownr,
     const char *result_table,
@@ -3813,7 +3814,7 @@ static my_bool z_post_dump_content(MYSQL_RES *res,
   check_io(result_file);
   if (mysql_errno(mysql))
   {
-    my_snprintf(buf, sizeof(buf),
+    my_snprintf(buf, buf_len,
                 "%s: Error %d: %s when dumping table %s at row: %lu\n",
                 my_progname,
                 mysql_errno(mysql),
@@ -4464,14 +4465,15 @@ static void dump_table(char *table, char *db)
       if (rownr % lines_per_piece == 0) {
         if (result_file) {
           /* harryczhang: after content dumpping, close previous zfile handler. */
-          if (z_post_dump_content(res,
+          if ((error = z_post_dump_content(res,
                   buf,
+                  sizeof(buf),
                   row_break,
                   rownr,
                   result_table,
                   opt_quoted_table,
                   is_multi_piece,
-                  result_file)) {
+                  result_file))) {
             goto err;
           }
           my_close_zip(result_file);
@@ -4486,27 +4488,27 @@ static void dump_table(char *table, char *db)
         }
 
         /* harryczhang: before content dumpping */
-        if (z_before_dump_content(
+        if ((error = z_before_dump_content(
               db,
               result_table,
               opt_quoted_table,
               is_blob_compress_in_table,
               num_fields,
               is_multi_piece,
-              result_file)) {
+              result_file))) {
           goto err;
         }
       }
 
       /* harryczhang: dumpping rows */
-      if (z_dump_content(
+      if ((error = z_dump_content(
             res,
             &row,
             result_table,
             init_length,
             &total_length,
             &row_break,
-            result_file)) {
+            result_file))) {
         goto err;
       }
 
@@ -4515,14 +4517,15 @@ static void dump_table(char *table, char *db)
 
     if (result_file) {
       /* harryczhang: after content dumpping */
-      if (z_post_dump_content(res,
+      if ((error = z_post_dump_content(res,
               buf,
+              sizeof(buf),
               row_break,
               rownr,
               result_table,
               opt_quoted_table,
               is_multi_piece,
-              result_file)) {
+              result_file))) {
         goto err;
       }
       my_close_zip(result_file);
