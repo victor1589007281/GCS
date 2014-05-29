@@ -4233,7 +4233,7 @@ err:
 static void dump_table(char *table, char *db)
 {
   char ignore_flag;
-  char buf[200], table_buff[NAME_LEN+3];
+  char buf[1024], table_buff[NAME_LEN+3];
   DYNAMIC_STRING query_string;
   char table_type[NAME_LEN];
   char *result_table, table_buff2[NAME_LEN*2+3], *opt_quoted_table;
