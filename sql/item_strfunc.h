@@ -913,7 +913,7 @@ public:
   bool check_partition_func_processor(uchar *int_arg) {return FALSE;}
   bool check_valid_arguments_processor(uchar *int_arg)
   {
-	  return !has_char_args();
+	  return FALSE; 
   }
 };
 
