@@ -938,7 +938,7 @@ static MYSQL_THDVAR_BOOL(
   "Sync sql_log_off", /* comment */
   NULL, /* check */
   NULL, /* update */
-  TRUE /* def */
+  FALSE/* def */
 );
 
 bool spider_param_internal_sql_log_off(
