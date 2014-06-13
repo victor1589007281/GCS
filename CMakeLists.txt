@@ -459,4 +459,12 @@ IF(UNIX)
         COMPONENT SharedLibraries)
   INSTALL(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/sql/share
         DESTINATION  ${INSTALL_BINDIR}/tmysqlbinlogex/)
+        
+#for install_spider.sql
+  INSTALL(FILES storage/spider/scripts/install_spider.sql
+        DESTINATION ${INSTALL_LIBDIR}/scripts/
+        PERMISSIONS OWNER_READ OWNER_WRITE
+          OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+          WORLD_READ WORLD_EXECUTE
+        COMPONENT SharedLibraries)
 ENDIF()
