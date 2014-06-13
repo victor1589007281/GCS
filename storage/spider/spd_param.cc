@@ -2382,7 +2382,7 @@ static MYSQL_THDVAR_INT(
   "Mode of BKA for Spider", /* comment */
   NULL, /* check */
   NULL, /* update */
-  -1, /* def */
+  0, /* def */
   -1, /* min */
   2, /* max */
   0 /* blk */
