@@ -462,7 +462,7 @@ IF(UNIX)
         
 #for install_spider.sql
   INSTALL(FILES storage/spider/scripts/install_spider.sql
-        DESTINATION ${INSTALL_LIBDIR}/scripts/
+        DESTINATION scripts/
         PERMISSIONS OWNER_READ OWNER_WRITE
           OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
           WORLD_READ WORLD_EXECUTE
