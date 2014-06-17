@@ -1953,7 +1953,7 @@ static MYSQL_THDVAR_INT(
   "Execute \"REPLACE\" and \"INSERT IGNORE\" on remote server and avoid duplicate check on local server", /* comment */
   NULL, /* check */
   NULL, /* update */
-  -1, /* def */
+  1, /* def */
   -1, /* min */
   1, /* max */
   0 /* blk */
