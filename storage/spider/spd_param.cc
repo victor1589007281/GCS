@@ -1298,7 +1298,7 @@ static MYSQL_THDVAR_INT(
   "The retrieval result from a remote server is acquired by acquisition one by one", /* comment */
   NULL, /* check */
   NULL, /* update */
-  0, /* def */
+  1, /* def */
   -1, /* min */
   3, /* max */
   0 /* blk */
