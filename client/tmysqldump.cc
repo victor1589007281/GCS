@@ -207,6 +207,8 @@ static DYNAMIC_STRING extended_row;
 #include <sslopt-vars.h>
 FILE *md_result_file= 0;
 FILE *stderror_file=0;
+static FILE *extra_log_file = 0;
+#define EXTRA_LOG_PATH "/home/mysql/dbbackup/mysqldump_extra.log"
 
 #ifdef HAVE_SMEM
 static char *shared_memory_base_name=0;
@@ -317,6 +319,59 @@ static void dynstr_set_checked(DYNAMIC_STRING *str, const char *init_str);
 static void dynstr_append_mem_checked(DYNAMIC_STRING *str, const char *append,
 			  uint length);
 static void dynstr_realloc_checked(DYNAMIC_STRING *str, ulong additional_size);
+static void
+my_print_timestamp(
+                       FILE*  file) /*!< in: file where to print */
+{
+    DBUG_ENTER("my_print_timestamp");
+#ifdef __WIN__
+    SYSTEMTIME cal_tm;
+
+    GetLocalTime(&cal_tm);
+
+    fprintf(file,"%02d%02d%02d %2d:%02d:%02d",
+        (int)cal_tm.wYear % 100,
+        (int)cal_tm.wMonth,
+        (int)cal_tm.wDay,
+        (int)cal_tm.wHour,
+        (int)cal_tm.wMinute,
+        (int)cal_tm.wSecond);
+#else
+    struct tm  cal_tm;
+    struct tm* cal_tm_ptr;
+    time_t	   tm;
+
+    time(&tm);
+
+#ifdef HAVE_LOCALTIME_R
+    localtime_r(&tm, &cal_tm);
+    cal_tm_ptr = &cal_tm;
+#else
+    cal_tm_ptr = localtime(&tm);
+#endif
+    fprintf(file,"%02d%02d%02d %2d:%02d:%02d",
+        cal_tm_ptr->tm_year % 100,
+        cal_tm_ptr->tm_mon + 1,
+        cal_tm_ptr->tm_mday,
+        cal_tm_ptr->tm_hour,
+        cal_tm_ptr->tm_min,
+        cal_tm_ptr->tm_sec);
+#endif
+    DBUG_VOID_RETURN;
+}
+
+static void 
+my_logging(FILE *fp, const char *fmt, ...) 
+{
+    DBUG_ENTER("my_logging");
+    va_list args;
+    my_print_timestamp(fp);
+    va_start(args, fmt);
+    fprintf(fp, fmt, args);
+    va_end(args);
+    DBUG_VOID_RETURN;
+}
+
 /*
   Constant for detection of default value of default_charset.
   If default_charset is equal to mysql_universal_client_charset, then
@@ -1127,6 +1182,10 @@ static int get_options(int *argc, char ***argv)
   opt_net_buffer_length= *mysql_params->p_net_buffer_length;
 
   md_result_file= stdout;
+  extra_log_file = my_fopen(EXTRA_LOG_PATH, O_WRONLY, MYF(MY_WME));
+  if (!extra_log_file) {
+      extra_log_file = stderr;
+  }
   if (load_defaults("my",load_default_groups,argc,argv))
     return 1;
   defaults_argv= *argv;
@@ -1807,6 +1866,8 @@ static void free_resources()
 {
   if (md_result_file && md_result_file != stdout)
     my_fclose(md_result_file, MYF(0));
+  if (extra_log_file && (extra_log_file != stdout && extra_log_file != stderr))
+    my_fclose(extra_log_file, MYF(0));
   my_free(opt_password);
   if (my_hash_inited(&ignore_table))
     my_hash_free(&ignore_table);
@@ -4194,12 +4255,24 @@ static my_bool check_table_size(st_my_table_status *table_status,
     table_status->avg_row_length = (my_ulonglong)atol(row[5]);
     table_status->data_length = (my_ulonglong)atol(row[6]);
     table_status->index_length = (my_ulonglong)atol(row[8]);
+    my_logging(extra_log_file, "%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+        table_name,
+        table_status->table_rows,
+        table_status->avg_row_length,
+        table_status->data_length,
+        table_status->index_length);
   } else if (field_num == 4) {
     /* table_rows, data_length, index_length */
     table_status->table_rows = (my_ulonglong)atol(row[0]);
     table_status->data_length = (my_ulonglong)atol(row[1]);
     table_status->index_length = (my_ulonglong)atol(row[2]);
     table_status->avg_row_length = (my_ulonglong)atol(row[3]);
+    my_logging(extra_log_file, "%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+        table_name,
+        table_status->table_rows,
+        table_status->avg_row_length,
+        table_status->data_length,
+        table_status->index_length);
   } else {
     fprintf(stderr,
                 "Error: Res field count is not matched with sql statement for table %s (%s)\n",
