@@ -360,18 +360,6 @@ my_print_timestamp(
     DBUG_VOID_RETURN;
 }
 
-static void 
-my_logging(FILE *fp, const char *fmt, ...) 
-{
-    DBUG_ENTER("my_logging");
-    va_list args;
-    my_print_timestamp(fp);
-    va_start(args, fmt);
-    fprintf(fp, fmt, args);
-    va_end(args);
-    DBUG_VOID_RETURN;
-}
-
 /*
   Constant for detection of default value of default_charset.
   If default_charset is equal to mysql_universal_client_charset, then
@@ -4255,7 +4243,9 @@ static my_bool check_table_size(st_my_table_status *table_status,
     table_status->avg_row_length = (my_ulonglong)atol(row[5]);
     table_status->data_length = (my_ulonglong)atol(row[6]);
     table_status->index_length = (my_ulonglong)atol(row[8]);
-    my_logging(extra_log_file, "%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+    my_print_timestamp(extra_log_file); 
+    fprintf(extra_log_file, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+	db_name,
         table_name,
         table_status->table_rows,
         table_status->avg_row_length,
@@ -4267,7 +4257,9 @@ static my_bool check_table_size(st_my_table_status *table_status,
     table_status->data_length = (my_ulonglong)atol(row[1]);
     table_status->index_length = (my_ulonglong)atol(row[2]);
     table_status->avg_row_length = (my_ulonglong)atol(row[3]);
-    my_logging(extra_log_file, "%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+    my_print_timestamp(extra_log_file);
+    fprintf(extra_log_file, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+	db_name,
         table_name,
         table_status->table_rows,
         table_status->avg_row_length,
