@@ -938,7 +938,7 @@ static MYSQL_THDVAR_BOOL(
   "Sync sql_log_off", /* comment */
   NULL, /* check */
   NULL, /* update */
-  TRUE /* def */
+  FALSE/* def */
 );
 
 bool spider_param_internal_sql_log_off(
@@ -1298,7 +1298,7 @@ static MYSQL_THDVAR_INT(
   "The retrieval result from a remote server is acquired by acquisition one by one", /* comment */
   NULL, /* check */
   NULL, /* update */
-  0, /* def */
+  1, /* def */
   -1, /* min */
   3, /* max */
   0 /* blk */
@@ -1953,7 +1953,7 @@ static MYSQL_THDVAR_INT(
   "Execute \"REPLACE\" and \"INSERT IGNORE\" on remote server and avoid duplicate check on local server", /* comment */
   NULL, /* check */
   NULL, /* update */
-  -1, /* def */
+  1, /* def */
   -1, /* min */
   1, /* max */
   0 /* blk */
@@ -2382,7 +2382,7 @@ static MYSQL_THDVAR_INT(
   "Mode of BKA for Spider", /* comment */
   NULL, /* check */
   NULL, /* update */
-  -1, /* def */
+  0, /* def */
   -1, /* min */
   2, /* max */
   0 /* blk */
