@@ -49,6 +49,7 @@
 #include <stdarg.h>
 #include <signal.h>
 #include <ctype.h>
+#include <stdlib.h>
 #include "client_priv.h"
 #include "mysql.h"
 #include "mysql_version.h"
@@ -3827,20 +3828,20 @@ static my_ulonglong get_bytes_by_str(const char *src) {
 
   strncpy(tmp_buf, src, len);
   if (*beg == 'b' || *beg == 'B' || *beg == 0) {
-    return (my_ulonglong) atol(tmp_buf);
+    return (my_ulonglong) my_atoll(tmp_buf);
   }
 
   if (*beg == 't' || *beg == 'T') {
-    return ((my_ulonglong) atol(tmp_buf)) * TB_IN_BYTES;
+    return ((my_ulonglong) my_atoll(tmp_buf)) * TB_IN_BYTES;
   }
   if (*beg == 'g' || *beg == 'G') {
-    return ((my_ulonglong) atol(tmp_buf)) * GB_IN_BYTES;
+    return ((my_ulonglong) my_atoll(tmp_buf)) * GB_IN_BYTES;
   }
   if (*beg == 'm' || *beg == 'M') {
-    return ((my_ulonglong) atol(tmp_buf)) * MB_IN_BYTES;
+    return ((my_ulonglong) my_atoll(tmp_buf)) * MB_IN_BYTES;
   }
   if (*beg == 'k' || *beg == 'K') {
-    return ((my_ulonglong) atol(tmp_buf)) * KB_IN_BYTES;
+    return ((my_ulonglong) my_atoll(tmp_buf)) * KB_IN_BYTES;
   }
 
   return err_ret;
@@ -4239,10 +4240,10 @@ static my_bool check_table_size(st_my_table_status *table_status,
      Create_options:
             Comment:
     */
-    table_status->table_rows = (my_ulonglong)atol(row[4]);
-    table_status->avg_row_length = (my_ulonglong)atol(row[5]);
-    table_status->data_length = (my_ulonglong)atol(row[6]);
-    table_status->index_length = (my_ulonglong)atol(row[8]);
+    table_status->table_rows = (my_ulonglong)my_atoll(row[4]);
+    table_status->avg_row_length = (my_ulonglong)my_atoll(row[5]);
+    table_status->data_length = (my_ulonglong)my_atoll(row[6]);
+    table_status->index_length = (my_ulonglong)my_atoll(row[8]);
     my_print_timestamp(extra_log_file); 
     fprintf(extra_log_file, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
 	db_name,
@@ -4252,14 +4253,14 @@ static my_bool check_table_size(st_my_table_status *table_status,
         table_status->data_length,
         table_status->index_length);
   } else if (field_num == 4) {
-    /* table_rows, data_length, index_length */
-    table_status->table_rows = (my_ulonglong)atol(row[0]);
-    table_status->data_length = (my_ulonglong)atol(row[1]);
-    table_status->index_length = (my_ulonglong)atol(row[2]);
-    table_status->avg_row_length = (my_ulonglong)atol(row[3]);
+    /* table_rows, data_length, index_length, avg_row_length */
+    table_status->table_rows = (my_ulonglong)my_atoll(row[0]);
+    table_status->data_length = (my_ulonglong)my_atoll(row[1]);
+    table_status->index_length = (my_ulonglong)my_atoll(row[2]);
+    table_status->avg_row_length = (my_ulonglong)my_atoll(row[3]);
     my_print_timestamp(extra_log_file);
     fprintf(extra_log_file, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
-	db_name,
+        db_name,
         table_name,
         table_status->table_rows,
         table_status->avg_row_length,
@@ -5980,14 +5981,14 @@ static int do_show_processlist(MYSQL *mysql_con)
     MYSQL_ROW row = NULL;
     while ((row = mysql_fetch_row(res))) {
         if (!flag) {
-            my_ulonglong t_time = (my_ulonglong)atol(row[5]);
+            my_ulonglong t_time = (my_ulonglong)my_atoll(row[5]);
             if (strncasecmp(row[1], "REPL", strlen("REPL")) 
                 && strncasecmp(row[1], "SYSTEM USER", strlen("SYSTEM USER"))
                 && strncasecmp(row[4], "SLEEP", strlen("SLEEP"))
                 && t_time > 30
                 ) {
                     fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
-                        row[0] ? (my_ulonglong)atol(row[0]) : 0, 
+                        row[0] ? (my_ulonglong)my_atoll(row[0]) : 0, 
                         row[1] ? row[1] : "NULL", 
                         row[2] ? row[2] : "NULL", 
                         row[3] ? row[3] : "NULL", 
@@ -5999,12 +6000,12 @@ static int do_show_processlist(MYSQL *mysql_con)
         } else {
             // mysql_get_server_version(mysql) > 50107
             fprintf(stderr, "#PROCESSLIST# | %llu | %s | %s | %s | %s | %llu | %s | %s |\n", 
-                row[0] ? (my_ulonglong)atol(row[0]) : 0, 
+                row[0] ? (my_ulonglong)my_atoll(row[0]) : 0, 
                 row[1] ? row[1] : "NULL", 
                 row[2] ? row[2] : "NULL", 
                 row[3] ? row[3] : "NULL", 
                 row[4] ? row[4] : "NULL", 
-                row[5] ? (my_ulonglong)atol(row[5]) : 0, 
+                row[5] ? (my_ulonglong)my_atoll(row[5]) : 0, 
                 row[6] ? row[6] : "NULL", 
                 row[7] ? row[7] : "NULL");
         }
