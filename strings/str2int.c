@@ -43,9 +43,6 @@
 #include "m_ctype.h"
 #include "my_sys.h"			/* defines errno */
 #include <errno.h>
-#ifndef __WIN__
-#include <stdlib.h>
-#endif
 #define char_val(X) (X >= '0' && X <= '9' ? X-'0' :\
 		     X >= 'A' && X <= 'Z' ? X-'A'+10 :\
 		     X >= 'a' && X <= 'z' ? X-'a'+10 :\

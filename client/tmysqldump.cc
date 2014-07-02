@@ -49,7 +49,6 @@
 #include <stdarg.h>
 #include <signal.h>
 #include <ctype.h>
-#include <stdlib.h>
 #include "client_priv.h"
 #include "mysql.h"
 #include "mysql_version.h"
