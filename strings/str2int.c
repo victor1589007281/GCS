@@ -43,7 +43,9 @@
 #include "m_ctype.h"
 #include "my_sys.h"			/* defines errno */
 #include <errno.h>
-
+#ifndef __WIN__
+#include <stdlib.h>
+#endif
 #define char_val(X) (X >= '0' && X <= '9' ? X-'0' :\
 		     X >= 'A' && X <= 'Z' ? X-'A'+10 :\
 		     X >= 'a' && X <= 'z' ? X-'a'+10 :\
@@ -200,3 +202,13 @@ long atol(const char *src)
 }
 
 #endif /* WANT_OUR_ATOI */
+
+#ifdef __WIN__
+__int64 my_atoll(const char *str) {
+    return _atoi64(str);
+}
+#else
+long long int my_atoll(const char *str) {
+    return atoll(str);
+}
+#endif
