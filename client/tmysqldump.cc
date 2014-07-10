@@ -159,7 +159,8 @@ static char  *opt_password=0,*current_user=0,
              /* harryczhang: Setup size for every piece. */
              *piece_size = 0,
 
-             *log_error_file= NULL;
+             *log_error_file= NULL,
+             *extra_log_file=NULL;
 
 /* harryczhang: Variable to control the scale of recovery concurrency. */
 static uint split_count = 0; 
@@ -207,8 +208,7 @@ static DYNAMIC_STRING extended_row;
 #include <sslopt-vars.h>
 FILE *md_result_file= 0;
 FILE *stderror_file=0;
-static FILE *extra_log_file = 0;
-#define EXTRA_LOG_PATH "/home/mysql/dbbackup/mysqldump_extra.log"
+static FILE *extra_log_fp = 0;
 
 #ifdef HAVE_SMEM
 static char *shared_memory_base_name=0;
@@ -743,6 +743,16 @@ static struct my_option my_long_options[] =
       GET_STR,                                 /* string type */
       REQUIRED_ARG,                            /* required */
       0, 0, 0, 0, 0, 0},
+  {"extra_log_file",                             /* option name */
+      0,                                       /* no short version */
+                                               /* comment */
+      "Print some runtime statistics to given file",
+      &extra_log_file,                        /* opt variable value */
+      &extra_log_file,                        /* the user def. max variable value */
+      0,
+      GET_STR,                                 /* string type */
+      REQUIRED_ARG,                            /* required */
+      0, 0, 0, 0, 0, 0},
   /* harryczhang */
 
   {"tables", OPT_TABLES, "Overrides option --databases (-B).",
@@ -1170,17 +1180,20 @@ static int get_options(int *argc, char ***argv)
   opt_net_buffer_length= *mysql_params->p_net_buffer_length;
 
   md_result_file= stdout;
-  extra_log_file = my_fopen(EXTRA_LOG_PATH, O_WRONLY, MYF(MY_WME));
-  if (!extra_log_file) {
-      extra_log_file = stderr;
-  }
-#ifndef __WIN__
-  else {
-      if (fchmod(extra_log_file, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH) != 0) {
-          fprintf(stderr, "fchmod for extra_log_file with S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH error");
+  if (extra_log_file) {
+      extra_log_fp = my_fopen(extra_log_file, O_WRONLY, MYF(MY_WME));
+      if (!extra_log_fp) {
+          fprintf(stderr, "%s is not available for logging, extra_log_file direct to stderr\n", extra_log_file);
+          extra_log_fp = stderr;
       }
-  }
+#ifndef __WIN__
+      else {
+          if (fchmod(extra_log_fp, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH) != 0) {
+              fprintf(stderr, "fchmod for extra_log_file with S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH error");
+          }
+      }
 #endif
+  }
   if (load_defaults("my",load_default_groups,argc,argv))
     return 1;
   defaults_argv= *argv;
@@ -1861,8 +1874,8 @@ static void free_resources()
 {
   if (md_result_file && md_result_file != stdout)
     my_fclose(md_result_file, MYF(0));
-  if (extra_log_file && (extra_log_file != stdout && extra_log_file != stderr))
-    my_fclose(extra_log_file, MYF(0));
+  if (extra_log_fp && (extra_log_fp != stdout && extra_log_fp != stderr))
+    my_fclose(extra_log_fp, MYF(0));
   my_free(opt_password);
   if (my_hash_inited(&ignore_table))
     my_hash_free(&ignore_table);
@@ -4250,8 +4263,8 @@ static my_bool check_table_size(st_my_table_status *table_status,
     table_status->avg_row_length = (my_ulonglong)my_atoll(row[5]);
     table_status->data_length = (my_ulonglong)my_atoll(row[6]);
     table_status->index_length = (my_ulonglong)my_atoll(row[8]);
-    my_print_timestamp(extra_log_file); 
-    fprintf(extra_log_file, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+    my_print_timestamp(extra_log_fp); 
+    fprintf(extra_log_fp, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
 	db_name,
         table_name,
         table_status->table_rows,
@@ -4264,8 +4277,8 @@ static my_bool check_table_size(st_my_table_status *table_status,
     table_status->data_length = (my_ulonglong)my_atoll(row[1]);
     table_status->index_length = (my_ulonglong)my_atoll(row[2]);
     table_status->avg_row_length = (my_ulonglong)my_atoll(row[3]);
-    my_print_timestamp(extra_log_file);
-    fprintf(extra_log_file, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+    my_print_timestamp(extra_log_fp);
+    fprintf(extra_log_fp, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
         db_name,
         table_name,
         table_status->table_rows,
