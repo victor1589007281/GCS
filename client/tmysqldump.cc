@@ -1174,6 +1174,13 @@ static int get_options(int *argc, char ***argv)
   if (!extra_log_file) {
       extra_log_file = stderr;
   }
+#ifndef __WIN__
+  else {
+      if (fchmod(extra_log_file, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH) != 0) {
+          fprintf(stderr, "fchmod for extra_log_file with S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH error");
+      }
+  }
+#endif
   if (load_defaults("my",load_default_groups,argc,argv))
     return 1;
   defaults_argv= *argv;
