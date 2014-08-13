@@ -1906,7 +1906,7 @@ static MYSQL_THDVAR_BOOL(
     /* comment */
   NULL, /* check */
   NULL, /* update */
-  FALSE /* def */
+  TRUE /* def */
 );
 
 bool spider_param_local_lock_table(
