@@ -2439,6 +2439,10 @@ static Sys_var_mybool Sys_big_tables(
        "temporary sets on file (Solves most 'table full' errors)",
        SESSION_VAR(big_tables), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_log_sql_use_mutil_partition(
+									 "log_sql_use_mutil_partition", "log the sql in spider invoke partition more than 1",
+									 SESSION_VAR(log_sql_use_mutil_partition), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
 //static Sys_var_mybool Sys_blob_compressed(
 //	   "blob_compressed", "Set all blob/text field can be compressed when create table. ",
 //	   READ_ONLY SESSION_VAR(blob_compressed), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
@@ -3000,6 +3004,8 @@ static Sys_var_mybool Sys_general_log(
        DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(fix_log_state));
 
+
+
 // Synonym of "general_log" for consistency with SHOW VARIABLES output
 static Sys_var_mybool Sys_log(
        "log", "Alias for --general-log. Deprecated",
@@ -3030,6 +3036,14 @@ static Sys_var_mybool Sys_alter_query_log(
     GLOBAL_VAR(opt_alter_log), CMD_LINE(OPT_ARG),
     DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
     ON_UPDATE(fix_log_state));
+/*
+static Sys_var_mybool Sys_spider_sql_more_partition_used_log(
+	"spider_sql_more_partition_used_log",
+	"Log when the sql for spider invoke more partition ",
+	GLOBAL_VAR(opt_spider_sql_more_parititon_used_log), CMD_LINE(OPT_ARG),
+	DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+	ON_UPDATE(fix_log_state));
+*/
 
 static bool fix_log_state(sys_var *self, THD *thd, enum_var_type type)
 {

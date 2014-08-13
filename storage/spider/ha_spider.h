@@ -1079,6 +1079,11 @@ public:
   {
 	  return false;
   }
+
+  my_bool support_more_partiton_log()
+  {// spider存储引擎记录跨分区的行为，query记录到slow log
+	  return TRUE;
+  }
 };
 
 
