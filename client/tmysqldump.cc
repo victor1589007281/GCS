@@ -1188,7 +1188,7 @@ static int get_options(int *argc, char ***argv)
       }
 #ifndef __WIN__
       else {
-          if (fchmod(extra_log_fp, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH) != 0) {
+          if (chmod(extra_log_file, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH) != 0) {
               fprintf(stderr, "fchmod for extra_log_file with S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH error");
           }
       }
@@ -4263,28 +4263,34 @@ static my_bool check_table_size(st_my_table_status *table_status,
     table_status->avg_row_length = (my_ulonglong)my_atoll(row[5]);
     table_status->data_length = (my_ulonglong)my_atoll(row[6]);
     table_status->index_length = (my_ulonglong)my_atoll(row[8]);
-    my_print_timestamp(extra_log_fp); 
-    fprintf(extra_log_fp, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
-	db_name,
-        table_name,
-        table_status->table_rows,
-        table_status->avg_row_length,
-        table_status->data_length,
-        table_status->index_length);
+
+    if (extra_log_fp) {
+	    my_print_timestamp(extra_log_fp); 
+	    fprintf(extra_log_fp, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+			    db_name,
+			    table_name,
+			    table_status->table_rows,
+			    table_status->avg_row_length,
+			    table_status->data_length,
+			    table_status->index_length);
+    }
   } else if (field_num == 4) {
     /* table_rows, data_length, index_length, avg_row_length */
     table_status->table_rows = (my_ulonglong)my_atoll(row[0]);
     table_status->data_length = (my_ulonglong)my_atoll(row[1]);
     table_status->index_length = (my_ulonglong)my_atoll(row[2]);
     table_status->avg_row_length = (my_ulonglong)my_atoll(row[3]);
-    my_print_timestamp(extra_log_fp);
-    fprintf(extra_log_fp, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
-        db_name,
-        table_name,
-        table_status->table_rows,
-        table_status->avg_row_length,
-        table_status->data_length,
-        table_status->index_length);
+
+    if (extra_log_fp) {
+	    my_print_timestamp(extra_log_fp);
+	    fprintf(extra_log_fp, " %s.%s - table_rows=%llu, avg_len=%llu, data_len=%llu, index_len=%llu\n", 
+			    db_name,
+			    table_name,
+			    table_status->table_rows,
+			    table_status->avg_row_length,
+			    table_status->data_length,
+			    table_status->index_length);
+    }
   } else {
     fprintf(stderr,
                 "Error: Res field count is not matched with sql statement for table %s (%s)\n",
