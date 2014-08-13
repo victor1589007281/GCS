@@ -1174,7 +1174,7 @@ THR_LOCK_DATA **ha_spider::store_lock(
             conns[roop_count]->table_lock != 1 &&
             spider_param_semi_table_lock(thd, share->semi_table_lock) &&
             !spider_param_local_lock_table(thd)
-          ) { // semi_table_lock 默认为0, 此逻辑不走
+          ) { // local_lock_table 默认为1, 此逻辑不走
             SPIDER_CONN *conn = conns[roop_count];
             int appended = 0;
             if ((error_num = dbton_handler[conn->dbton_id]->
@@ -1279,6 +1279,7 @@ int ha_spider::external_lock(
 	
 	if(!spider_param_get_conn_from_idx())
 	{
+        // 对于unlock tables操作，总不会发到remote，由于操作没有执行。
 		error_num = spider_set_trx_status_info();
 		DBUG_RETURN(error_num);
 	}

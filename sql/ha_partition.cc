@@ -6867,6 +6867,10 @@ int ha_partition::info(uint flag)
 {
   uint no_lock_flag= flag & HA_STATUS_NO_LOCK;
   uint extra_var_flag= flag & HA_STATUS_VARIABLE_EXTRA;
+
+
+  THD *thd= ha_thd();
+
   DBUG_ENTER("ha_partition::info");
 
   if (flag & HA_STATUS_AUTO)
@@ -6959,12 +6963,19 @@ int ha_partition::info(uint flag)
     stats.check_time= 0;
     stats.delete_length= 0;
     file_array= m_file;
+	thd->variables.spider_sql_use_partition_count = 0; // 初始状态为0
     do
     {
       if (bitmap_is_set(&(m_part_info->used_partitions), (file_array - m_file)))
       {
         file= *file_array;
         file->info(HA_STATUS_VARIABLE | no_lock_flag | extra_var_flag);
+		// 在open table的时候，no_locak_flag extra_var_flag都为0
+		if(file->support_more_partiton_log() && thd->variables.log_sql_use_mutil_partition && (no_lock_flag || extra_var_flag))
+		{// 存储引擎须支持跨分区行为记录到slow log， spider支持
+		 // 统计query涉及的分区数，不考虑open table时读取了多个分区的情况
+			thd->variables.spider_sql_use_partition_count++;
+		}
         stats.records+= file->stats.records;
         stats.deleted+= file->stats.deleted;
         stats.data_file_length+= file->stats.data_file_length;
@@ -6974,6 +6985,19 @@ int ha_partition::info(uint flag)
           stats.check_time= file->stats.check_time;
       }
     } while (*(++file_array));
+/*
+	if(partiton_used_num >= 2)
+	{// SQL语句涉及的分区数至少为2个
+		time_t cur_time = (time_t) time((time_t*) 0);
+		struct tm lt;
+		struct tm *l_time = localtime_r(&cur_time, &lt);
+
+		fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
+			"the query: %s  invoke %d partitions\n",
+			l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+			l_time->tm_hour, l_time->tm_min, l_time->tm_sec, thd->query(), partiton_used_num);	
+	}
+*/
     if (stats.records && stats.records < 2 &&
         !(m_file[0]->ha_table_flags() & HA_STATS_RECORDS_IS_EXACT))
       stats.records= 2;

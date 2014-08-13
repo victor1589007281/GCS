@@ -1885,6 +1885,10 @@ public:
   { return (ha_table_flags() & HA_NO_TRANSACTIONS) == 0; }
   virtual uint extra_rec_buf_length() const { return 0; }
 
+
+  // 在partition下面， 该存储引擎是否需要将跨分区的query记录到slow log
+  virtual my_bool support_more_partiton_log() {return FALSE;}
+
   /**
     This method is used to analyse the error to see whether the error
     is ignorable or not, certain handlers can have more error that are
