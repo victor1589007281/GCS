@@ -485,6 +485,7 @@ typedef struct system_variables
   my_bool blob_compressed;
 //  my_bool spider_with_begin_commit;
   my_bool  log_sql_use_mutil_partition;
+  my_bool  log_slow_include_lock_time;
   uint     spider_sql_use_partition_count;
 
   plugin_ref table_plugin;

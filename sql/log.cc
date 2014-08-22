@@ -1498,13 +1498,26 @@ bool LOGGER::slow_log_print(THD *thd, const char *query, uint query_length,
       return 0;
     }
 
-    /* fill in user_host value: the format is "%s[%s] @ %s [%s]" */
-    user_host_len= (strxnmov(user_host_buff, MAX_USER_HOST_SIZE,
-                             sctx->priv_user ? sctx->priv_user : "", "[",
-                             sctx->user ? sctx->user : "", "] @ ",
-                             sctx->host ? sctx->host : "", " [",
-                             sctx->ip ? sctx->ip : "", "]", NullS) -
-                    user_host_buff);
+	if(thd->variables.spider_sql_use_partition_count >=2 && thd->variables.log_sql_use_mutil_partition)
+	{
+		/* fill in user_host value: the format is "%s[%s] @ %s [%s]" */
+		user_host_len= (strxnmov(user_host_buff, MAX_USER_HOST_SIZE,
+			sctx->priv_user ? sctx->priv_user : "", "[",
+			sctx->user ? sctx->user : "", "] @ ",
+			sctx->host ? sctx->host : "", " [",
+			sctx->ip ? sctx->ip : "", "]", "  Query_use_mutil_partition", NullS) -
+			user_host_buff);
+	}
+	else
+	{
+		/* fill in user_host value: the format is "%s[%s] @ %s [%s]" */
+		user_host_len= (strxnmov(user_host_buff, MAX_USER_HOST_SIZE,
+			sctx->priv_user ? sctx->priv_user : "", "[",
+			sctx->user ? sctx->user : "", "] @ ",
+			sctx->host ? sctx->host : "", " [",
+			sctx->ip ? sctx->ip : "", "]", NullS) -
+			user_host_buff);
+	}
 
     current_time= my_time_possible_from_micro(current_utime);
     if (thd->start_utime)

@@ -2443,6 +2443,11 @@ static Sys_var_mybool Sys_log_sql_use_mutil_partition(
 									 "log_sql_use_mutil_partition", "log the sql in spider invoke partition more than 1",
 									 SESSION_VAR(log_sql_use_mutil_partition), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_log_slow_include_lock_time(
+	"log_slow_include_lock_time", "log the query into slow_low when query_time > long_query_time, not query_time-lock_time > long_query_time.",
+	SESSION_VAR(log_slow_include_lock_time), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+
 //static Sys_var_mybool Sys_blob_compressed(
 //	   "blob_compressed", "Set all blob/text field can be compressed when create table. ",
 //	   READ_ONLY SESSION_VAR(blob_compressed), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
