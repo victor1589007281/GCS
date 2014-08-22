@@ -132,6 +132,16 @@ struct parse_result_struct {
 typedef struct parse_result_struct parse_result_t;
 
 
+
+// 这个结构体用来从tmysqlparse的client部分将option传过来，
+// 针对不同的参数进行行为处理
+struct parse_option
+{
+	bool is_split_sql;
+	char file_path[256];
+};
+
+
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
@@ -144,7 +154,7 @@ typedef struct info_audit
 
 enum enum_result_types {SQLPARSE_SUCESS, SQLPARSE_WARNING, SQLPARSE_FAIL, SQLPARSE_FAIL_OTHER};
 enum enum_warning_types {WARNINGS_DEFAULT, DROP_DB, DROP_TABLE, DROP_VIEW, DROP_COLUMN, TRUNCATE_TABLE, DELETE_WITHOUT_WHERE, UPDATE_WITHOUT_WHERE,
-						CREATE_TABLE_WITH_MUCH_BLOB, ALTER_TABLE_ADD_MUCH_BLOB, CREATE_TABLE_NOT_INNODB,
+						CREATE_TABLE_WITH_MUCH_BLOB, ALTER_TABLE_ADD_MUCH_BLOB, CREATE_TABLE_NOT_INNODB,CREATE_TABLE_WITH_ROW_FORMAT,
 						CREATE_TABLE_NO_INDEX, CREATE_TABLE_NO_PRIMARYKEY, ALTER_TABLE_WITH_AFTER, ALTER_TABLE_DEFAULT_WITHOUT_NOT_NULL, 
 						CREATE_TABLE_WITH_OTHER_CHARACTER, CREATE_PROCEDURE_WITH_DEFINER, USE_UNKNOWN_SYSTEM_VARIABLE,
 						OTHER_WARNINGS};
@@ -220,7 +230,7 @@ parse_global_destroy();
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
-int parse_result_audit_init(parse_result_audit* pr, char *version, char *charset, bool only_output_ntables);
+int parse_result_audit_init(parse_result_audit* pr, char *version, char *charset, bool only_output_ntables, parse_option *option);
 int query_parse_audit(char *query, parse_result_audit* pra);
 int parse_result_audit_destroy(parse_result_audit* pra);
 int parse_result_add_table_audit(parse_result_audit* pra, char* db_name, char* table_name);

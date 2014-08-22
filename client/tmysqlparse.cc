@@ -119,7 +119,7 @@ static char **defaults_argv;
 enum enum_info_type { INFO_INFO,INFO_ERROR,INFO_RESULT};
 typedef enum enum_info_type INFO_TYPE;
 
-static my_bool ignore_errors=0,quick=0,get_only_ntables=0,
+static my_bool ignore_errors=0,quick=0,get_only_ntables=0,split_sql=0,
 opt_raw_data=0,unbuffered=0,
 opt_rehash=1,skip_updates=0,one_database=0,
 using_opt_local_infile=0,
@@ -137,7 +137,7 @@ static uint my_end_arg;
 static char * opt_mysql_unix_port=0;
 static int connect_flag=CLIENT_INTERACTIVE;
 static char *current_host,*current_db,*current_user=0,*opt_password=0,
-*current_prompt=0, *delimiter_str= 0,*audit_output_file=0,*all_dml_output_file=0,
+*current_prompt=0, *delimiter_str= 0,*audit_output_file=0,*all_dml_output_file=0,*spilit_sql_path=0,
 *set_version=0,*set_charset=0, *default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME;
 static char *histfile;
 static char *histfile_tmp;
@@ -185,6 +185,7 @@ use global variable pra to store the reuslt of parse */
 unsigned long line_number_audit = 0;
 int info_audit_non_ascii = 0; //0 means has only ascii; 1 means has not ascii 
 static parse_result_audit pra;
+static parse_option sqlparse_option;
 const static int RESULT_OUTPUT_AUDIT_LEN = 10;
 typedef struct result_audit
 {
@@ -1217,7 +1218,9 @@ int main(int argc,char *argv[])
 	/************************************************************************/
 	/* add by willhan. 2013-06-17                                                                     */
 	/************************************************************************/
-	if(-1 == parse_result_audit_init(&pra,set_version, set_charset, get_only_ntables))
+	sqlparse_option.is_split_sql = split_sql;
+	strcpy(sqlparse_option.file_path, spilit_sql_path);
+	if(-1 == parse_result_audit_init(&pra,set_version, set_charset, get_only_ntables, &sqlparse_option))
 		return -1;
 	tmysqlparse_result_init(&roa);
 	if(current_db)//set the currentdb
@@ -1532,6 +1535,9 @@ static struct my_option my_long_options[] =
 	&audit_output_file, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"all_dml_output", 'd', "output the result if all sql is DML, 0 or 1.", &all_dml_output_file, 
 	&all_dml_output_file, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+	{"split_sql_path", 'S', "set the path to store the split sql file\n", &spilit_sql_path, 
+	&spilit_sql_path, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+
 /*	{"safe-updates", 'U', "Only allow UPDATE and DELETE that uses keys.",
 	&safe_updates, &safe_updates, 0, GET_BOOL, NO_ARG, 0, 0,
 	0, 0, 0, 0},
@@ -1550,6 +1556,7 @@ static struct my_option my_long_options[] =
 	"default value is \"5.5\"",&set_version, &set_version, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"set_charset", 'c', "set the charset of db.", &set_charset, &set_charset, 0 ,GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"get_only_ntables", 'T', "sqlparse output table counts only.", &get_only_ntables, &get_only_ntables, 0 ,GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+	{"split_sql", 's', "split the sql into create.sql alter.sql and dml.sql.", &split_sql, &split_sql, 0 ,GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
 
 	/*	{"wait", 'w', "Wait and retry if connection is down.", 0, 0, 0, GET_NO_ARG,
 	NO_ARG, 0, 0, 0, 0, 0, 0},
@@ -3898,10 +3905,16 @@ static void tmysqlparse_print_xml(result_output_audit *roa, FILE *xml_file)
 	fputs("\t\t<non_ascii>",xml_file);
 	fprintf(xml_file, "%d", info_audit_non_ascii);
 	fputs("</non_ascii>\n",xml_file);
+
+	fputs("\t\t<is_all_dml>",xml_file);
+//	fprintf(xml_file, "%d", info_audit_non_ascii);
+	fputs("</is_all_dml>\n",xml_file);
+	
 	fputs("\t</info>\n",xml_file);
 
 	fputs("</result>\n",xml_file);
 }
+
 
 
 static void tmysqlparse_is_all_dml_sql(result_output_audit *roa, FILE *xml_file)

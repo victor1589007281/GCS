@@ -16,7 +16,8 @@ static int ignore_error_code[] = {ER_UNKNOWN_SYSTEM_VARIABLE,0};//0 means the en
 
 
 static int version_pos[] = {0, 6, 13, 13, 13, 13, 13, 13};
-static  char word_segmentation[] = {' ' , '\t', '\n', '\r', ',', '.', '(', ')', '<', '>', '=', '!', '\0'};
+static  char word_segmentation[] = {' ' , '\t', '\n', '\r', ',', '.', '(', ')', '<', '>', '=', '!', '\0'}; 
+static parse_option sqlparse_option;
 
 
 static const char *reserve_words[] =
@@ -46,6 +47,14 @@ static int isprefix_word(const char *s, const char *t, int first_pos);
 static int is_word_segmentation(char ch);
 static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len,const char *reserve);
 //static int find_reserve_pos(char *reserve);
+static void cp_parse_option(parse_option dest, parse_option src);
+
+
+void cp_parse_option(parse_option *dest, parse_option *src)
+{
+	dest->is_split_sql = src->is_split_sql;
+	strcpy(dest->file_path, src->file_path);
+}
 
 
 void parse_global_init()
@@ -648,7 +657,7 @@ const char* get_stmt_type_str(int type)
 /************************************************************************/
 /* add by willhan. 2013-06-13                                                                     */
 /************************************************************************/
-int parse_result_audit_init(parse_result_audit* pra, char *version, char *charset, bool only_output_ntables)
+int parse_result_audit_init(parse_result_audit* pra, char *version, char *charset, bool only_output_ntables, parse_option *option)
 {
     THD* thd;
 	enum_version current_version;
@@ -688,6 +697,7 @@ int parse_result_audit_init(parse_result_audit* pra, char *version, char *charse
 	pra->table_arr = (parse_table_t*)calloc(PARSE_RESULT_N_TABLE_ARR_INITED, sizeof(parse_table_t));
 	pra->mysql_version = current_version;
 	pra->only_output_ntables = only_output_ntables;
+	cp_parse_option(&sqlparse_option, option);
 
 	if(charset)
 	{
@@ -768,10 +778,80 @@ query_parse_audit_tsqlparse(
 	case SQLCOM_UPDATE:
 	case SQLCOM_INSERT:
 	case SQLCOM_DELETE:
+	case SQLCOM_INSERT_SELECT:
+	case SQLCOM_REPLACE:
+	case SQLCOM_REPLACE_SELECT:
 		break;
 	default:
 		pra->info.is_all_dml = FALSE;
 		break;
+	}
+
+	if(sqlparse_option.is_split_sql)
+	{
+		char file_create[300];
+		char file_alter[300]; 
+		char file_dml[300];
+		char file_other[300];
+		
+		strcpy(file_create, sqlparse_option.file_path);
+		strcpy(file_alter, sqlparse_option.file_path);
+		strcpy(file_dml, sqlparse_option.file_path);
+		strcpy(file_other, sqlparse_option.file_path);
+
+		strcat(file_create,"create.sql");
+		strcat(file_alter,"alter.sql");
+		strcat(file_dml,"dml.sql");
+		strcat(file_other,"other.sql");
+
+
+		FILE *fp_create = fopen(file_create, "a+");
+		FILE *fp_alter = fopen(file_alter, "a+");
+		FILE *fp_dml = fopen(file_dml, "a+");
+		FILE *fp_other = fopen(file_other, "a+");
+
+		switch(lex->sql_command)
+		{
+		case SQLCOM_CHANGE_DB:
+			fprintf(fp_create, "%s;\n",query);
+			fprintf(fp_alter, "%s;\n",query);
+			fprintf(fp_dml, "%s;\n",query);
+			fprintf(fp_other, "%s;\n",query);
+			break;
+
+		case SQLCOM_DROP_DB:
+		case SQLCOM_CREATE_TABLE:
+		case SQLCOM_DROP_TABLE:
+		case SQLCOM_CREATE_DB:
+			fprintf(fp_create, "%s;\n",query);
+			break;
+
+		case SQLCOM_CREATE_INDEX:
+		case SQLCOM_ALTER_TABLE:
+		case SQLCOM_RENAME_TABLE:
+		case SQLCOM_TRUNCATE:
+		case SQLCOM_DROP_INDEX:
+			fprintf(fp_alter, "%s;\n",query);
+			break;
+
+
+		case SQLCOM_SELECT:
+		case SQLCOM_UPDATE:
+		case SQLCOM_INSERT:
+		case SQLCOM_INSERT_SELECT:
+		case SQLCOM_DELETE:
+		case SQLCOM_REPLACE:
+		case SQLCOM_REPLACE_SELECT:
+			fprintf(fp_dml, "%s;\n",query);	
+			break;
+
+		default:
+			fprintf(fp_other, "%s;\n",query);
+		}
+		fclose(fp_create);
+		fclose(fp_alter);
+		fclose(fp_dml);
+		fclose(fp_other);
 	}
 
 	switch (lex->sql_command)
