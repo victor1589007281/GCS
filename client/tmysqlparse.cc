@@ -1219,7 +1219,9 @@ int main(int argc,char *argv[])
 	/* add by willhan. 2013-06-17                                                                     */
 	/************************************************************************/
 	sqlparse_option.is_split_sql = split_sql;
-	strcpy(sqlparse_option.file_path, spilit_sql_path);
+	memset(sqlparse_option.file_path, sizeof(sqlparse_option.file_path), 0);
+	if(split_sql)
+		strcpy(sqlparse_option.file_path, spilit_sql_path);
 	if(-1 == parse_result_audit_init(&pra,set_version, set_charset, get_only_ntables, &sqlparse_option))
 		return -1;
 	tmysqlparse_result_init(&roa);

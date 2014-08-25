@@ -17,7 +17,8 @@ static int ignore_error_code[] = {ER_UNKNOWN_SYSTEM_VARIABLE,0};//0 means the en
 
 static int version_pos[] = {0, 6, 13, 13, 13, 13, 13, 13};
 static  char word_segmentation[] = {' ' , '\t', '\n', '\r', ',', '.', '(', ')', '<', '>', '=', '!', '\0'}; 
-static parse_option sqlparse_option;
+static parse_option sqlparse_option ;
+
 
 
 static const char *reserve_words[] =
