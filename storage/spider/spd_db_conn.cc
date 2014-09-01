@@ -5108,9 +5108,17 @@ int spider_db_show_table_status(
   uint flag
 ) {
   int error_num;
+  DBUG_ENTER("spider_db_show_table_status");
+
+  // maybe the spider->trx is bad pointer
+  spider->trx = spider_get_trx(current_thd, TRUE, &error_num);
+  if (!spider->trx)
+  {
+    DBUG_RETURN(error_num);
+  }
+
   SPIDER_CONN *conn = spider->spider_get_conn_by_idx(link_idx);
   spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
-  DBUG_ENTER("spider_db_show_table_status");
   DBUG_PRINT("info",("spider sts_mode=%d", sts_mode));
   sts_mode = dbton_hdl->sts_mode_exchange(sts_mode);
   error_num = dbton_hdl->show_table_status(
@@ -5186,9 +5194,18 @@ int spider_db_show_index(
   int crd_mode
 ) {
   int error_num;
+  DBUG_ENTER("spider_db_show_index");
+
+  // maybe the spider->trx is bad pointer
+  spider->trx = spider_get_trx(current_thd, TRUE, &error_num);
+  if (!spider->trx)
+  {
+      DBUG_RETURN(error_num);
+  }
+
   SPIDER_CONN *conn = spider->spider_get_conn_by_idx(link_idx);
   spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
-  DBUG_ENTER("spider_db_show_index");
+
   crd_mode = dbton_hdl->crd_mode_exchange(crd_mode);
   error_num = spider->dbton_handler[conn->dbton_id]->show_index(
     link_idx,
