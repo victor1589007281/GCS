@@ -2390,6 +2390,7 @@ case SQLCOM_PREPARE:
     */
     Alter_info alter_info(lex->alter_info, thd->mem_root);
 
+
     if (thd->is_fatal_error)
     {
       /* If out of memory when creating a copy of alter_info. */
@@ -2592,6 +2593,7 @@ case SQLCOM_PREPARE:
       if (!res)
         my_ok(thd);
     }
+
 
 end_with_restore_list:
     break;

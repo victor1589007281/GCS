@@ -1,7 +1,4 @@
-/*
-    
 
-*/
 
 #ifndef SQLPARSE_H
 #define SQLPARSE_H

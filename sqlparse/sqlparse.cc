@@ -6,6 +6,9 @@
 #include "sqlparse.h"
 #include "sp_head.h"
 #include "mysql_com.h"
+#include "sql_show.h"
+#include "sql_string.h"
+
 
 extern int parse_export;
 #define PARSE_RESULT_N_TABLE_ARR_INITED 5
@@ -49,6 +52,12 @@ static int is_word_segmentation(char ch);
 static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len,const char *reserve);
 //static int find_reserve_pos(char *reserve);
 static void cp_parse_option(parse_option dest, parse_option src);
+static int parse_create_info(THD *thd, String *packet, bool show_database);
+static void filed_add_zerofill_and_unsigned(String &res, bool unsigned_flag, bool zerofill);
+static void gettype_create_filed(Create_field *cr_field, String &res);
+static bool get_createfield_default_value(Create_field *cr_field, String *def_value);
+static void parse_append_directory(THD *thd, String *packet, const char *dir_type, const char *filename);
+
 
 
 void cp_parse_option(parse_option *dest, parse_option *src)
@@ -735,9 +744,14 @@ query_parse_audit_tsqlparse(
 
 	Create_field *cur_field;
 	uint blob_text_count;
+	char buff[2048];
+	String buffer(buff, sizeof(buff), system_charset_info);
 
 
     thd = (THD*)pra->thd_org;
+
+
+
 	DBUG_ASSERT(pra->n_tables_alloced > 0 && thd);
 
     if (strlen(query) == 0)
@@ -772,6 +786,14 @@ query_parse_audit_tsqlparse(
 	it_field = lex->alter_info.create_list;
 
 	list_field_drop = lex->alter_info.drop_list;
+
+
+	if(lex->sql_command == SQLCOM_CREATE_TABLE)
+	{
+		buffer.length(0);
+		parse_create_info(thd, &buffer, true);
+	}
+
 
 	switch(lex->sql_command)
 	{// 用于判定pra->info.is_all_dml值，即是否所有语句都为dml语句。  有一条语句非下面几种增删改查，则表示非dml
@@ -813,11 +835,12 @@ query_parse_audit_tsqlparse(
 
 		switch(lex->sql_command)
 		{
+		case SQLCOM_SET_OPTION:
 		case SQLCOM_CHANGE_DB:
 			fprintf(fp_create, "%s;\n",query);
 			fprintf(fp_alter, "%s;\n",query);
 			fprintf(fp_dml, "%s;\n",query);
-			fprintf(fp_other, "%s;\n",query);
+		//	fprintf(fp_other, "%s;\n",query);
 			break;
 
 		case SQLCOM_DROP_DB:
@@ -1577,3 +1600,623 @@ static int find_reserve_pos(char *reserve)
 }
 *************************************/
 
+int parse_create_info(THD *thd,  String *packet, bool show_database)
+{
+	List<Item> field_list;
+	char tmp[MAX_FIELD_WIDTH], *for_str, buff[128], def_value_buf[MAX_FIELD_WIDTH];
+	const char *alias;
+	String type(tmp, sizeof(tmp), system_charset_info);
+	String def_value(def_value_buf, sizeof(def_value_buf), system_charset_info);
+	uint primary_key;
+
+
+	LEX* lex = thd->lex;
+	SELECT_LEX *select_lex = &lex->select_lex;
+	TABLE_LIST* table_list = lex->query_tables;
+	List<Create_field> list_field = lex->alter_info.create_list;;
+	List_iterator<Create_field> it_field = lex->alter_info.create_list;;
+
+	Create_field *field, *first_field;
+
+	List_iterator<Key> key_iterator(lex->alter_info.key_list);
+	Key *key;
+	HA_CREATE_INFO create_info = lex->create_info;
+	int num_timestap = 0;
+	int key_count = 0;
+	char	*key_name;
+	Key_part_spec *column;
+	
+
+	packet->append(STRING_WITH_LEN("CREATE TABLE "));
+	packet->append(STRING_WITH_LEN("IF NOT EXISTS "));
+
+	alias= table_list->table_name;
+
+	append_identifier(thd, packet, table_list->db, strlen(table_list->db));
+	packet->append(STRING_WITH_LEN("."));
+	
+	append_identifier(thd, packet, alias, strlen(alias));
+	packet->append(STRING_WITH_LEN(" (\n"));
+
+
+	first_field = it_field++ ;
+	it_field.rewind();
+	while(!!(field = it_field++))
+	{
+		uint flags = field->flags;
+
+		if(field->sql_type == MYSQL_TYPE_TIMESTAMP)
+			num_timestap++;
+
+
+		if(field != first_field)
+			packet->append(STRING_WITH_LEN(",\n"));
+
+		packet->append(STRING_WITH_LEN("  "));
+		append_identifier(thd,packet,field->field_name, strlen(field->field_name));
+		packet->append(' ');
+		// check for surprises from the previous call to Field::sql_type()
+		if (type.ptr() != tmp)
+			type.set(tmp, sizeof(tmp), system_charset_info);
+		else
+			type.set_charset(system_charset_info);
+
+		gettype_create_filed(field, type);
+		packet->append(type.ptr(), type.length(), system_charset_info);
+
+		if(field->charset && field->charset->csname)
+		{
+			if(strcmp(field->charset->csname, "binary"))
+			{
+				if(lex->create_info.default_table_charset)
+				{
+					if(strcmp(field->charset->csname, lex->create_info.default_table_charset->csname))
+					{
+						packet->append(STRING_WITH_LEN(" CHARACTER SET "));
+						packet->append(field->charset->csname);
+					}
+				}
+				else
+				{
+					packet->append(STRING_WITH_LEN(" CHARACTER SET "));
+					packet->append(field->charset->csname);
+				}
+			}
+		}
+		if ((field->charset) && !(field->charset->state & MY_CS_PRIMARY))
+		{
+			packet->append(STRING_WITH_LEN(" COLLATE "));
+			packet->append(field->charset->name);
+		}
+		if (flags & NOT_NULL_FLAG)
+			packet->append(STRING_WITH_LEN(" NOT NULL"));
+
+		if (get_createfield_default_value(field, &def_value))
+		{
+			packet->append(STRING_WITH_LEN(" DEFAULT "));
+			packet->append(def_value.ptr(), def_value.length(), system_charset_info);
+		}
+
+		if (field->unireg_check == Field::NEXT_NUMBER && 
+			!(thd->variables.sql_mode & MODE_NO_FIELD_OPTIONS))
+			packet->append(STRING_WITH_LEN(" AUTO_INCREMENT"));
+
+		if (field->is_compressed() )
+		{//add by willhan. 2013-7-23.
+			packet->append(STRING_WITH_LEN(" /*!99104 COMPRESSED */"));
+		}
+
+		if (field->comment.length)
+		{
+			packet->append(STRING_WITH_LEN(" COMMENT "));
+			append_unescaped(packet, field->comment.str, field->comment.length);
+		}
+	}
+	
+		
+	while(key = key_iterator++)
+	{
+		bool found_primary=0;
+		List_iterator<Key_part_spec> cols(key->columns);
+		packet->append(STRING_WITH_LEN(",\n  "));
+
+
+		
+		for (uint column_nr=0 ; (column=cols++) ; column_nr++)
+		{
+			/* Create the key name based on the first column (if not given) */
+			if (column_nr == 0)
+			{//  只考虑非主键，主键的时候key name 为primary key
+				if (key->type != Key::Keytype::PRIMARY && !(key_name= key->name.str))
+				//	key_name=make_unique_key_name(sql_field->field_name, *key_info_buffer, key_info);
+					key_name = column->field_name.str;
+			}
+		}
+
+
+		if (key->type == Key::Keytype::PRIMARY)
+		{
+			packet->append(STRING_WITH_LEN("PRIMARY KEY"));
+			found_primary = true;
+		}
+		else if (key->type == Key::Keytype::UNIQUE)
+			packet->append(STRING_WITH_LEN("UNIQUE KEY "));
+		else if (key->type == Key::Keytype::FULLTEXT)
+			packet->append(STRING_WITH_LEN("FULLTEXT KEY "));
+		else if (key->type == Key::Keytype::SPATIAL)
+			packet->append(STRING_WITH_LEN("SPATIAL KEY "));
+		else
+			packet->append(STRING_WITH_LEN("KEY "));
+
+		if (!found_primary)
+			append_identifier(thd, packet, key_name, strlen(key_name));
+
+		packet->append(STRING_WITH_LEN(" ("));
+
+		cols.rewind();
+		for (uint column_nr=0 ; (column=cols++) ; column_nr++)
+		{
+			if (column_nr)
+				packet->append(',');
+
+			if (column->field_name.str)
+				append_identifier(thd, packet, column->field_name.str, strlen(column->field_name.str));
+			if (column->field_name.str && column->length > 0 && 
+				 !(key->type== Key::Keytype::FULLTEXT || key->type== Key::Keytype::SPATIAL ))
+			{
+				char *end;
+				buff[0] = '(';
+				end= int10_to_str((long) column->length, buff + 1,10);
+				*end++ = ')';
+				packet->append(buff,(uint) (end-buff));
+			}
+		}
+		packet->append(')');
+	}
+
+	packet->append(STRING_WITH_LEN("\n)"));
+
+	/* TABLESPACE and STORAGE */
+	if (create_info.tablespace || create_info.storage_media != HA_SM_DEFAULT)
+	{
+		packet->append(STRING_WITH_LEN(" /*!50100"));
+		if (create_info.tablespace)
+		{
+			packet->append(STRING_WITH_LEN(" TABLESPACE "));
+			packet->append(create_info.tablespace, strlen(create_info.tablespace));
+		}
+
+		if (create_info.storage_media == HA_SM_DISK)
+			packet->append(STRING_WITH_LEN(" STORAGE DISK"));
+		if (create_info.storage_media == HA_SM_MEMORY)
+			packet->append(STRING_WITH_LEN(" STORAGE MEMORY"));
+
+		packet->append(STRING_WITH_LEN(" */"));
+	}
+
+	if (create_info.used_fields & HA_CREATE_USED_ENGINE)
+	{
+		packet->append(STRING_WITH_LEN(" ENGINE="));
+		if(create_info.db_type)
+		{// 只考虑指定了innodb与myisam
+			switch(create_info.db_type->db_type)
+			{
+			case DB_TYPE_MISAM:
+				packet->append(STRING_WITH_LEN("MyISAM"));
+				break;
+			case DB_TYPE_INNODB:
+				packet->append(STRING_WITH_LEN("InnoDB"));
+				break;
+			default:
+				packet->append(STRING_WITH_LEN("InnoDB"));
+				break;
+			}
+		}
+		else
+		{
+			packet->append(STRING_WITH_LEN("InnoDB"));
+		}
+
+	}
+	else
+	{// 必须指定存储引擎，如果没有create_info信息，则指定innodb
+		packet->append(STRING_WITH_LEN(" ENGINE=InnoDB"));
+	}
+
+//  create table后面，auto_increment=n这一句当前被忽略掉。
+	if (create_info.auto_increment_value > 1)
+	{
+		char *end;
+		packet->append(STRING_WITH_LEN(" AUTO_INCREMENT="));
+		end= longlong10_to_str(create_info.auto_increment_value, buff,10);
+		packet->append(buff, (uint) (end - buff));
+	}
+
+
+
+	if (create_info.default_table_charset)
+	{// 如果有指定字符集，则使用  否则不指定字符集
+		if ((create_info.used_fields & HA_CREATE_USED_DEFAULT_CHARSET))
+		{
+			packet->append(STRING_WITH_LEN(" DEFAULT CHARSET="));
+			packet->append(create_info.default_table_charset->csname);
+			if (!(create_info.default_table_charset->state & MY_CS_PRIMARY))
+			{
+				packet->append(STRING_WITH_LEN(" COLLATE="));
+				packet->append(create_info.default_table_charset->name);
+			}
+		}
+	}
+
+	if (create_info.min_rows)
+	{
+		char *end;
+		packet->append(STRING_WITH_LEN(" MIN_ROWS="));
+		end= longlong10_to_str(create_info.min_rows, buff, 10);
+		packet->append(buff, (uint) (end- buff));
+	}
+
+	if (create_info.max_rows && !table_list->schema_table)
+	{
+		char *end;
+		packet->append(STRING_WITH_LEN(" MAX_ROWS="));
+		end= longlong10_to_str(create_info.max_rows, buff, 10);
+		packet->append(buff, (uint) (end - buff));
+	}
+
+	if (create_info.avg_row_length)
+	{
+		char *end;
+		packet->append(STRING_WITH_LEN(" AVG_ROW_LENGTH="));
+		end= longlong10_to_str(create_info.avg_row_length, buff,10);
+		packet->append(buff, (uint) (end - buff));
+	}
+/************** database相关的一些option忽略掉 ******************************
+	if (share->db_create_options & HA_OPTION_PACK_KEYS)
+		packet->append(STRING_WITH_LEN(" PACK_KEYS=1"));
+	if (share->db_create_options & HA_OPTION_NO_PACK_KEYS)
+		packet->append(STRING_WITH_LEN(" PACK_KEYS=0"));
+	if (share->db_create_options & HA_OPTION_CHECKSUM)
+		packet->append(STRING_WITH_LEN(" CHECKSUM=1"));
+	if (share->db_create_options & HA_OPTION_DELAY_KEY_WRITE)
+		packet->append(STRING_WITH_LEN(" DELAY_KEY_WRITE=1"));
+*************************************************************************/
+	if (create_info.row_type != ROW_TYPE_DEFAULT)
+	{
+		if(create_info.row_type == ROW_TYPE_GCS ){
+			char tversion[12];        
+			sprintf(tversion,"%u",TMYSQL_VERSION_START_ID);
+
+			packet->append(STRING_WITH_LEN(" /*!"));
+			packet->append(tversion ,5);
+			packet->append(STRING_WITH_LEN(" ROW_FORMAT="));
+
+			packet->append(ha_row_type[(uint) create_info.row_type]);
+			
+			packet->append(STRING_WITH_LEN(" */ "));
+		}else{
+			packet->append(STRING_WITH_LEN(" ROW_FORMAT="));
+			packet->append(ha_row_type[(uint) create_info.row_type]);
+		}
+	}
+	if (create_info.key_block_size)
+	{
+		char *end;
+		packet->append(STRING_WITH_LEN(" KEY_BLOCK_SIZE="));
+		end= longlong10_to_str(create_info.key_block_size, buff, 10);
+		packet->append(buff, (uint) (end - buff));
+	}
+	if (create_info.comment.length)
+	{
+		packet->append(STRING_WITH_LEN(" COMMENT="));
+		append_unescaped(packet, create_info.comment.str, create_info.comment.length);
+	}
+	if (create_info.connect_string.length)
+	{
+		packet->append(STRING_WITH_LEN(" CONNECTION="));
+		append_unescaped(packet, create_info.connect_string.str, create_info.connect_string.length);
+	}
+	parse_append_directory(thd, packet, "DATA",  create_info.data_file_name);
+	parse_append_directory(thd, packet, "INDEX", create_info.index_file_name);
+	return 0;
+}
+
+
+
+void gettype_create_filed(Create_field *cr_field, String &res)
+{
+	CHARSET_INFO *cs=res.charset();
+	int field_length = cr_field->length;
+	ulong length;
+	bool unsigned_flag = cr_field->flags & UNSIGNED_FLAG;
+	bool zerofill_flag = cr_field->flags & ZEROFILL_FLAG;
+	uint tmp=field_length;
+
+	switch(cr_field->sql_type)
+	{
+	case MYSQL_TYPE_DECIMAL:
+		tmp=cr_field->length;
+		if (!unsigned_flag)
+			tmp--;
+		if (cr_field->decimals)
+			tmp--;
+		res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(),
+			"decimal(%d,%d)", tmp, cr_field->decimals));
+		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
+		break;
+	case MYSQL_TYPE_TINY:
+		res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(),
+			"tinyint(%d)",(int) field_length));
+		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
+		break;
+	case MYSQL_TYPE_SHORT:
+		res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(),
+			"smallint(%d)",(int) field_length));
+		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
+		break;
+	case MYSQL_TYPE_INT24:
+		res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(), 
+			"mediumint(%d)",(int) field_length));
+		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
+		break;
+	case MYSQL_TYPE_LONG:
+		res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(),
+			"int(%d)", field_length));
+		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
+		break;
+	case MYSQL_TYPE_FLOAT:
+		if (cr_field->decimals == NOT_FIXED_DEC)
+		{
+			res.set_ascii(STRING_WITH_LEN("float"));
+		}
+		else
+		{
+			CHARSET_INFO *cs= res.charset();
+			res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(),
+				"float(%d,%d)", cr_field->length, cr_field->decimals));
+		}
+		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
+		break;
+	case MYSQL_TYPE_DOUBLE:
+		if (cr_field->decimals == NOT_FIXED_DEC)
+		{
+			res.set_ascii(STRING_WITH_LEN("double"));
+		}
+		else
+		{
+			res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(),
+				"double(%d,%d)", cr_field->length, cr_field->decimals));
+		}
+		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
+		break;
+	case MYSQL_TYPE_NULL:
+		res.set_ascii(STRING_WITH_LEN("null"));
+		break;
+	case MYSQL_TYPE_TIMESTAMP:
+		res.set_ascii(STRING_WITH_LEN("timestamp"));
+		break;
+	case MYSQL_TYPE_LONGLONG:
+		res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(),
+			"bigint(%d)",(int) field_length));
+		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
+
+	case MYSQL_TYPE_DATE:
+		res.set_ascii(STRING_WITH_LEN("date"));
+		break;
+	case MYSQL_TYPE_TIME:
+		res.set_ascii(STRING_WITH_LEN("time"));
+		break;
+	case MYSQL_TYPE_DATETIME:
+		res.set_ascii(STRING_WITH_LEN("datetime"));
+		break;
+	case MYSQL_TYPE_YEAR:
+		res.length(cs->cset->snprintf(cs,(char*)res.ptr(),res.alloced_length(),
+			"year(%d)",(int) field_length));
+		break;
+	case MYSQL_TYPE_NEWDATE:
+		res.set_ascii(STRING_WITH_LEN("date"));
+		break;
+	case MYSQL_TYPE_BIT:
+		length= cs->cset->snprintf(cs, (char*) res.ptr(), res.alloced_length(),
+			"bit(%d)", (int) field_length);
+		res.length((uint) length);
+		break;
+	case MYSQL_TYPE_NEWDECIMAL:
+		res.length(cs->cset->snprintf(cs, (char*) res.ptr(), res.alloced_length(),
+			"decimal(%d,%d)", cr_field->length - (cr_field->decimals>0 ? 1:0) - (unsigned_flag || !cr_field->length ? 0:1), 
+			cr_field->decimals));
+		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
+		break;
+		/*
+	case MYSQL_TYPE_ENUM:
+		char buffer[255];
+		String enum_item(buffer, sizeof(buffer), res.charset());
+
+		res.length(0);
+		res.append(STRING_WITH_LEN("enum("));
+
+		bool flag=0;
+		uint *len= typelib->type_lengths;
+		for (const char **pos= typelib->type_names; *pos; pos++, len++)
+		{
+			uint dummy_errors;
+			if (flag)
+				res.append(',');
+			enum_item.copy(*pos, *len, charset(), res.charset(), &dummy_errors);
+			append_unescaped(&res, enum_item.ptr(), enum_item.length());
+			flag= 1;
+		}
+		res.append(')');
+		break;
+	case MYSQL_TYPE_SET:
+		char buffer_tmp[255];
+		String set_item(buffer_tmp, sizeof(buffer_tmp), res.charset());
+
+		res.length(0);
+		res.append(STRING_WITH_LEN("set("));
+
+		bool flag=0;
+		uint *len= typelib->type_lengths;
+		for (const char **pos= typelib->type_names; *pos; pos++, len++)
+		{
+			uint dummy_errors;
+			if (flag)
+				res.append(',');
+			set_item.copy(*pos, *len, charset(), res.charset(), &dummy_errors);
+			append_unescaped(&res, set_item.ptr(), set_item.length());
+			flag= 1;
+		}
+		res.append(')');
+		break;
+	case MYSQL_TYPE_GEOMETRY:
+		CHARSET_INFO *cs= &my_charset_latin1;
+		switch (geom_type)
+		{
+		case GEOM_POINT:
+			res.set(STRING_WITH_LEN("point"), cs);
+			break;
+		case GEOM_LINESTRING:
+			res.set(STRING_WITH_LEN("linestring"), cs);
+			break;
+		case GEOM_POLYGON:
+			res.set(STRING_WITH_LEN("polygon"), cs);
+			break;
+		case GEOM_MULTIPOINT:
+			res.set(STRING_WITH_LEN("multipoint"), cs);
+			break;
+		case GEOM_MULTILINESTRING:
+			res.set(STRING_WITH_LEN("multilinestring"), cs);
+			break;
+		case GEOM_MULTIPOLYGON:
+			res.set(STRING_WITH_LEN("multipolygon"), cs);
+			break;
+		case GEOM_GEOMETRYCOLLECTION:
+			res.set(STRING_WITH_LEN("geometrycollection"), cs);
+			break;
+		default:
+			res.set(STRING_WITH_LEN("geometry"), cs);
+		}
+		break;
+*/	
+		
+	case MYSQL_TYPE_TINY_BLOB:
+	case MYSQL_TYPE_MEDIUM_BLOB:
+	case MYSQL_TYPE_LONG_BLOB:
+	case MYSQL_TYPE_BLOB:
+		const char *str;
+		uint length;
+		switch (cr_field->sql_type) 
+		{
+		case MYSQL_TYPE_TINY_BLOB:
+			str="tiny"; length=4; break;
+		case MYSQL_TYPE_BLOB:
+			str="";     length=0; break;
+		case MYSQL_TYPE_MEDIUM_BLOB:
+			str="medium"; length= 6; break;
+		case MYSQL_TYPE_LONG_BLOB:
+			str="long";  length=4; break;
+		default:
+			break;
+		}
+		res.set_ascii(str,length);
+		if (cr_field->charset == &my_charset_bin)
+			res.append(STRING_WITH_LEN("blob"));
+		else
+		{
+			res.append(STRING_WITH_LEN("text"));
+		}
+		break;
+	case MYSQL_TYPE_VARCHAR:
+	case MYSQL_TYPE_VAR_STRING:
+		
+		if(cr_field->charset)
+		{
+/* TODO,   这处的mbmaxlen是什么含义 ？！ varchar(10)的时候，mbmaxlen为3，为什么 ？
+			length= cs->cset->snprintf(cs,(char*) res.ptr(), res.alloced_length(), "%s(%d)",
+				((cr_field->charset && cr_field->charset->csname) ? "varchar" : "varbinary"),
+				(int) field_length / cr_field->charset->mbmaxlen);
+*/
+			length= cs->cset->snprintf(cs,(char*) res.ptr(), res.alloced_length(), "%s(%d)",
+				(strcmp(cr_field->charset->csname, "binary")==0 ?  "varbinary":"varchar"),
+				(int) field_length);
+		}
+		else
+		{
+			length= cs->cset->snprintf(cs,(char*) res.ptr(), res.alloced_length(), "%s(%d)",
+				("varchar"), (int) field_length);
+
+		}
+		res.length(length);
+		break;
+	case MYSQL_TYPE_STRING:
+		if(cr_field->charset)
+		{
+			length= cs->cset->snprintf(cs,(char*) res.ptr(),
+				res.alloced_length(), "%s(%d)",
+				(strcmp(cr_field->charset->csname, "binary")==0 ? "binary":"char"), (int) field_length);
+		}
+		else
+		{
+			length= cs->cset->snprintf(cs,(char*) res.ptr(),
+				res.alloced_length(), "%s(%d)", "char", (int) field_length);
+		}
+		res.length(length);
+		break;
+	default:
+		break;
+	}
+}
+
+
+void filed_add_zerofill_and_unsigned(String &res, bool unsigned_flag, bool zerofill)
+{
+	if (unsigned_flag)
+		res.append(STRING_WITH_LEN(" unsigned"));
+	if (zerofill)
+		res.append(STRING_WITH_LEN(" zerofill"));
+}
+
+
+
+bool get_createfield_default_value(Create_field *cr_field, String *def_value)
+{
+  bool has_default;
+  enum enum_field_types field_type= cr_field->sql_type;
+  def_value->length(0);
+
+  if(cr_field->def)
+  {// 指定了def值
+	  def_value->append(STRING_WITH_LEN(cr_field->def->name)); 
+	  has_default = true;
+  }
+  else
+  {// 没有指定def值
+	  has_default = false;
+  }
+  return has_default;
+}
+
+
+static void parse_append_directory(THD *thd, String *packet, const char *dir_type, const char *filename)
+{
+	if (filename && !(thd->variables.sql_mode & MODE_NO_DIR_IN_CREATE))
+	{
+		uint length= dirname_length(filename);
+		packet->append(' ');
+		packet->append(dir_type);
+		packet->append(STRING_WITH_LEN(" DIRECTORY='"));
+#ifdef __WIN__
+		/* Convert \ to / to be able to create table on unix */
+		char *winfilename= (char*) thd->memdup(filename, length);
+		char *pos, *end;
+		for (pos= winfilename, end= pos+length ; pos < end ; pos++)
+		{
+			if (*pos == '\\')
+				*pos = '/';
+		}
+		filename= winfilename;
+#endif
+		packet->append(filename, length);
+		packet->append('\'');
+	}
+}

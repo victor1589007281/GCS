@@ -119,7 +119,7 @@ static char **defaults_argv;
 enum enum_info_type { INFO_INFO,INFO_ERROR,INFO_RESULT};
 typedef enum enum_info_type INFO_TYPE;
 
-static my_bool ignore_errors=0,quick=0,get_only_ntables=0,split_sql=0,
+static my_bool ignore_errors=0,quick=0,get_only_ntables=0,split_sql=0,show_create=0,
 opt_raw_data=0,unbuffered=0,
 opt_rehash=1,skip_updates=0,one_database=0,
 using_opt_local_infile=0,
@@ -137,7 +137,7 @@ static uint my_end_arg;
 static char * opt_mysql_unix_port=0;
 static int connect_flag=CLIENT_INTERACTIVE;
 static char *current_host,*current_db,*current_user=0,*opt_password=0,
-*current_prompt=0, *delimiter_str= 0,*audit_output_file=0,*all_dml_output_file=0,*spilit_sql_path=0,
+*current_prompt=0, *delimiter_str= 0,*audit_output_file=0,*all_dml_output_file=0,*spilit_sql_path=0,*show_create_path=0,
 *set_version=0,*set_charset=0, *default_charset= (char*) MYSQL_AUTODETECT_CHARSET_NAME;
 static char *histfile;
 static char *histfile_tmp;
@@ -1539,6 +1539,8 @@ static struct my_option my_long_options[] =
 	&all_dml_output_file, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"split_sql_path", 'S', "set the path to store the split sql file\n", &spilit_sql_path, 
 	&spilit_sql_path, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+	{"show_create_path", 'W', "convert the create table sql into SHOW CREATE TABLE.", &show_create_path, 
+	&show_create_path, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 
 /*	{"safe-updates", 'U', "Only allow UPDATE and DELETE that uses keys.",
 	&safe_updates, &safe_updates, 0, GET_BOOL, NO_ARG, 0, 0,
@@ -1548,17 +1550,15 @@ static struct my_option my_long_options[] =
 	0, 0, 0, 0},
 	{"verbose", 'v', "Write more. (-v -v -v gives the table output format).", 0,
 	0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
-*/	{"version", 'V', "Output version information and exit.", 0, 0, 0,
-	GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
-	{"force", 'F', "Continue even if we get an SQL error.",
-	  &ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG, 0, 0,
-	  0, 0, 0, 0},
+*/	{"version", 'V', "Output version information and exit.", 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
+	{"force", 'F', "Continue even if we get an SQL error.", &ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
 	{"set_version", 'v', "choose a version to parse sql, like, \"5.0\" \"5.1\" \"5.5\" \"tmysql-1.0\" " 
 	" \"tmysql-1.1\" \"tmysql-1.2\" \"tmysql-1.3\" \"tmysql-1.4\"."
 	"default value is \"5.5\"",&set_version, &set_version, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"set_charset", 'c', "set the charset of db.", &set_charset, &set_charset, 0 ,GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"get_only_ntables", 'T', "sqlparse output table counts only.", &get_only_ntables, &get_only_ntables, 0 ,GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
 	{"split_sql", 's', "split the sql into create.sql alter.sql and dml.sql.", &split_sql, &split_sql, 0 ,GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+	{"show_create", 'w', "convert the create table sql into SHOW CREATE TABLE.", &show_create, &show_create, 0 ,GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
 
 	/*	{"wait", 'w', "Wait and retry if connection is down.", 0, 0, 0, GET_NO_ARG,
 	NO_ARG, 0, 0, 0, 0, 0, 0},
@@ -1604,7 +1604,7 @@ static struct my_option my_long_options[] =
 
 static void usage(int version)
 {
-	printf("tmysqlparse Ver 1.4\n");
+	printf("tmysqlparse Ver 2.0\n");
 	if (version)
 		return;
 //	puts(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000, 2011"));
