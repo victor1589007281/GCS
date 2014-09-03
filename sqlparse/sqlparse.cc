@@ -51,7 +51,7 @@ static int isprefix_word(const char *s, const char *t, int first_pos);
 static int is_word_segmentation(char ch);
 static char* process_sql_for_reserve(char *fromsql, char *tosql, size_t to_len,const char *reserve);
 //static int find_reserve_pos(char *reserve);
-static void cp_parse_option(parse_option dest, parse_option src);
+static void cp_parse_option(parse_option *dest, parse_option *src);
 static int parse_create_info(THD *thd, String *packet, bool show_database);
 static void filed_add_zerofill_and_unsigned(String &res, bool unsigned_flag, bool zerofill);
 static void gettype_create_filed(Create_field *cr_field, String &res);
@@ -1603,15 +1603,13 @@ static int find_reserve_pos(char *reserve)
 int parse_create_info(THD *thd,  String *packet, bool show_database)
 {
 	List<Item> field_list;
-	char tmp[MAX_FIELD_WIDTH], *for_str, buff[128], def_value_buf[MAX_FIELD_WIDTH];
+	char tmp[MAX_FIELD_WIDTH],  buff[128], def_value_buf[MAX_FIELD_WIDTH];
 	const char *alias;
 	String type(tmp, sizeof(tmp), system_charset_info);
 	String def_value(def_value_buf, sizeof(def_value_buf), system_charset_info);
-	uint primary_key;
 
 
 	LEX* lex = thd->lex;
-	SELECT_LEX *select_lex = &lex->select_lex;
 	TABLE_LIST* table_list = lex->query_tables;
 	List<Create_field> list_field = lex->alter_info.create_list;;
 	List_iterator<Create_field> it_field = lex->alter_info.create_list;;
@@ -1622,7 +1620,6 @@ int parse_create_info(THD *thd,  String *packet, bool show_database)
 	Key *key;
 	HA_CREATE_INFO create_info = lex->create_info;
 	int num_timestap = 0;
-	int key_count = 0;
 	char	*key_name;
 	Key_part_spec *column;
 	
@@ -1727,23 +1724,23 @@ int parse_create_info(THD *thd,  String *packet, bool show_database)
 			/* Create the key name based on the first column (if not given) */
 			if (column_nr == 0)
 			{//  只考虑非主键，主键的时候key name 为primary key
-				if (key->type != Key::Keytype::PRIMARY && !(key_name= key->name.str))
+				if (key->type != Key::PRIMARY && !(key_name= key->name.str))
 				//	key_name=make_unique_key_name(sql_field->field_name, *key_info_buffer, key_info);
 					key_name = column->field_name.str;
 			}
 		}
 
 
-		if (key->type == Key::Keytype::PRIMARY)
+		if (key->type == Key::PRIMARY)
 		{
 			packet->append(STRING_WITH_LEN("PRIMARY KEY"));
 			found_primary = true;
 		}
-		else if (key->type == Key::Keytype::UNIQUE)
+		else if (key->type == Key::UNIQUE)
 			packet->append(STRING_WITH_LEN("UNIQUE KEY "));
-		else if (key->type == Key::Keytype::FULLTEXT)
+		else if (key->type == Key::FULLTEXT)
 			packet->append(STRING_WITH_LEN("FULLTEXT KEY "));
-		else if (key->type == Key::Keytype::SPATIAL)
+		else if (key->type == Key::SPATIAL)
 			packet->append(STRING_WITH_LEN("SPATIAL KEY "));
 		else
 			packet->append(STRING_WITH_LEN("KEY "));
@@ -1762,7 +1759,7 @@ int parse_create_info(THD *thd,  String *packet, bool show_database)
 			if (column->field_name.str)
 				append_identifier(thd, packet, column->field_name.str, strlen(column->field_name.str));
 			if (column->field_name.str && column->length > 0 && 
-				 !(key->type== Key::Keytype::FULLTEXT || key->type== Key::Keytype::SPATIAL ))
+				 !(key->type== Key::FULLTEXT || key->type== Key::SPATIAL ))
 			{
 				char *end;
 				buff[0] = '(';
@@ -1973,7 +1970,7 @@ void gettype_create_filed(Create_field *cr_field, String &res)
 		{
 			CHARSET_INFO *cs= res.charset();
 			res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(),
-				"float(%d,%d)", cr_field->length, cr_field->decimals));
+				"float(%ld,%d)", cr_field->length, cr_field->decimals));
 		}
 		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
 		break;
@@ -1985,7 +1982,7 @@ void gettype_create_filed(Create_field *cr_field, String &res)
 		else
 		{
 			res.length(cs->cset->snprintf(cs,(char*) res.ptr(),res.alloced_length(),
-				"double(%d,%d)", cr_field->length, cr_field->decimals));
+				"double(%ld,%d)", cr_field->length, cr_field->decimals));
 		}
 		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
 		break;
@@ -2023,7 +2020,7 @@ void gettype_create_filed(Create_field *cr_field, String &res)
 		break;
 	case MYSQL_TYPE_NEWDECIMAL:
 		res.length(cs->cset->snprintf(cs, (char*) res.ptr(), res.alloced_length(),
-			"decimal(%d,%d)", cr_field->length - (cr_field->decimals>0 ? 1:0) - (unsigned_flag || !cr_field->length ? 0:1), 
+			"decimal(%ld,%d)", cr_field->length - (cr_field->decimals>0 ? 1:0) - (unsigned_flag || !cr_field->length ? 0:1), 
 			cr_field->decimals));
 		filed_add_zerofill_and_unsigned(res, unsigned_flag, zerofill_flag);
 		break;
@@ -2181,7 +2178,6 @@ void filed_add_zerofill_and_unsigned(String &res, bool unsigned_flag, bool zerof
 bool get_createfield_default_value(Create_field *cr_field, String *def_value)
 {
   bool has_default;
-  enum enum_field_types field_type= cr_field->sql_type;
   def_value->length(0);
 
   if(cr_field->def)
