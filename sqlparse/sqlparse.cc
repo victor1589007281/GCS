@@ -804,7 +804,7 @@ query_parse_audit_tsqlparse(
 			fputs("\t<sql>\n",fp_show_create);
 			
 			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-			fprintf(fp_show_create,"\t\t<sql_type>CREATE_TABLE</sql_type>\n");
+			fprintf(fp_show_create,"\t\t<sql_type>CREATE_TB</sql_type>\n");
 			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_name);
 			fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", table_name);
 			fprintf(fp_show_create,"\t\t<key>%s</key>\n", key_name);
@@ -818,7 +818,7 @@ query_parse_audit_tsqlparse(
 			fputs("\t<sql>\n",fp_show_create);
 
 			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-			fputs("\t\t<sql_type>CREATE_DATABASE</sql_type>\n",fp_show_create);
+			fputs("\t\t<sql_type>CREATE_DB</sql_type>\n",fp_show_create);
 			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
 			fputs("\t\t<table_name></table_name>\n",fp_show_create);
 			fputs("\t\t<key></key>\n",fp_show_create);
@@ -833,6 +833,34 @@ query_parse_audit_tsqlparse(
 
 			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
 			fputs("\t\t<sql_type>USE_DB</sql_type>\n",fp_show_create);
+			fputs("\t\t<db_name></db_name>\n",fp_show_create);
+			fputs("\t\t<table_name></table_name>\n",fp_show_create);
+			fputs("\t\t<key></key>\n",fp_show_create);
+
+			fputs("\t</sql>\n",fp_show_create);
+			fclose(fp_show_create);
+		}
+		else if(lex->sql_command == SQLCOM_DROP_DB)
+		{
+			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+			fputs("\t<sql>\n",fp_show_create);
+
+			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<sql_type>DROP_DB</sql_type>\n",fp_show_create);
+			fputs("\t\t<db_name></db_name>\n",fp_show_create);
+			fputs("\t\t<table_name></table_name>\n",fp_show_create);
+			fputs("\t\t<key></key>\n",fp_show_create);
+
+			fputs("\t</sql>\n",fp_show_create);
+			fclose(fp_show_create);
+		}
+		else if(lex->sql_command == SQLCOM_DROP_TABLE)
+		{
+			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+			fputs("\t<sql>\n",fp_show_create);
+
+			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<sql_type>DROP_TB</sql_type>\n",fp_show_create);
 			fputs("\t\t<db_name></db_name>\n",fp_show_create);
 			fputs("\t\t<table_name></table_name>\n",fp_show_create);
 			fputs("\t\t<key></key>\n",fp_show_create);
@@ -904,14 +932,12 @@ query_parse_audit_tsqlparse(
 			fprintf(fp_dml, "%s;\n",query);
 		//	fprintf(fp_other, "%s;\n",query);
 			break;
-
 		case SQLCOM_DROP_DB:
 		case SQLCOM_CREATE_TABLE:
 		case SQLCOM_DROP_TABLE:
 		case SQLCOM_CREATE_DB:
 			fprintf(fp_create, "%s;\n",query);
 			break;
-
 		case SQLCOM_CREATE_INDEX:
 		case SQLCOM_ALTER_TABLE:
 		case SQLCOM_RENAME_TABLE:
@@ -919,7 +945,29 @@ query_parse_audit_tsqlparse(
 		case SQLCOM_DROP_INDEX:
 			fprintf(fp_alter, "%s;\n",query);
 			break;
-
+		case SQLCOM_CREATE_FUNCTION:
+		case SQLCOM_DROP_FUNCTION:
+		case SQLCOM_CREATE_PROCEDURE:
+//		case SQLCOM_CREATE_SPFUNCTION:
+		case SQLCOM_DROP_PROCEDURE:
+		case SQLCOM_ALTER_PROCEDURE:
+		case SQLCOM_ALTER_FUNCTION:
+//		case SQLCOM_CREATE_SERVER:
+//		case SQLCOM_DROP_SERVER:
+//		case SQLCOM_ALTER_SERVER:
+//		case SQLCOM_CREATE_EVENT:
+//		case SQLCOM_ALTER_EVENT:
+//		case SQLCOM_DROP_EVENT:
+//		case SQLCOM_CREATE_VIEW:
+//		case SQLCOM_DROP_VIEW:
+//		case SQLCOM_CREATE_TRIGGER:
+//		case SQLCOM_DROP_TRIGGER:
+//		case SQLCOM_CREATE_USER:
+//		case SQLCOM_DROP_USER:
+//		case SQLCOM_RENAME_USER:
+//		case SQLCOM_REVOKE:
+//		case SQLCOM_GRANT:
+//		case SQLCOM_REVOKE_ALL:
 
 		case SQLCOM_SELECT:
 		case SQLCOM_UPDATE:
@@ -928,9 +976,10 @@ query_parse_audit_tsqlparse(
 		case SQLCOM_DELETE:
 		case SQLCOM_REPLACE:
 		case SQLCOM_REPLACE_SELECT:
+		case SQLCOM_LOAD:
+		case SQLCOM_CALL:
 			fprintf(fp_dml, "%s;\n",query);	
 			break;
-
 		default:
 			fprintf(fp_other, "%s;\n",query);
 		}
@@ -938,6 +987,7 @@ query_parse_audit_tsqlparse(
 		fclose(fp_alter);
 		fclose(fp_dml);
 		fclose(fp_other);
+		goto exit_pos;
 	}
 
 	switch (lex->sql_command)
@@ -1136,8 +1186,6 @@ query_parse_audit_tsqlparse(
 					break;
 				}
 			}
-
-
 			if(pra->mysql_version > VERSION_5_5)
 			{// tmysql 下，才考虑特定加字段告警
 
@@ -1147,7 +1195,6 @@ query_parse_audit_tsqlparse(
 					pra->warning_type = ALTER_TABLE_WITH_AFTER;
 					break;
 				}
-
 				// 使用alter来增加字段，在指定了default值而未指定NOT NULL选项告警
 				it_field.rewind();
 				while(!!(cur_field = it_field++))
@@ -1160,7 +1207,6 @@ query_parse_audit_tsqlparse(
 				}
 			}
 
-
 			{// alter table t1 drop column c1, 处理drop column导致的告警
 
 				if(list_field_drop.elements > 0)
@@ -1168,7 +1214,6 @@ query_parse_audit_tsqlparse(
 					pra->result_type = 1;
 					pra->warning_type = DROP_COLUMN ;
 				}
-
 			}
 		}
 		break;
@@ -1185,7 +1230,6 @@ query_parse_audit_tsqlparse(
 				pra->warning_type = CREATE_PROCEDURE_WITH_DEFINER;
 			}
 		}
-
 		break;
 	case SQLCOM_DROP_INDEX:
 	case SQLCOM_DROP_USER:
