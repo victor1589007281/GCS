@@ -135,7 +135,9 @@ typedef struct parse_result_struct parse_result_t;
 struct parse_option
 {
 	bool is_split_sql;
+	bool is_show_create;
 	char file_path[256];
+	char show_create_file[256];
 };
 
 

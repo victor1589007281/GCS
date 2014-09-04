@@ -1072,6 +1072,7 @@ int main(int argc,char *argv[])
 	MY_INIT(argv[0]);
 	DBUG_ENTER("main");
 	DBUG_PROCESS(argv[0]);
+	FILE *fp_tmp;
 
 	//_CrtSetBreakAlloc(85);
 
@@ -1220,8 +1221,21 @@ int main(int argc,char *argv[])
 	/************************************************************************/
 	sqlparse_option.is_split_sql = split_sql;
 	memset(sqlparse_option.file_path, sizeof(sqlparse_option.file_path), 0);
-	if(split_sql)
+	if(split_sql && spilit_sql_path)
 		strcpy(sqlparse_option.file_path, spilit_sql_path);
+
+	sqlparse_option.is_show_create = show_create;
+	memset(sqlparse_option.show_create_file, sizeof(sqlparse_option.show_create_file), 0);
+	if(show_create && show_create_path)
+	{
+		fp_tmp = fopen(show_create_path,"w+");
+		strcpy(sqlparse_option.show_create_file, show_create_path);
+		fputs("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n",fp_tmp);
+		fputs("<result>\n",fp_tmp);
+		fclose(fp_tmp);
+	}
+
+
 	if(-1 == parse_result_audit_init(&pra,set_version, set_charset, get_only_ntables, &sqlparse_option))
 		return -1;
 	tmysqlparse_result_init(&roa);
@@ -1254,6 +1268,13 @@ int main(int argc,char *argv[])
 	parse_result_audit_destroy(&pra);
 	parse_global_destroy();
 	tmysqlparse_result_destory(&roa);
+
+	if(show_create && show_create_path)
+	{
+		fp_tmp = fopen(show_create_path,"a+");
+		fputs("</result>\n",fp_tmp);
+		fclose(fp_tmp);
+	}
 
 	if(audit_output_file)//use -f or --file
 		fclose(fp);

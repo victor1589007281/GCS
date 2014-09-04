@@ -57,6 +57,7 @@ static void filed_add_zerofill_and_unsigned(String &res, bool unsigned_flag, boo
 static void gettype_create_filed(Create_field *cr_field, String &res);
 static bool get_createfield_default_value(Create_field *cr_field, String *def_value);
 static void parse_append_directory(THD *thd, String *packet, const char *dir_type, const char *filename);
+static int parse_getkey_for_spider(THD *thd,  char *key, char *db_name, char *table_name);
 
 
 
@@ -64,6 +65,9 @@ void cp_parse_option(parse_option *dest, parse_option *src)
 {
 	dest->is_split_sql = src->is_split_sql;
 	strcpy(dest->file_path, src->file_path);
+
+	dest->is_show_create = src->is_show_create;
+	strcpy(dest->show_create_file, src->show_create_file);
 }
 
 
@@ -746,6 +750,7 @@ query_parse_audit_tsqlparse(
 	uint blob_text_count;
 	char buff[2048];
 	String buffer(buff, sizeof(buff), system_charset_info);
+	FILE *fp_show_create;
 
 
     thd = (THD*)pra->thd_org;
@@ -788,12 +793,69 @@ query_parse_audit_tsqlparse(
 	list_field_drop = lex->alter_info.drop_list;
 
 
-	if(lex->sql_command == SQLCOM_CREATE_TABLE)
+	if(sqlparse_option.is_show_create && sqlparse_option.show_create_file)
 	{
-		buffer.length(0);
-		parse_create_info(thd, &buffer, true);
-	}
+		char key_name[256], db_name[256], table_name[256];
+		if(lex->sql_command == SQLCOM_CREATE_TABLE)
+		{
+			parse_getkey_for_spider(thd, key_name, db_name, table_name);
 
+			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+			fputs("\t<sql>\n",fp_show_create);
+			
+			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fprintf(fp_show_create,"\t\t<sql_type>CREATE_TABLE</sql_type>\n");
+			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_name);
+			fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", table_name);
+			fprintf(fp_show_create,"\t\t<key>%s</key>\n", key_name);
+			
+			fputs("\t</sql>\n",fp_show_create);
+			fclose(fp_show_create);
+		}
+		else if(lex->sql_command == SQLCOM_CREATE_DB)
+		{
+			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+			fputs("\t<sql>\n",fp_show_create);
+
+			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<sql_type>CREATE_DATABASE</sql_type>\n",fp_show_create);
+			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
+			fputs("\t\t<table_name></table_name>\n",fp_show_create);
+			fputs("\t\t<key></key>\n",fp_show_create);
+
+			fputs("\t</sql>\n",fp_show_create);
+			fclose(fp_show_create);
+		}
+		else if(lex->sql_command == SQLCOM_CHANGE_DB)
+		{
+			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+			fputs("\t<sql>\n",fp_show_create);
+
+			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<sql_type>USE_DB</sql_type>\n",fp_show_create);
+			fputs("\t\t<db_name></db_name>\n",fp_show_create);
+			fputs("\t\t<table_name></table_name>\n",fp_show_create);
+			fputs("\t\t<key></key>\n",fp_show_create);
+
+			fputs("\t</sql>\n",fp_show_create);
+			fclose(fp_show_create);
+		}
+		else
+		{
+			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+			fputs("\t<sql>\n",fp_show_create);
+
+			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<sql_type>OTHER</sql_type>\n",fp_show_create);
+			fputs("\t\t<db_name></db_name>\n",fp_show_create);
+			fputs("\t\t<table_name></table_name>\n",fp_show_create);
+			fputs("\t\t<key></key>\n",fp_show_create);
+
+			fputs("\t</sql>\n",fp_show_create);
+			fclose(fp_show_create);
+		}
+		goto exit_pos;
+	}
 
 	switch(lex->sql_command)
 	{// 用于判定pra->info.is_all_dml值，即是否所有语句都为dml语句。  有一条语句非下面几种增删改查，则表示非dml
@@ -1829,8 +1891,6 @@ int parse_create_info(THD *thd,  String *packet, bool show_database)
 		packet->append(buff, (uint) (end - buff));
 	}
 
-
-
 	if (create_info.default_table_charset)
 	{// 如果有指定字符集，则使用  否则不指定字符集
 		if ((create_info.used_fields & HA_CREATE_USED_DEFAULT_CHARSET))
@@ -2216,3 +2276,48 @@ static void parse_append_directory(THD *thd, String *packet, const char *dir_typ
 		packet->append('\'');
 	}
 }
+
+
+int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *table_name)
+{
+	LEX* lex = thd->lex;
+	TABLE_LIST* table_list = lex->query_tables;
+
+	List_iterator<Key> key_iterator(lex->alter_info.key_list);
+	Key *key;
+	Key_part_spec *column;
+	int level = 0;  // 普通key的第一字段，level为1   unique key的第一个字段，level为2   primary key的第一个字段，level=3
+
+
+	strcpy(db_name, table_list->db);
+	strcpy(table_name, table_list->table_name);
+	
+	while(key = key_iterator++)
+	{
+		bool found_primary=0;
+		List_iterator<Key_part_spec> cols(key->columns);
+		column = cols++;
+		
+		if (key->type == Key::PRIMARY) 
+		{
+			strcpy(key_name, column->field_name.str);
+			level = 3;
+		}
+		else if (key->type == Key::UNIQUE && level < 3)
+		{
+			strcpy(key_name, column->field_name.str);
+			level = 2;
+		}
+		else
+		{
+			strcpy(key_name, column->field_name.str);
+			level = 1;
+		}
+	}
+	if(level > 0)
+		return 0;
+	
+	strcpy(key_name, "no_key");
+	return 1;
+}
+
