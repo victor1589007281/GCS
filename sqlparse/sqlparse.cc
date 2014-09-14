@@ -868,6 +868,20 @@ query_parse_audit_tsqlparse(
 			fputs("\t</sql>\n",fp_show_create);
 			fclose(fp_show_create);
 		}
+		else if(lex->sql_command == SQLCOM_ALTER_TABLE)
+		{
+			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+			fputs("\t<sql>\n",fp_show_create);
+
+			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<sql_type>ALTER_TB</sql_type>\n",fp_show_create);
+			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->select_lex.db);
+			fputs("\t\t<table_name></table_name>\n",fp_show_create);
+			fputs("\t\t<key></key>\n",fp_show_create);
+
+			fputs("\t</sql>\n",fp_show_create);
+			fclose(fp_show_create);
+		}
 		else
 		{
 			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
