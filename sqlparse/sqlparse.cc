@@ -861,8 +861,8 @@ query_parse_audit_tsqlparse(
 
 			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
 			fputs("\t\t<sql_type>DROP_TB</sql_type>\n",fp_show_create);
-			fputs("\t\t<db_name></db_name>\n",fp_show_create);
-			fputs("\t\t<table_name></table_name>\n",fp_show_create);
+			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
+			fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
 			fputs("\t\t<key></key>\n",fp_show_create);
 
 			fputs("\t</sql>\n",fp_show_create);
@@ -875,8 +875,8 @@ query_parse_audit_tsqlparse(
 
 			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
 			fputs("\t\t<sql_type>ALTER_TB</sql_type>\n",fp_show_create);
-			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->select_lex.db);
-			fputs("\t\t<table_name></table_name>\n",fp_show_create);
+			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
+			fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
 			fputs("\t\t<key></key>\n",fp_show_create);
 
 			fputs("\t</sql>\n",fp_show_create);
