@@ -847,7 +847,7 @@ query_parse_audit_tsqlparse(
 
 			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
 			fputs("\t\t<sql_type>DROP_DB</sql_type>\n",fp_show_create);
-			fputs("\t\t<db_name></db_name>\n",fp_show_create);
+			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
 			fputs("\t\t<table_name></table_name>\n",fp_show_create);
 			fputs("\t\t<key></key>\n",fp_show_create);
 
