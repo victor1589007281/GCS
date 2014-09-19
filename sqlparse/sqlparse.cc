@@ -955,7 +955,7 @@ query_parse_audit_tsqlparse(
 		case SQLCOM_CREATE_INDEX:
 		case SQLCOM_ALTER_TABLE:
 		case SQLCOM_RENAME_TABLE:
-		case SQLCOM_TRUNCATE:
+
 		case SQLCOM_DROP_INDEX:
 			fprintf(fp_alter, "%s;\n",query);
 			break;
@@ -992,6 +992,7 @@ query_parse_audit_tsqlparse(
 		case SQLCOM_REPLACE_SELECT:
 		case SQLCOM_LOAD:
 		case SQLCOM_CALL:
+        case SQLCOM_TRUNCATE:
 			fprintf(fp_dml, "%s;\n",query);	
 			break;
 		default:
@@ -2356,26 +2357,46 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 		List_iterator<Key_part_spec> cols(key->columns);
 		column = cols++;
 		
-		if (key->type == Key::PRIMARY) 
-		{
-			strcpy(key_name, column->field_name.str);
-			level = 3;
-		}
-		else if (key->type == Key::UNIQUE && level < 3)
-		{
-			strcpy(key_name, column->field_name.str);
-			level = 2;
-		}
-		else
-		{
-			strcpy(key_name, column->field_name.str);
-			level = 1;
-		}
+        switch (key->type) {
+            case Key::PRIMARY:
+            case Key::UNIQUE:
+                {
+                    if (level > 1)
+                    {
+                        strcpy(key_name, "ERROR: too more unique key");
+                        return 1;
+                    }
+
+			        strcpy(key_name, column->field_name.str);
+                    level = ((key->type == Key::PRIMARY) ? 3 : 2);
+                    break;
+                }
+
+            case Key::MULTIPLE:
+                {
+                    if (level < 1)
+                    { 
+			            //strcpy(key_name, column->field_name.str);
+                        level = 1; 
+                    }
+                    break;
+                }
+
+            case Key::FOREIGN_KEY:
+            case Key::FULLTEXT:
+            case Key::SPATIAL:
+            default:
+                {
+                    strcpy(key_name, "ERROR: no support key type");
+                    return 1;
+                }
+        }
 	}
-	if(level > 0)
+    // 必须包含唯一索引
+	if(level > 1)
 		return 0;
 	
-	strcpy(key_name, "no_key");
+    strcpy(key_name, "Error: no unique key");
 	return 1;
 }
 
