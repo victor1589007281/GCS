@@ -57,7 +57,7 @@ static void filed_add_zerofill_and_unsigned(String &res, bool unsigned_flag, boo
 static void gettype_create_filed(Create_field *cr_field, String &res);
 static bool get_createfield_default_value(Create_field *cr_field, String *def_value);
 static void parse_append_directory(THD *thd, String *packet, const char *dir_type, const char *filename);
-static int parse_getkey_for_spider(THD *thd,  char *key, char *db_name, char *table_name);
+static int parse_getkey_for_spider(THD *thd,  char *key, char *db_name, char *table_name,char *result, int result_len);
 
 
 
@@ -71,15 +71,43 @@ void cp_parse_option(parse_option *dest, parse_option *src)
 }
 
 
+HASH create_hash;
+HASH alter_hash;
+HASH other_hash;
+
+uchar* get_table_key(const char *entry, size_t *length,
+                     my_bool not_used __attribute__((unused)))
+{
+    *length= strlen(entry);
+    return (uchar*) entry;
+}
+
 void parse_global_init()
 {
     my_pthread_once(&sqlparse_global_inited, my_init_for_sqlparse);
+
+    //if (sqlparse_option.is_show_create && sqlparse_option.show_create_file) {
+        my_hash_init(&create_hash, &my_charset_bin, 64, 0, 0,
+            (my_hash_get_key) get_table_key, my_free, HASH_UNIQUE);
+
+        my_hash_init(&alter_hash, &my_charset_bin, 64, 0, 0,
+            (my_hash_get_key) get_table_key, my_free, HASH_UNIQUE);
+
+        my_hash_init(&other_hash, &my_charset_bin, 64, 0, 0,
+            (my_hash_get_key) get_table_key, my_free, HASH_UNIQUE);
+    //}
 }
 
 void parse_global_destroy()
 {
     my_end_for_sqlparse();
     sqlparse_global_inited = MY_PTHREAD_ONCE_INIT;
+
+    //if (sqlparse_option.is_show_create && sqlparse_option.show_create_file) {
+        my_hash_free(&create_hash);
+        my_hash_free(&alter_hash);
+        my_hash_free(&other_hash);
+    //}
 
 #if defined(__WIN__) && defined(_MSC_VER)
     _CrtSetReportMode( _CRT_WARN, _CRTDBG_MODE_FILE );
@@ -724,6 +752,7 @@ int parse_result_audit_init(parse_result_audit* pra, char *version, char *charse
     return 0;
 }
 
+
 int 
 query_parse_audit_tsqlparse(
 		char *query,
@@ -753,10 +782,9 @@ query_parse_audit_tsqlparse(
 	FILE *fp_show_create;
 
 
+
+
     thd = (THD*)pra->thd_org;
-
-
-
 	DBUG_ASSERT(pra->n_tables_alloced > 0 && thd);
 
     if (strlen(query) == 0)
@@ -793,112 +821,7 @@ query_parse_audit_tsqlparse(
 	list_field_drop = lex->alter_info.drop_list;
 
 
-	if(sqlparse_option.is_show_create && sqlparse_option.show_create_file)
-	{
-		char key_name[256], db_name[256], table_name[256];
-		if(lex->sql_command == SQLCOM_CREATE_TABLE)
-		{
-			parse_getkey_for_spider(thd, key_name, db_name, table_name);
-
-			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
-			fputs("\t<sql>\n",fp_show_create);
-			
-			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-			fprintf(fp_show_create,"\t\t<sql_type>CREATE_TB</sql_type>\n");
-			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_name);
-			fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", table_name);
-			fprintf(fp_show_create,"\t\t<key>%s</key>\n", key_name);
-			
-			fputs("\t</sql>\n",fp_show_create);
-			fclose(fp_show_create);
-		}
-		else if(lex->sql_command == SQLCOM_CREATE_DB)
-		{
-			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
-			fputs("\t<sql>\n",fp_show_create);
-
-			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-			fputs("\t\t<sql_type>CREATE_DB</sql_type>\n",fp_show_create);
-			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
-			fputs("\t\t<table_name></table_name>\n",fp_show_create);
-			fputs("\t\t<key></key>\n",fp_show_create);
-
-			fputs("\t</sql>\n",fp_show_create);
-			fclose(fp_show_create);
-		}
-		else if(lex->sql_command == SQLCOM_CHANGE_DB)
-		{
-			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
-			fputs("\t<sql>\n",fp_show_create);
-
-			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-			fputs("\t\t<sql_type>USE_DB</sql_type>\n",fp_show_create);
-			fputs("\t\t<db_name></db_name>\n",fp_show_create);
-			fputs("\t\t<table_name></table_name>\n",fp_show_create);
-			fputs("\t\t<key></key>\n",fp_show_create);
-
-			fputs("\t</sql>\n",fp_show_create);
-			fclose(fp_show_create);
-		}
-		else if(lex->sql_command == SQLCOM_DROP_DB)
-		{
-			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
-			fputs("\t<sql>\n",fp_show_create);
-
-			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-			fputs("\t\t<sql_type>DROP_DB</sql_type>\n",fp_show_create);
-			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
-			fputs("\t\t<table_name></table_name>\n",fp_show_create);
-			fputs("\t\t<key></key>\n",fp_show_create);
-
-			fputs("\t</sql>\n",fp_show_create);
-			fclose(fp_show_create);
-		}
-		else if(lex->sql_command == SQLCOM_DROP_TABLE)
-		{
-			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
-			fputs("\t<sql>\n",fp_show_create);
-
-			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-			fputs("\t\t<sql_type>DROP_TB</sql_type>\n",fp_show_create);
-			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
-			fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
-			fputs("\t\t<key></key>\n",fp_show_create);
-
-			fputs("\t</sql>\n",fp_show_create);
-			fclose(fp_show_create);
-		}
-		else if(lex->sql_command == SQLCOM_ALTER_TABLE)
-		{
-			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
-			fputs("\t<sql>\n",fp_show_create);
-
-			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-			fputs("\t\t<sql_type>ALTER_TB</sql_type>\n",fp_show_create);
-			fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
-			fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
-			fputs("\t\t<key></key>\n",fp_show_create);
-
-			fputs("\t</sql>\n",fp_show_create);
-			fclose(fp_show_create);
-		}
-		else
-		{
-			fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
-			fputs("\t<sql>\n",fp_show_create);
-
-			fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-			fputs("\t\t<sql_type>OTHER</sql_type>\n",fp_show_create);
-			fputs("\t\t<db_name></db_name>\n",fp_show_create);
-			fputs("\t\t<table_name></table_name>\n",fp_show_create);
-			fputs("\t\t<key></key>\n",fp_show_create);
-
-			fputs("\t</sql>\n",fp_show_create);
-			fclose(fp_show_create);
-		}
-		goto exit_pos;
-	}
-
+	
 	switch(lex->sql_command)
 	{// 用于判定pra->info.is_all_dml值，即是否所有语句都为dml语句。  有一条语句非下面几种增删改查，则表示非dml
 	case SQLCOM_SELECT:
@@ -1256,7 +1179,8 @@ query_parse_audit_tsqlparse(
 		break;
     }
 
-	if (pra->result_type != 0)
+	if (pra->result_type != 0 || 
+        (sqlparse_option.is_show_create && sqlparse_option.show_create_file))
 	{
 		pra->n_tables = 0;
 		for(table= all_tables; table; table= table->next_global)
@@ -1295,6 +1219,160 @@ query_parse_audit_tsqlparse(
 			}
 		}
 	}
+
+    if(sqlparse_option.is_show_create && sqlparse_option.show_create_file)
+    {
+        char key_name[256], db_name[256], table_name[256], result[256];
+        char full_name[1024];
+        
+        strcpy(result, "SUCCESS");
+        if(lex->sql_command == SQLCOM_CREATE_TABLE)
+        {
+            parse_getkey_for_spider(thd, key_name, db_name, table_name, result, sizeof(result));
+
+            snprintf(&full_name[0], sizeof(full_name), "%s.%s", db_name, table_name);
+
+            if (my_hash_search(&alter_hash, (const uchar*)&full_name[0], strlen(full_name)) ||
+                my_hash_search(&other_hash, (const uchar*)&full_name[0], strlen(full_name)))
+            {
+                //error
+                snprintf(result, sizeof(result), "ERROR: %s has executed alter or dml before create", full_name); 
+                exit_code = -1;
+            }
+
+            my_hash_insert(&create_hash, (const uchar*)&full_name[0]);
+
+            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fputs("\t<sql>\n",fp_show_create);
+
+            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+            fprintf(fp_show_create,"\t\t<sql_type>CREATE_TB</sql_type>\n");
+            fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_name);
+            fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", table_name);
+            fprintf(fp_show_create,"\t\t<shard_key>%s</shard_key>\n", key_name);
+            fprintf(fp_show_create,"\t\t<result>%s</result>\n", result);
+
+            fputs("\t</sql>\n",fp_show_create);
+            fclose(fp_show_create);
+        }
+        else if(lex->sql_command == SQLCOM_CREATE_DB)
+        {
+            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fputs("\t<sql>\n",fp_show_create);
+
+            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+            fputs("\t\t<sql_type>CREATE_DB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
+            fputs("\t\t<table_name></table_name>\n",fp_show_create);
+            fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
+            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+
+            fputs("\t</sql>\n",fp_show_create);
+            fclose(fp_show_create);
+        }
+        else if(lex->sql_command == SQLCOM_CHANGE_DB)
+        {
+            LEX_STRING db_str= { (char *) select_lex->db, strlen(select_lex->db) };
+            //if (!mysql_change_db(thd, &db_str, FALSE))
+            //    my_ok(thd);
+
+            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fputs("\t<sql>\n",fp_show_create);
+
+            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+            fputs("\t\t<sql_type>USE_DB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_str.str);
+            //fputs("\t\t<db_name></db_name>\n",fp_show_create);
+            fputs("\t\t<table_name></table_name>\n",fp_show_create);
+            fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
+            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+
+            fputs("\t</sql>\n",fp_show_create);
+            fclose(fp_show_create);
+        }
+        else if(lex->sql_command == SQLCOM_DROP_DB)
+        {
+            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fputs("\t<sql>\n",fp_show_create);
+
+            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+            fputs("\t\t<sql_type>DROP_DB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
+            fputs("\t\t<table_name></table_name>\n",fp_show_create);
+            fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
+            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+
+            fputs("\t</sql>\n",fp_show_create);
+            fclose(fp_show_create);
+        }
+        else if(lex->sql_command == SQLCOM_DROP_TABLE)
+        {
+            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fputs("\t<sql>\n",fp_show_create);
+
+            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+            fputs("\t\t<sql_type>DROP_TB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
+            fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
+            fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
+            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+
+            fputs("\t</sql>\n",fp_show_create);
+            fclose(fp_show_create);
+        }
+        else if(lex->sql_command == SQLCOM_ALTER_TABLE)
+        {
+            snprintf(&full_name[0], sizeof(full_name), "%s.%s", lex->query_tables->db, lex->query_tables->table_name);
+
+            if (my_hash_search(&other_hash, (const uchar*)&full_name[0], strlen(full_name)))
+            {
+                //error
+                snprintf(result, sizeof(result), "ERROR: %s has executed dml before alter", full_name); 
+                exit_code = -1;
+            }
+
+            my_hash_insert(&alter_hash, (const uchar*)&full_name[0]);
+
+            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fputs("\t<sql>\n",fp_show_create);
+
+            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+            fputs("\t\t<sql_type>ALTER_TB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
+            fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
+            fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<result>%s</result>\n", result);
+
+            fputs("\t</sql>\n",fp_show_create);
+            fclose(fp_show_create);
+        }
+        else
+        {
+            int i = 0;
+            for (i=0; i < pra->n_tables; i++)
+            {
+                snprintf(&full_name[0], sizeof(full_name), "%s.%s", pra->table_arr[i].dbname, pra->table_arr[i].tablename);
+                my_hash_insert(&other_hash, (const uchar*)&full_name[0]);
+            }
+
+            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fputs("\t<sql>\n",fp_show_create);
+
+            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+            fputs("\t\t<sql_type>OTHER</sql_type>\n",fp_show_create);
+            fputs("\t\t<db_name></db_name>\n",fp_show_create);
+            fputs("\t\t<table_name></table_name>\n",fp_show_create);
+            fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
+            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+
+            fputs("\t</sql>\n",fp_show_create);
+            fclose(fp_show_create);
+        }
+
+        // 还原result_type
+        pra->result_type = 0;
+    }
+
 
 exit_pos:
     thd->end_statement();
@@ -2337,7 +2415,7 @@ static void parse_append_directory(THD *thd, String *packet, const char *dir_typ
 }
 
 
-int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *table_name)
+int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *table_name, char *result, int result_len)
 {
 	LEX* lex = thd->lex;
 	TABLE_LIST* table_list = lex->query_tables;
@@ -2350,6 +2428,7 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 
 	strcpy(db_name, table_list->db);
 	strcpy(table_name, table_list->table_name);
+    strcpy(result, "SUCCESS");
 	
 	while(key = key_iterator++)
 	{
@@ -2363,7 +2442,8 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
                 {
                     if (level > 1)
                     {
-                        strcpy(key_name, "ERROR: too more unique key");
+                        strcpy(key_name, "");
+                        snprintf(result, result_len, "%s", "ERROR: too more unique key");
                         return 1;
                     }
 
@@ -2387,7 +2467,8 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
             case Key::SPATIAL:
             default:
                 {
-                    strcpy(key_name, "ERROR: no support key type");
+                    strcpy(key_name, "");
+                    snprintf(result, result_len, "%s", "ERROR: no support key type");
                     return 1;
                 }
         }
@@ -2396,7 +2477,8 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 	if(level > 1)
 		return 0;
 	
-    strcpy(key_name, "Error: no unique key");
+    strcpy(key_name, "");
+    snprintf(result, result_len, "%s", "ERROR: no unique key");
 	return 1;
 }
 

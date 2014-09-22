@@ -163,7 +163,7 @@ struct parse_result_audit {
 //	int result;
 	int warning_type;
 	int result_type;
-	/**0 success; 1 risking warning; 2 parse fail; 3 other fail***/
+	/**0 success; 1 risking warning; 2 parse fail; 3 other fail; 4 for spider***/
 
 	int tbdb;
 	/*tbdb==0 rising warnings from table; tbdb==1 risking warnings from dababase */
