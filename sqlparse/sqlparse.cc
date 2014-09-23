@@ -87,7 +87,8 @@ void parse_global_init()
     my_pthread_once(&sqlparse_global_inited, my_init_for_sqlparse);
 
     //if (sqlparse_option.is_show_create && sqlparse_option.show_create_file) {
-        my_hash_init(&create_hash, &my_charset_bin, 64, 0, 0,
+/* 
+	my_hash_init(&create_hash, &my_charset_bin, 64, 0, 0,
             (my_hash_get_key) get_table_key, my_free, HASH_UNIQUE);
 
         my_hash_init(&alter_hash, &my_charset_bin, 64, 0, 0,
@@ -95,6 +96,16 @@ void parse_global_init()
 
         my_hash_init(&other_hash, &my_charset_bin, 64, 0, 0,
             (my_hash_get_key) get_table_key, my_free, HASH_UNIQUE);
+*/
+
+		my_hash_init(&create_hash, &my_charset_bin, 64, 0, 0,
+			(my_hash_get_key) get_table_key, 0, HASH_UNIQUE);
+
+		my_hash_init(&alter_hash, &my_charset_bin, 64, 0, 0,
+			(my_hash_get_key) get_table_key, 0, HASH_UNIQUE);
+
+		my_hash_init(&other_hash, &my_charset_bin, 64, 0, 0,
+			(my_hash_get_key) get_table_key, 0, HASH_UNIQUE);
     //}
 }
 
