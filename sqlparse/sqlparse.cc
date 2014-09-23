@@ -1261,7 +1261,7 @@ query_parse_audit_tsqlparse(
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_name);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", table_name);
             fprintf(fp_show_create,"\t\t<shard_key>%s</shard_key>\n", key_name);
-            fprintf(fp_show_create,"\t\t<result>%s</result>\n", result);
+            fprintf(fp_show_create,"\t\t<parse_result>%s</parse_result>\n", result);
 
             fputs("\t</sql>\n",fp_show_create);
             fclose(fp_show_create);
@@ -1276,7 +1276,7 @@ query_parse_audit_tsqlparse(
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
-            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+            fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
             fclose(fp_show_create);
@@ -1296,7 +1296,7 @@ query_parse_audit_tsqlparse(
             //fputs("\t\t<db_name></db_name>\n",fp_show_create);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
-            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+            fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
             fclose(fp_show_create);
@@ -1311,7 +1311,7 @@ query_parse_audit_tsqlparse(
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
-            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+            fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
             fclose(fp_show_create);
@@ -1326,7 +1326,7 @@ query_parse_audit_tsqlparse(
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
-            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+            fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
             fclose(fp_show_create);
@@ -1352,7 +1352,7 @@ query_parse_audit_tsqlparse(
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
-            fprintf(fp_show_create,"\t\t<result>%s</result>\n", result);
+            fprintf(fp_show_create,"\t\t<parse_result>%s</parse_result>\n", result);
 
             fputs("\t</sql>\n",fp_show_create);
             fclose(fp_show_create);
@@ -1374,7 +1374,7 @@ query_parse_audit_tsqlparse(
             fputs("\t\t<db_name></db_name>\n",fp_show_create);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
-            fputs("\t\t<result>SUCCESS</result>\n", fp_show_create);
+            fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
             fclose(fp_show_create);
@@ -2467,9 +2467,16 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
                 {
                     if (level < 1)
                     { 
-			            //strcpy(key_name, column->field_name.str);
+			            strcpy(key_name, column->field_name.str);
                         level = 1; 
                     }
+					else if(level == 1)
+					{
+						strcpy(key_name, "");
+						snprintf(result, result_len, "%s", "ERROR: too many key more than 1");
+						return 1;
+
+					}
                     break;
                 }
 
@@ -2484,12 +2491,12 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
                 }
         }
 	}
-    // 必须包含唯一索引
-	if(level > 1)
+    // 必须包含索引
+	if(level > 0)
 		return 0;
 	
     strcpy(key_name, "");
-    snprintf(result, result_len, "%s", "ERROR: no unique key");
+    snprintf(result, result_len, "%s", "ERROR: no key");
 	return 1;
 }
 
