@@ -85,40 +85,12 @@ uchar* get_table_key(const char *entry, size_t *length,
 void parse_global_init()
 {
     my_pthread_once(&sqlparse_global_inited, my_init_for_sqlparse);
-
-    //if (sqlparse_option.is_show_create && sqlparse_option.show_create_file) {
-/* 
-	my_hash_init(&create_hash, &my_charset_bin, 64, 0, 0,
-            (my_hash_get_key) get_table_key, my_free, HASH_UNIQUE);
-
-        my_hash_init(&alter_hash, &my_charset_bin, 64, 0, 0,
-            (my_hash_get_key) get_table_key, my_free, HASH_UNIQUE);
-
-        my_hash_init(&other_hash, &my_charset_bin, 64, 0, 0,
-            (my_hash_get_key) get_table_key, my_free, HASH_UNIQUE);
-*/
-
-		my_hash_init(&create_hash, &my_charset_bin, 64, 0, 0,
-			(my_hash_get_key) get_table_key, 0, HASH_UNIQUE);
-
-		my_hash_init(&alter_hash, &my_charset_bin, 64, 0, 0,
-			(my_hash_get_key) get_table_key, 0, HASH_UNIQUE);
-
-		my_hash_init(&other_hash, &my_charset_bin, 64, 0, 0,
-			(my_hash_get_key) get_table_key, 0, HASH_UNIQUE);
-    //}
 }
 
 void parse_global_destroy()
 {
     my_end_for_sqlparse();
     sqlparse_global_inited = MY_PTHREAD_ONCE_INIT;
-
-    //if (sqlparse_option.is_show_create && sqlparse_option.show_create_file) {
-        my_hash_free(&create_hash);
-        my_hash_free(&alter_hash);
-        my_hash_free(&other_hash);
-    //}
 
 #if defined(__WIN__) && defined(_MSC_VER)
     _CrtSetReportMode( _CRT_WARN, _CRTDBG_MODE_FILE );
@@ -1237,27 +1209,16 @@ query_parse_audit_tsqlparse(
         char full_name[1024];
         
         strcpy(result, "SUCCESS");
+        
         if(lex->sql_command == SQLCOM_CREATE_TABLE)
         {
             parse_getkey_for_spider(thd, key_name, db_name, table_name, result, sizeof(result));
-
-            snprintf(&full_name[0], sizeof(full_name), "%s.%s", db_name, table_name);
-
-            if (my_hash_search(&alter_hash, (const uchar*)&full_name[0], strlen(full_name)) ||
-                my_hash_search(&other_hash, (const uchar*)&full_name[0], strlen(full_name)))
-            {
-                //error
-                snprintf(result, sizeof(result), "ERROR: %s has executed alter or dml before create", full_name); 
-                exit_code = -1;
-            }
-
-            my_hash_insert(&create_hash, (const uchar*)&full_name[0]);
 
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
 
             fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-            fprintf(fp_show_create,"\t\t<sql_type>CREATE_TB</sql_type>\n");
+            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_name);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", table_name);
             fprintf(fp_show_create,"\t\t<shard_key>%s</shard_key>\n", key_name);
@@ -1272,7 +1233,7 @@ query_parse_audit_tsqlparse(
             fputs("\t<sql>\n",fp_show_create);
 
             fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-            fputs("\t\t<sql_type>CREATE_DB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
@@ -1291,9 +1252,8 @@ query_parse_audit_tsqlparse(
             fputs("\t<sql>\n",fp_show_create);
 
             fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-            fputs("\t\t<sql_type>USE_DB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_str.str);
-            //fputs("\t\t<db_name></db_name>\n",fp_show_create);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
             fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
@@ -1307,7 +1267,7 @@ query_parse_audit_tsqlparse(
             fputs("\t<sql>\n",fp_show_create);
 
             fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-            fputs("\t\t<sql_type>DROP_DB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
@@ -1322,7 +1282,7 @@ query_parse_audit_tsqlparse(
             fputs("\t<sql>\n",fp_show_create);
 
             fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-            fputs("\t\t<sql_type>DROP_TB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
@@ -1333,22 +1293,11 @@ query_parse_audit_tsqlparse(
         }
         else if(lex->sql_command == SQLCOM_ALTER_TABLE)
         {
-            snprintf(&full_name[0], sizeof(full_name), "%s.%s", lex->query_tables->db, lex->query_tables->table_name);
-
-            if (my_hash_search(&other_hash, (const uchar*)&full_name[0], strlen(full_name)))
-            {
-                //error
-                snprintf(result, sizeof(result), "ERROR: %s has executed dml before alter", full_name); 
-                exit_code = -1;
-            }
-
-            my_hash_insert(&alter_hash, (const uchar*)&full_name[0]);
-
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
 
             fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-            fputs("\t\t<sql_type>ALTER_TB</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
@@ -1359,20 +1308,29 @@ query_parse_audit_tsqlparse(
         }
         else
         {
-            int i = 0;
-            for (i=0; i < pra->n_tables; i++)
-            {
-                snprintf(&full_name[0], sizeof(full_name), "%s.%s", pra->table_arr[i].dbname, pra->table_arr[i].tablename);
-                my_hash_insert(&other_hash, (const uchar*)&full_name[0]);
-            }
-
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
 
             fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-            fputs("\t\t<sql_type>OTHER</sql_type>\n",fp_show_create);
+            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fputs("\t\t<db_name></db_name>\n",fp_show_create);
-            fputs("\t\t<table_name></table_name>\n",fp_show_create);
+
+            fputs("\t\t<table_name>",fp_show_create);
+            int i = 0;
+            for (i=0; i < pra->n_tables; i++)
+            {
+                snprintf(&full_name[0], sizeof(full_name), "%s.%s", pra->table_arr[i].dbname, pra->table_arr[i].tablename);
+                if (i == pra->n_tables - 1)
+                {
+                    fprintf(fp_show_create, "%s", full_name);
+                }
+                else
+                {
+                    fprintf(fp_show_create, "%s,", full_name);
+                }
+            }
+
+            fputs("</table_name>\n",fp_show_create);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
             fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
@@ -2470,13 +2428,6 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 			            strcpy(key_name, column->field_name.str);
                         level = 1; 
                     }
-					else if(level == 1)
-					{
-						strcpy(key_name, "");
-						snprintf(result, result_len, "%s", "ERROR: too many key more than 1");
-						return 1;
-
-					}
                     break;
                 }
 
@@ -2491,6 +2442,15 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
                 }
         }
 	}
+
+    // 如果只有key，并且key个数大于1，报错
+    if (level == 1 && lex->alter_info.key_list.elements > 1)
+    {
+        //strcpy(key_name, "");  // key_name为第一个key
+        snprintf(result, result_len, "%s", "ERROR: too many key more than 1, but without unique key");
+        return 1;
+    }
+    
     // 必须包含索引
 	if(level > 0)
 		return 0;
