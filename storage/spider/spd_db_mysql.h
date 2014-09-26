@@ -505,7 +505,7 @@ class spider_mysql_handler: public spider_db_handler
 {
   spider_string           sql;
   spider_string           sql_part;
-  spider_string           sql_part2;
+  spider_string           sql_part2;   // for SPIDER_SQL_TYPE_HANDLER 
   spider_string           ha_sql;
   int                     where_pos;
   int                     order_pos;

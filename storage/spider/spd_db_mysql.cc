@@ -1562,7 +1562,7 @@ int spider_db_mysql::exec_query(
 
   if (spider_param_log_result_errors() >= 2 && db_conn->warning_count > 0)
   {// just for test, for log
-	  int i,j;
+	  uint i,j;
 	  MYSQL_RES *res;
 	  MYSQL_ROW row;
 	  char *sql = "show warnings";
@@ -4794,6 +4794,8 @@ int spider_mysql_handler::init()
   insert_sql.set_charset(share->access_charset);
   update_sql.set_charset(share->access_charset);
   tmp_sql.set_charset(share->access_charset);
+  dup_update_sql.set_charset(share->access_charset);
+  sql_part2.set_charset(share->access_charset);
   upd_tmp_tbl_prm.init();
   upd_tmp_tbl_prm.field_count = 1;
   if (!(link_for_hash = (SPIDER_LINK_FOR_HASH *)
