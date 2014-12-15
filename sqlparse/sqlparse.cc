@@ -1220,7 +1220,20 @@ query_parse_audit_tsqlparse(
 			fputs("\t\t<convert_sql>", fp_show_create);
 			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
 			fputs("</convert_sql>\n", fp_show_create);
-            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", get_stmt_type_str(lex->sql_command));
+
+			if(lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
+			{
+				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_LIKE</sql_type>\n");
+			}
+			else if(lex->current_select && lex->current_select->select_n_having_items > 0)
+			{// TODO,  这个条件是臆断，待证明正确性
+				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_SELECT</sql_type>\n");
+			}
+            else
+			{
+				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", get_stmt_type_str(lex->sql_command));
+			}
+
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_name);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", table_name);
             fprintf(fp_show_create,"\t\t<shard_key>%s</shard_key>\n", key_name);
