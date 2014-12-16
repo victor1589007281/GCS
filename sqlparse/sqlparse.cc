@@ -58,6 +58,7 @@ static void gettype_create_filed(Create_field *cr_field, String &res);
 static bool get_createfield_default_value(Create_field *cr_field, String *def_value);
 static void parse_append_directory(THD *thd, String *packet, const char *dir_type, const char *filename);
 static int parse_getkey_for_spider(THD *thd,  char *key, char *db_name, char *table_name,char *result, int result_len);
+static void print_quoted_xml_for_parse(FILE *xml_file, const char *str, ulong len);
 
 
 
@@ -1216,9 +1217,23 @@ query_parse_audit_tsqlparse(
 
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
+			fputs("\t\t<convert_sql>", fp_show_create);
+			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
+			fputs("</convert_sql>\n", fp_show_create);
 
-            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
-            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", get_stmt_type_str(lex->sql_command));
+			if(lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
+			{
+				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_LIKE</sql_type>\n");
+			}
+			else if(lex->current_select && lex->current_select->select_n_having_items > 0)
+			{// TODO,  这个条件是臆断，待证明正确性
+				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_SELECT</sql_type>\n");
+			}
+            else
+			{
+				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", get_stmt_type_str(lex->sql_command));
+			}
+
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_name);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", table_name);
             fprintf(fp_show_create,"\t\t<shard_key>%s</shard_key>\n", key_name);
@@ -1231,8 +1246,9 @@ query_parse_audit_tsqlparse(
         {
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
-
-            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<convert_sql>", fp_show_create);
+			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
+			fputs("</convert_sql>\n", fp_show_create);
             fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
@@ -1251,7 +1267,9 @@ query_parse_audit_tsqlparse(
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
 
-            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<convert_sql>", fp_show_create);
+			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
+			fputs("</convert_sql>\n", fp_show_create);
             fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", db_str.str);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
@@ -1266,7 +1284,10 @@ query_parse_audit_tsqlparse(
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
 
-            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<convert_sql>", fp_show_create);
+			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
+			fputs("</convert_sql>\n", fp_show_create);
+
             fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->name);
             fputs("\t\t<table_name></table_name>\n",fp_show_create);
@@ -1281,7 +1302,9 @@ query_parse_audit_tsqlparse(
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
 
-            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<convert_sql>", fp_show_create);
+			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
+			fputs("</convert_sql>\n", fp_show_create);
             fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
@@ -1296,7 +1319,10 @@ query_parse_audit_tsqlparse(
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
 
-            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<convert_sql>", fp_show_create);
+			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
+			fputs("</convert_sql>\n", fp_show_create);
+
             fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
@@ -1311,7 +1337,10 @@ query_parse_audit_tsqlparse(
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
 
-            fprintf(fp_show_create,"\t\t<convert_sql>%s</convert_sql>\n", query);
+			fputs("\t\t<convert_sql>", fp_show_create);
+			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
+			fputs("</convert_sql>\n", fp_show_create);
+
             fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
             fputs("\t\t<db_name></db_name>\n",fp_show_create);
 
@@ -2460,3 +2489,30 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 	return 1;
 }
 
+
+
+static void print_quoted_xml_for_parse(FILE *xml_file, const char *str, ulong len)
+{
+	const char *end;
+	for (end= str + len; str != end; str++)
+	{
+		switch (*str) 
+		{
+		case '<':
+			fputs("&lt;", xml_file);
+			break;
+		case '>':
+			fputs("&gt;", xml_file);
+			break;
+		case '&':
+			fputs("&amp;", xml_file);
+			break;
+		case '\"':
+			fputs("&quot;", xml_file);
+			break;
+		default:
+			fputc(*str, xml_file);
+			break;
+		}
+	}
+}

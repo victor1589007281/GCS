@@ -1463,7 +1463,7 @@ int spider_db_mysql::connect(
       NULL,
       tgt_port,
       tgt_socket,
-      CLIENT_MULTI_STATEMENTS
+      CLIENT_INTERACTIVE | CLIENT_MULTI_STATEMENTS
     )) {
       if (connect_mutex)
         pthread_mutex_unlock(&spider_open_conn_mutex);
