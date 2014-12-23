@@ -256,6 +256,10 @@ int my_gzprintf(gzFile file, const char* format, ...) ;
 #define ZPRINTF fprintf
 #endif
 
+static int replace(DYNAMIC_STRING *ds_str,
+				   const char *search_str, ulong search_len,
+				   const char *replace_str, ulong replace_len);
+
 static void z_write_header(ZFILE sql_file, const char *db_name);
 static void z_write_footer(ZFILE sql_file);
 static void z_print_comment(ZFILE sql_file, my_bool is_error, const char *format, ...);
@@ -2913,6 +2917,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
   int        len;
   MYSQL_RES  *result;
   MYSQL_ROW  row;
+  ulong*	 lengths;
 
   DBUG_ENTER("get_table_structure");
   DBUG_PRINT("enter", ("db: %s  table: %s", db, table));
@@ -2970,6 +2975,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
       char buff[20+FN_REFLEN];
       MYSQL_FIELD *field;
       bool write_to_file = true;
+	  char* create_table_sql = NULL;
 
       /* 不需要create语句，但启用压缩，需要获得create table语句，但不能输出文件 */
       if (opt_no_create_info && opt_enable_compress_optimization)
@@ -3123,7 +3129,20 @@ static uint get_table_structure(char *table, char *db, char *table_type,
         DBUG_RETURN(0);
       }
 
+	  DYNAMIC_STRING ds_table;
+
       row= mysql_fetch_row(result);
+	  lengths= mysql_fetch_lengths(result);
+		
+	  create_table_sql = row[1];
+	  init_dynamic_string_checked(&ds_table, create_table_sql, lengths[1] + 1, 1024);
+
+	  /* fixed the tmysql bug: non-innodb table contains !99000 ROW_FORMAT=GCS in tmysql(<=1.4) */
+	  if (create_table_sql && strstr(create_table_sql, "/*!99000 ROW_FORMAT=GCS */") && !strstr(create_table_sql, "ENGINE=InnoDB"))
+	  {
+		  replace(&ds_table, "/*!99000 ROW_FORMAT=GCS */", strlen("/*!99000 ROW_FORMAT=GCS */"), "", 0);
+		  create_table_sql = ds_table.str;
+	  }
 
       if (write_to_file)
       {
@@ -3135,11 +3154,11 @@ static uint get_table_structure(char *table, char *db, char *table_type,
               "/*!40101 SET character_set_client = @saved_cs_client */;\n"
               "%s",
               SET_CHARACTER_SET_CONNECTION_FOR_BINARY,
-              row[1],
+              create_table_sql,
               RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY);
       }
 
-      if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
+      if(strstr(create_table_sql, "/*!99104 COMPRESSED */"))
       {
         /* 如果表中存在有blob/text字段，有compressed属性 */
         *is_blob_compress_in_table = TRUE;
@@ -3149,6 +3168,7 @@ static uint get_table_structure(char *table, char *db, char *table_type,
         check_io(sql_file);
       }
       
+	  dynstr_free(&ds_table);
       mysql_free_result(result);
     }
     my_snprintf(query_buff, sizeof(query_buff), "show fields from %s",
@@ -8068,7 +8088,20 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
         DBUG_RETURN(0);
       }
 
+	  DYNAMIC_STRING ds_table;
+
       row= mysql_fetch_row(result);
+	  ulong *lengths= mysql_fetch_lengths(result);
+		
+	  char* create_table_sql = row[1];
+	  init_dynamic_string_checked(&ds_table, create_table_sql, lengths[1] + 1, 1024);
+
+	  /* fixed the tmysql bug: non-innodb table contains !99000 ROW_FORMAT=GCS in tmysql(<=1.4) */
+	  if (create_table_sql && strstr(create_table_sql, "/*!99000 ROW_FORMAT=GCS */") && !strstr(create_table_sql, "ENGINE=InnoDB"))
+	  {
+		  replace(&ds_table, "/*!99000 ROW_FORMAT=GCS */", strlen("/*!99000 ROW_FORMAT=GCS */"), "", 0);
+		  create_table_sql = ds_table.str;
+	  }
 
       if (write_to_file)
       {
@@ -8080,7 +8113,7 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
               "/*!40101 SET character_set_client = @saved_cs_client */;\n"
               "%s",
               SET_CHARACTER_SET_CONNECTION_FOR_BINARY,
-              row[1],
+              create_table_sql,
               RESTORE_CHARACTER_SET_CONNECTION_FOR_BINARY);
 
 
@@ -8089,12 +8122,13 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
         z_write_footer(sql_file);
         my_close_zip(sql_file);
       }
-      if(row && strstr(row[1], "/*!99104 COMPRESSED */"))
+      if(strstr(create_table_sql, "/*!99104 COMPRESSED */"))
       {
           /* 如果表中存在有blob/text字段，有compressed属性 */
           *is_blob_compress_in_table = TRUE;
       }
       mysql_free_result(result);
+	  dynstr_free(&ds_table);
     }
     my_snprintf(query_buff, sizeof(query_buff), "show fields from %s",
                 result_table);
