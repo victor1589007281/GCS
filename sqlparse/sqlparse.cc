@@ -1322,8 +1322,18 @@ query_parse_audit_tsqlparse(
 			fputs("\t\t<convert_sql>", fp_show_create);
 			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
 			fputs("</convert_sql>\n", fp_show_create);
-
-            fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
+			
+			
+			if(lex->alter_info.flags == ALTER_KEYS_ONOFF)
+			{// 特殊处理alter table enable/disable key的问题;
+			// 这类语句在spider中忽略。 用==表示仅处理alter table t1 enable/disable key这样的简单SQL。
+				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", "STMT_ALTER_TABLE_ENABLE_KEY");
+			}
+			else
+			{// 正常alter 语句的处理
+				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
+			}
+            
             fprintf(fp_show_create,"\t\t<db_name>%s</db_name>\n", lex->query_tables->db);
             fprintf(fp_show_create,"\t\t<table_name>%s</table_name>\n", lex->query_tables->table_name);
             fputs("\t\t<shard_key></shard_key>\n",fp_show_create);
