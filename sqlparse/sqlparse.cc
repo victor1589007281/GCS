@@ -1326,7 +1326,7 @@ query_parse_audit_tsqlparse(
 			
 			if(lex->alter_info.flags == ALTER_KEYS_ONOFF)
 			{// 特殊处理alter table enable/disable key的问题;
-			// 这类语句在spider中忽略。 用==表示仅处理alter table t1 enable/disable key这样的简单SQL。
+			 // 这类语句在spider中忽略。 用==表示仅处理alter table t1 enable/disable key这样的简单SQL。
 				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", "STMT_ALTER_TABLE_ENABLE_KEY");
 			}
 			else
@@ -1819,7 +1819,7 @@ int parse_create_info(THD *thd,  String *packet, bool show_database)
 	LEX* lex = thd->lex;
 	TABLE_LIST* table_list = lex->query_tables;
 	List<Create_field> list_field = lex->alter_info.create_list;;
-	List_iterator<Create_field> it_field = lex->alter_info.create_list;;
+	List_iterator<Create_field> it_field = lex->alter_info.create_list;
 
 	Create_field *field, *first_field;
 
@@ -2427,7 +2427,8 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 {
 	LEX* lex = thd->lex;
 	TABLE_LIST* table_list = lex->query_tables;
-
+	List_iterator<Create_field> it_field = lex->alter_info.create_list;
+	Create_field *field;
 	List_iterator<Key> key_iterator(lex->alter_info.key_list);
 	Key *key;
 	Key_part_spec *column;
@@ -2444,7 +2445,8 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 		List_iterator<Key_part_spec> cols(key->columns);
 		column = cols++;
 		
-        switch (key->type) {
+        switch (key->type) 
+		{
             case Key::PRIMARY:
             case Key::UNIQUE:
                 {
@@ -2490,6 +2492,17 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
         return 1;
     }
     
+	while((level ==1 || level ==2)  && !!(field = it_field++))
+	{// key对应的字段必须指定为not null, 主键默认是not null的，因此不需要考虑； flag记录的只是建表语句中的option信息。
+		uint flags = field->flags;
+		if (!strcmp(field->field_name, key_name)  && !(flags & NOT_NULL_FLAG))
+		{
+			snprintf(result, result_len, "%s", "ERROR: the key must default not null");
+			return 1;
+		}
+	}
+
+
     // 必须包含索引
 	if(level > 0)
 		return 0;
