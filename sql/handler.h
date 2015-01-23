@@ -1773,7 +1773,8 @@ public:
     uint range_count,
     bool sorted,
     uchar *new_data,
-    uint *update_rows
+    uint *update_rows,
+	uint *found_rows
   );
   int ha_pre_direct_update_rows(
     KEY_MULTI_RANGE *ranges,
@@ -2696,7 +2697,8 @@ private:
     uint range_count __attribute__((unused)),
     bool sorted __attribute__((unused)),
     uchar *new_data __attribute__((unused)),
-    uint *update_rows __attribute__((unused)))
+    uint *update_rows __attribute__((unused)),
+	uint *found_rows __attribute__((unused)))
   {
     return HA_ERR_WRONG_COMMAND;
   }

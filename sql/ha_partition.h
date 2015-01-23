@@ -462,7 +462,7 @@ public:
     uint range_count, bool sorted, uchar *new_data);
 #endif
   virtual int direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
-    bool sorted, uchar *new_data, uint *update_rows);
+    bool sorted, uchar *new_data, uint *update_rows, uint *found_rows);
 #ifdef HA_CAN_BULK_ACCESS
   virtual int pre_direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
     bool sorted, uchar *new_data, uint *update_rows);

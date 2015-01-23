@@ -9109,7 +9109,8 @@ int ha_spider::direct_update_rows(
   uint range_count,
   bool sorted,
   uchar *new_data,
-  uint *update_rows
+  uint *update_rows,
+  uint *found_rows
 ) {
   int error_num;
   THD *thd = ha_thd();
@@ -9139,14 +9140,14 @@ int ha_spider::direct_update_rows(
       DBUG_RETURN(spider_db_bulk_direct_update(this, update_rows));
     }
     DBUG_RETURN(bulk_access_link_exec_tgt->spider->ha_direct_update_rows(
-      ranges, range_count, sorted, new_data, update_rows));
+      ranges, range_count, sorted, new_data, update_rows, found_rows));
   }
 #endif
   if (
     (active_index != MAX_KEY && (error_num = index_handler_init())) ||
     (active_index == MAX_KEY && (error_num = rnd_handler_init())) ||
     (error_num = spider_db_direct_update(this, table, ranges, range_count,
-      update_rows))
+      update_rows, found_rows))
   )
     DBUG_RETURN(check_error_mode(error_num));
 

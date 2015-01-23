@@ -6254,7 +6254,8 @@ int spider_db_direct_update(
   TABLE *table,
   KEY_MULTI_RANGE *ranges,
   uint range_count,
-  uint *update_rows
+  uint *update_rows,
+  uint *found_rows
 ) {
   int error_num, roop_count;
   SPIDER_SHARE *share = spider->share;
@@ -6523,7 +6524,9 @@ int spider_db_direct_update(
         {
 			SPIDER_CONN *spider_conn = spider->spider_get_conn_by_idx(roop_count);
           *update_rows = spider_conn->db_conn->affected_rows();
+		  *found_rows = spider_conn->db_conn->matched_rows();
           DBUG_PRINT("info", ("spider update_rows = %u", *update_rows));
+		  DBUG_PRINT("info", ("spider found_rows = %u", *found_rows));
           counted = TRUE;
         }
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -6544,6 +6547,7 @@ int spider_db_direct_update(
           if (!counted)
           {
             *update_rows = conn->db_conn->affected_rows();
+			*found_rows = conn->db_conn->matched_rows();
             DBUG_PRINT("info", ("spider update_rows = %u", *update_rows));
             counted = TRUE;
           }

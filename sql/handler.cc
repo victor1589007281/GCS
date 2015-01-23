@@ -5591,7 +5591,8 @@ int handler::ha_direct_update_rows(
   uint range_count,         /* always 0? */
   bool sorted,              /* TRUE: use index */
   uchar *new_data,          /* always NULL? */
-  uint *update_rows         /* OUT: update row count */
+  uint *update_rows,         /* OUT: update row count */
+  uint *found_rows
 ) {
   int error;
   /*
@@ -5604,7 +5605,7 @@ int handler::ha_direct_update_rows(
   mark_trx_read_write();
 
   error=
-    direct_update_rows(ranges, range_count, sorted, new_data, update_rows);
+    direct_update_rows(ranges, range_count, sorted, new_data, update_rows, found_rows);
   MYSQL_UPDATE_ROW_DONE(error);
   return error;
 }

@@ -2822,10 +2822,29 @@ static MYSQL_SYSVAR_BOOL(
   FALSE
 );
 
+
+static my_bool spider_client_found_rows;
+static MYSQL_SYSVAR_BOOL(
+  client_found_rows,
+  spider_client_found_rows,
+  PLUGIN_VAR_OPCMDARG,
+  "return the matched row when use mysql_affected_rows",
+  NULL,
+  NULL,
+  FALSE
+);
+
+
 my_bool spider_param_general_log()
 {
   DBUG_ENTER("spider_param_general_log");
   DBUG_RETURN(spider_general_log);
+}
+
+my_bool spider_param_client_found_rows()
+{
+	DBUG_ENTER("spider_param_client_found_rows");
+	DBUG_RETURN(spider_client_found_rows);
 }
 
 static int spider_idle_conn_recycle_interval;
@@ -3065,6 +3084,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(udf_ds_use_real_table),
 #endif
   MYSQL_SYSVAR(general_log),
+  MYSQL_SYSVAR(client_found_rows),
   MYSQL_SYSVAR(with_sts_crd),
   MYSQL_SYSVAR(get_conn_from_idx),
   MYSQL_SYSVAR(log_result_errors),

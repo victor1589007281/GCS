@@ -670,10 +670,13 @@ int mysql_update(THD *thd,
     if (do_direct_update)
     {
         uint update_rows = 0;
+		uint found_rows = 0;
         error = table->file->ha_direct_update_rows(NULL, 0,
-            (used_index != MAX_KEY), NULL, &update_rows);
+            (used_index != MAX_KEY), NULL, &update_rows, &found_rows);
         updated = update_rows;
-        found = update_rows;
+        found = found_rows;
+		if(found < updated)
+			found = updated;
         if (!error)
             error = -1;
     } else {

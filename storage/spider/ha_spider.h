@@ -580,7 +580,8 @@ public:
     uint range_count,
     bool sorted,
     uchar *new_data,
-    uint *update_rows
+    uint *update_rows,
+	uint *found_rows
   );
 #ifdef HA_CAN_BULK_ACCESS
   int pre_direct_update_rows(

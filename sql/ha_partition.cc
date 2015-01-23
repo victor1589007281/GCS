@@ -9248,11 +9248,11 @@ int ha_partition::pre_direct_update_rows_init(uint mode,
 
 
 int ha_partition::direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
-  bool sorted, uchar *new_data, uint *update_rows)
+  bool sorted, uchar *new_data, uint *update_rows, uint *found_rows)
 {
   int error;
   bool rnd_seq= FALSE;
-  uint m_update_rows, i;
+  uint m_update_rows, i, m_found_rows;
   handler *file;
   DBUG_ENTER("ha_partition::direct_update_rows");
 
@@ -9262,6 +9262,7 @@ int ha_partition::direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
     m_scan_value= 2;
   }
   *update_rows= 0;
+  *found_rows = 0;
   m_part_spec = m_direct_update_part_spec;
   for (i= m_part_spec.start_part; i <= m_part_spec.end_part; i++)
   {
@@ -9274,13 +9275,14 @@ int ha_partition::direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
           DBUG_RETURN(error);
       }
       if ((error= (file)->ha_direct_update_rows(ranges, range_count,
-        sorted, new_data, &m_update_rows)))
+        sorted, new_data, &m_update_rows, &m_found_rows)))
       {
         if (rnd_seq)
           file->ha_rnd_end();
         DBUG_RETURN(error);
       }
       *update_rows += m_update_rows;
+	  *found_rows += m_found_rows;
     }
     if (rnd_seq && (error = file->ha_index_or_rnd_end()))
       DBUG_RETURN(error);
