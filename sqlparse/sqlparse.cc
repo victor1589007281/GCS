@@ -1329,6 +1329,10 @@ query_parse_audit_tsqlparse(
 			 // 这类语句在spider中忽略。 用==表示仅处理alter table t1 enable/disable key这样的简单SQL。
 				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", "STMT_ALTER_TABLE_ENABLE_KEY");
 			}
+			else if(lex->alter_info.flags == ALTER_RENAME && lex->query_tables->db && lex->current_select->db && strcmp(lex->query_tables->db, lex->current_select->db))
+			{// 特殊处理alter table rename，  如果alter table rename跨库，则记录
+				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", "STMT_ALTER_TABLE_RENAME_MULTI_DB");
+			}
 			else
 			{// 正常alter 语句的处理
 				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n",get_stmt_type_str(lex->sql_command));
