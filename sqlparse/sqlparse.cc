@@ -1229,6 +1229,10 @@ query_parse_audit_tsqlparse(
 			{// TODO,  这个条件是臆断，待证明正确性
 				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_SELECT</sql_type>\n");
 			}
+			else if(lex->create_info.comment.str || lex->create_info.connect_string.str)
+			{// 普通表生成spider表，不能对普通表使用connection或者comment说明
+				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_WITH_TABLE_COMMENT</sql_type>\n");
+			}
             else
 			{
 				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", get_stmt_type_str(lex->sql_command));
