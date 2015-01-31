@@ -59,6 +59,7 @@ static bool get_createfield_default_value(Create_field *cr_field, String *def_va
 static void parse_append_directory(THD *thd, String *packet, const char *dir_type, const char *filename);
 static int parse_getkey_for_spider(THD *thd,  char *key, char *db_name, char *table_name,char *result, int result_len);
 static void print_quoted_xml_for_parse(FILE *xml_file, const char *str, ulong len);
+static bool is_add_or_drop_unique_key(THD *thd, int add_or_drop_index);
 
 
 
@@ -1213,6 +1214,10 @@ query_parse_audit_tsqlparse(
         
         if(lex->sql_command == SQLCOM_CREATE_TABLE)
         {
+			List_iterator<Create_field> it_field;
+			Create_field *cur_field;
+			const char *tb_charset = NULL;
+			bool create_table_with_field_charset = false;
             parse_getkey_for_spider(thd, key_name, db_name, table_name, result, sizeof(result));
 
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
@@ -1220,6 +1225,39 @@ query_parse_audit_tsqlparse(
 			fputs("\t\t<convert_sql>", fp_show_create);
 			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
 			fputs("</convert_sql>\n", fp_show_create);
+
+			// tb_charset 为表字符集，若表不指定字符集则继承db字符集
+			if(lex->create_info.default_table_charset)
+				tb_charset = lex->create_info.default_table_charset->csname;
+			else
+				tb_charset = pra->db_charset;
+			it_field = lex->alter_info.create_list;
+			while(!!(cur_field = it_field++))
+			{// 看字段中有没有指定其它类型的字符集，有则告警
+				switch(cur_field->sql_type)
+				{
+				case MYSQL_TYPE_BLOB:
+				case MYSQL_TYPE_TINY_BLOB:
+				case MYSQL_TYPE_MEDIUM_BLOB:
+				case MYSQL_TYPE_LONG_BLOB:
+				case MYSQL_TYPE_VARCHAR:
+				case MYSQL_TYPE_VAR_STRING:
+				case MYSQL_TYPE_STRING:
+				case MYSQL_TYPE_ENUM:
+				case MYSQL_TYPE_SET:
+					if(cur_field->charset)
+					{
+						if(strcmp(cur_field->charset->csname, tb_charset) && strcmp(cur_field->charset->csname, "binary"))
+						{// 字段中指定了与db不同的字符集，告警
+							create_table_with_field_charset = true;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			
 
 			if(lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
 			{
@@ -1232,6 +1270,10 @@ query_parse_audit_tsqlparse(
 			else if(lex->create_info.comment.str || lex->create_info.connect_string.str)
 			{// 普通表生成spider表，不能对普通表使用connection或者comment说明
 				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_WITH_TABLE_COMMENT</sql_type>\n");
+			}
+			else if(create_table_with_field_charset)
+			{
+				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_WITH_FIELD_CHARSET</sql_type>\n");
 			}
             else
 			{
@@ -1320,6 +1362,7 @@ query_parse_audit_tsqlparse(
         }
         else if(lex->sql_command == SQLCOM_ALTER_TABLE)
         {
+			bool is_add_or_drop_unique = false;
             fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
             fputs("\t<sql>\n",fp_show_create);
 
@@ -1327,6 +1370,7 @@ query_parse_audit_tsqlparse(
 			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
 			fputs("</convert_sql>\n", fp_show_create);
 			
+			is_add_or_drop_unique = is_add_or_drop_unique_key(thd, lex->alter_info.flags);
 			
 			if(lex->alter_info.flags == ALTER_KEYS_ONOFF)
 			{// 特殊处理alter table enable/disable key的问题;
@@ -1336,6 +1380,10 @@ query_parse_audit_tsqlparse(
 			else if(lex->alter_info.flags == ALTER_RENAME && lex->query_tables->db && lex->current_select->db && strcmp(lex->query_tables->db, lex->current_select->db))
 			{// 特殊处理alter table rename，  如果alter table rename跨库，则记录
 				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", "STMT_ALTER_TABLE_RENAME_MULTI_DB");
+			}
+			else if(is_add_or_drop_unique)
+			{
+				fprintf(fp_show_create,"\t\t<sql_type>%s</sql_type>\n", "STMT_ALTER_TABLE_ADD_OR_DROP_UNIQUE_KEY");
 			}
 			else
 			{// 正常alter 语句的处理
@@ -2469,17 +2517,15 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
                     level = ((key->type == Key::PRIMARY) ? 3 : 2);
                     break;
                 }
-
             case Key::MULTIPLE:
                 {
                     if (level < 1)
-                    { 
+                    {
 			            strcpy(key_name, column->field_name.str);
                         level = 1; 
                     }
                     break;
                 }
-
             case Key::FOREIGN_KEY:
             case Key::FULLTEXT:
             case Key::SPATIAL:
@@ -2546,4 +2592,41 @@ static void print_quoted_xml_for_parse(FILE *xml_file, const char *str, ulong le
 			break;
 		}
 	}
+}
+
+
+
+bool is_add_or_drop_unique_key(THD *thd, int flags)
+{
+	LEX* lex = thd->lex;
+	TABLE_LIST* table_list = lex->query_tables;
+	List_iterator<Key> key_iterator(lex->alter_info.key_list);
+	List_iterator<Alter_drop> it_drop_field = lex->alter_info.drop_list;
+	Alter_drop *alter_drop_field;
+	enum Keytype { PRIMARY, UNIQUE, MULTIPLE, FULLTEXT, SPATIAL, FOREIGN_KEY};
+	Key *key;
+	if(flags & ALTER_ADD_INDEX)
+	{
+		while(key = key_iterator++)
+		{
+			if(key->type == PRIMARY || key->type == UNIQUE)
+			{
+				return true;
+			}
+		}
+	}
+	else if(flags & ALTER_DROP_INDEX)
+	{
+		while(alter_drop_field = it_drop_field++)
+		{
+			if(!strcmp(alter_drop_field->name, "PRIMARY"))
+				return true;
+		}
+	}
+	else
+	{
+		return false;
+	}
+
+	return false;
 }
