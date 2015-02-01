@@ -2487,6 +2487,8 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 	Create_field *field;
 	List_iterator<Key> key_iterator(lex->alter_info.key_list);
 	Key *key;
+	const char *shard_key_str = "AS TSPIDER SHARD KEY";
+	bool has_shard_key = false;
 	Key_part_spec *column;
 	int level = 0;  // 普通key的第一字段，level为1   unique key的第一个字段，level为2   primary key的第一个字段，level=3
 
@@ -2494,10 +2496,54 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 	strcpy(db_name, table_list->db);
 	strcpy(table_name, table_list->table_name);
     strcpy(result, "SUCCESS");
+
+
+	while(key = key_iterator++)
+	{// 检查指定的shard key。 只允许显示指定一个shard key。 若存在，则保存到key_name中
+		List_iterator<Key_part_spec> cols(key->columns);
+		Key_part_spec *tmp_column = cols++;
+		switch (key->type) 
+		{
+		case Key::PRIMARY:
+		case Key::UNIQUE:
+		case Key::MULTIPLE:
+			while((field = it_field++))
+			{
+				if (!strcmp(field->field_name, tmp_column->field_name.str))
+				{// 对key_name对应的列处理
+					if(field->comment.str && !strncmp(shard_key_str, field->comment.str, strlen(shard_key_str)))
+					{// 先得存在comment
+						if(has_shard_key)
+						{// 已存在shard_key则报错，有且仅有一个shard key
+							strcpy(key_name, "");
+							snprintf(result, result_len, "%s", "ERROR: has more than one shard key");
+							return 1;
+						}
+						else
+						{
+							strcpy(key_name, tmp_column->field_name.str);
+							has_shard_key = true;
+						}
+					}
+				}
+			}
+			break;
+		case Key::FOREIGN_KEY:
+		case Key::FULLTEXT:
+		case Key::SPATIAL:
+		default:
+			{
+				strcpy(key_name, "");
+				snprintf(result, result_len, "%s", "ERROR: no support key type");
+				return 1;
+			}
+		}
+	}
 	
+
+	key_iterator.rewind();
 	while(key = key_iterator++)
 	{
-		bool found_primary=0;
 		List_iterator<Key_part_spec> cols(key->columns);
 		column = cols++;
 		
@@ -2506,10 +2552,17 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
             case Key::PRIMARY:
             case Key::UNIQUE:
                 {
-                    if (level > 1)
-                    {
+					if(has_shard_key && strcmp(key_name, column->field_name.str))
+					{// 已存在shard_key，且不是当前的唯一key，则报错
+						strcpy(key_name, "");
+						snprintf(result, result_len, "%s", "ERROR: as TSpider key, but has other unique key");
+						return 1;
+					}
+
+                    if (level > 1 && strcmp(key_name, column->field_name.str))
+                    {// 多个unique, 如果前缀不同则报错
                         strcpy(key_name, "");
-                        snprintf(result, result_len, "%s", "ERROR: too more unique key");
+                        snprintf(result, result_len, "%s", "ERROR: too more unique key with the different pre key");
                         return 1;
                     }
 
@@ -2519,8 +2572,8 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
                 }
             case Key::MULTIPLE:
                 {
-                    if (level < 1)
-                    {
+                    if (!has_shard_key && level < 1)
+                    {// 不存在指定的shard key，且前面无unique，则在key中取一个做为partition key
 			            strcpy(key_name, column->field_name.str);
                         level = 1; 
                     }
@@ -2538,15 +2591,16 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
         }
 	}
 
-    // 如果只有key，并且key个数大于1，报错
-    if (level == 1 && lex->alter_info.key_list.elements > 1)
+    // 如果只有普通key，且没有显示指定shard key， 却key个数大于1，报错
+    if (!has_shard_key && level == 1 && lex->alter_info.key_list.elements > 1)
     {
         //strcpy(key_name, "");  // key_name为第一个key
-        snprintf(result, result_len, "%s", "ERROR: too many key more than 1, but without unique key");
+        snprintf(result, result_len, "%s", "ERROR: too many key more than 1, but without unique key or set shard key");
         return 1;
     }
     
-	while((level ==1 || level ==2)  && !!(field = it_field++))
+	it_field.rewind();
+	while((has_shard_key || level ==1 || level ==2)  && !!(field = it_field++))
 	{// key对应的字段必须指定为not null, 主键默认是not null的，因此不需要考虑； flag记录的只是建表语句中的option信息。
 		uint flags = field->flags;
 		if (!strcmp(field->field_name, key_name)  && !(flags & NOT_NULL_FLAG))
@@ -2557,8 +2611,8 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 	}
 
 
-    // 必须包含索引
-	if(level > 0)
+    // 指定了shard_key或者包含索引
+	if(has_shard_key || level > 0)
 		return 0;
 	
     strcpy(key_name, "");
