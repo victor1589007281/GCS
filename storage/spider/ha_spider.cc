@@ -7902,8 +7902,9 @@ int ha_spider::info(
     }
 
 	sts_mode = crd_mode = 1; // 设定都按show table status句式
-    if (difftime(tmp_time, share->sts_get_time) >= sts_interval)
-    { // 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
+    if (spider_param_spider_get_sts_or_crd() && difftime(tmp_time, share->sts_get_time) >= sts_interval)
+    { // 只有在spider_get_sts_or_crd设置为true时有效，默认关闭
+		// 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
 		int roop_count; // 设置此处的conns为null，防止上次操作过程conn在free后未将此值值NULL
 		for (
 			roop_count = spider_conn_link_idx_next(share->link_statuses,
@@ -7936,7 +7937,7 @@ int ha_spider::info(
 		}
 	}
 
-	if (difftime(tmp_time, share->crd_get_time) >= crd_interval && sts_crd_errornum_flag)
+	if (spider_param_spider_get_sts_or_crd() && difftime(tmp_time, share->crd_get_time) >= crd_interval && sts_crd_errornum_flag)
 	{ // 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
 		int roop_count; // 设置此处的conns为null，防止上次操作过程conn在free后未将此值值NULL
 		for (

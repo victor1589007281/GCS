@@ -2834,6 +2834,17 @@ static MYSQL_SYSVAR_BOOL(
   FALSE
 );
 
+static my_bool spider_get_sts_or_crd;
+  static MYSQL_SYSVAR_BOOL(
+  get_sts_or_crd,
+  spider_get_sts_or_crd,
+  PLUGIN_VAR_OPCMDARG,
+  "if need to get table/index status",
+  NULL,
+  NULL,
+  FALSE
+);
+
 
 my_bool spider_param_general_log()
 {
@@ -2846,6 +2857,15 @@ my_bool spider_param_client_found_rows()
 	DBUG_ENTER("spider_param_client_found_rows");
 	DBUG_RETURN(spider_client_found_rows);
 }
+
+
+my_bool spider_param_spider_get_sts_or_crd()
+{
+	DBUG_ENTER("spider_param_spider_get_sts_or_crd");
+	DBUG_RETURN(spider_get_sts_or_crd);
+}
+
+
 
 static int spider_idle_conn_recycle_interval;
 static MYSQL_SYSVAR_INT(
@@ -3085,6 +3105,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
 #endif
   MYSQL_SYSVAR(general_log),
   MYSQL_SYSVAR(client_found_rows),
+  MYSQL_SYSVAR(get_sts_or_crd),
   MYSQL_SYSVAR(with_sts_crd),
   MYSQL_SYSVAR(get_conn_from_idx),
   MYSQL_SYSVAR(log_result_errors),
