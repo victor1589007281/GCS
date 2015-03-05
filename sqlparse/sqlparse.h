@@ -224,6 +224,11 @@ void
 parse_global_destroy();
 
 
+int parse_get_shard_key_for_spider(
+	char*		table_comment,
+	char*		key_buf,
+	unsigned int		key_len
+);
 
 
 /************************************************************************/

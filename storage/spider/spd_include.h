@@ -780,6 +780,7 @@ typedef struct st_spider_share
   char               **tgt_pk_names;
   char               **tgt_sequence_names;              /* For oracle sequence objects */
   char               **conn_keys;                       /* 连接重用标识串, 0mysql\0[host]\0[port]\0[sock]\0[user]\0[pwd]\0[SSL...]  */
+  char				 **tgt_shard_keys;					/* 分区键，但无意义，只用于tmysqlparse */
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   char               **hs_read_socks;
   char               **hs_write_socks;
@@ -829,6 +830,7 @@ typedef struct st_spider_share
   uint               *tgt_pk_names_lengths;
   uint               *tgt_sequence_names_lengths;
   uint               *conn_keys_lengths;
+  uint				 *tgt_shard_keys_lengths;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   uint               *hs_read_socks_lengths;
   uint               *hs_write_socks_lengths;
@@ -858,6 +860,7 @@ typedef struct st_spider_share
   uint               tgt_pk_names_charlen;
   uint               tgt_sequence_names_charlen;
   uint               conn_keys_charlen;                             /* conn_keys数组共占用的存储空间 */
+  uint				 tgt_shard_keys_charlen;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   uint               hs_read_socks_charlen;
   uint               hs_write_socks_charlen;
@@ -883,6 +886,7 @@ typedef struct st_spider_share
   uint               tgt_pk_names_length;
   uint               tgt_sequence_names_length;
   uint               conn_keys_length;
+  uint				 tgt_shard_keys_length;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   uint               hs_read_socks_length;
   uint               hs_write_socks_length;
