@@ -2876,7 +2876,7 @@ static MYSQL_SYSVAR_INT(
   NULL, /* check */
   NULL, /* update */
   3600, /* default */
-  1,    /* min */
+  8,    /* min */
   86400, /* max */
   0     /* blk */
 );
