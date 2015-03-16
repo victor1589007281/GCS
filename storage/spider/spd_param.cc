@@ -297,7 +297,7 @@ static MYSQL_THDVAR_BOOL(
   "Sync begin or commit", /* comment */
   NULL, /* check */
   NULL, /* update */
-  FALSE /* def */
+  TRUE /* def */
 );
 
 

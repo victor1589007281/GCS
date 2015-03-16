@@ -2439,10 +2439,6 @@ static Sys_var_mybool Sys_big_tables(
        "temporary sets on file (Solves most 'table full' errors)",
        SESSION_VAR(big_tables), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
-static Sys_var_mybool Sys_log_sql_use_mutil_partition(
-									 "log_sql_use_mutil_partition", "log the sql in spider invoke partition more than 1",
-									 SESSION_VAR(log_sql_use_mutil_partition), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
-
 static Sys_var_mybool Sys_log_slow_include_lock_time(
 	"log_slow_include_lock_time", "log the query into slow_low when query_time > long_query_time, not query_time-lock_time > long_query_time.",
 	SESSION_VAR(log_slow_include_lock_time), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
@@ -3034,6 +3030,12 @@ static Sys_var_mybool Sys_log_slow(
        GLOBAL_VAR(opt_slow_log), NO_CMD_LINE,
        DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(fix_log_state), DEPRECATED(70000, "'@@slow_query_log'"));
+
+static Sys_var_mybool Sys_log_sql_use_mutil_partition(
+	"log_sql_use_mutil_partition", 
+	"log the sql in spider invoke partition more than 1",
+	GLOBAL_VAR(log_sql_use_mutil_partition), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
 
 static Sys_var_mybool Sys_alter_query_log(
     "alter_query_log",

@@ -37,6 +37,7 @@
 #include <keycache.h>
 
 //#define HANDLER_HAS_TOP_TABLE_FIELDS            //for vp only
+#define HANDLER_INTERVAL_FOR_AUTO_INCREMENT  1000  // for spider only
 #define HANDLER_HAS_DIRECT_UPDATE_ROWS
 #define HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
 #define HANDLER_HAS_DIRECT_AGGREGATE            

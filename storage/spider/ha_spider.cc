@@ -3188,6 +3188,7 @@ int ha_spider::index_last_internal(
 ) {
   int error_num;
   SPIDER_CONN *conn;
+  THD *thd = current_thd;
   backup_error_status();
   DBUG_ENTER("ha_spider::index_last_internal");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -3427,8 +3428,17 @@ int ha_spider::index_last_internal(
             }
             DBUG_RETURN(check_error_mode_eof(error_num));
           }
-          spider_conn_set_timeout_from_share(conn, roop_count,
-            trx->thd, share);
+          spider_conn_set_timeout_from_share(conn, roop_count, trx->thd, share);
+
+		  /********************
+		  **  这个赋值需要放在执行sql前，主要用来控制发送start transaction的。
+		  **  前面的set names query也会走spider_db_mysql::exec_query, 所在此赋值要放在此处
+		  **********************/
+		  if(thd->get_autoincrement_from_remotedb)
+		  { 
+			  conn->get_auto_increment_start = true;
+			  conn->get_auto_increment_commit = true;
+		  }
           if (dbton_hdl->execute_sql(
             sql_type,
             conn,
@@ -3437,6 +3447,7 @@ int ha_spider::index_last_internal(
           ) {
             conn->mta_conn_mutex_lock_already = FALSE;
             conn->mta_conn_mutex_unlock_later = FALSE;
+			conn->get_auto_increment_start = FALSE; // 一个query,只可能有一个start transaction
             error_num = spider_db_errorno(conn);
             if (
               share->monitoring_kind[roop_count] &&
@@ -3459,6 +3470,7 @@ int ha_spider::index_last_internal(
             }
             DBUG_RETURN(check_error_mode_eof(error_num));
           }
+		  conn->get_auto_increment_start = FALSE; // 一个query,只可能有一个start transaction
           connection_ids[roop_count] = conn->connection_id;
           conn->mta_conn_mutex_lock_already = FALSE;
           conn->mta_conn_mutex_unlock_later = FALSE;
@@ -7844,199 +7856,195 @@ int ha_spider::ft_read(
 且分别对每个spider执行
 *****************************************/
 
-int ha_spider::info(
-  uint flag
-) {
-  int error_num;
-  THD *thd = ha_thd();
-  double sts_interval = spider_param_sts_interval(thd, share->sts_interval);
-  int sts_mode = spider_param_sts_mode(thd, share->sts_mode);
-  double crd_interval = spider_param_crd_interval(thd, share->crd_interval);
-  int crd_mode = spider_param_crd_mode(thd, share->crd_mode);
-  int sts_crd_errornum_flag = 1; // 默认为1，即走spider_get_crd；当spider_get_sts出错，则不走spider_get_crd
+int ha_spider::info(uint flag) 
+{
+	int error_num;
+	THD *thd = ha_thd();
+	double sts_interval = spider_param_sts_interval(thd, share->sts_interval);
+	int sts_mode = spider_param_sts_mode(thd, share->sts_mode);
+	double crd_interval = spider_param_crd_interval(thd, share->crd_interval);
+	int crd_mode = spider_param_crd_mode(thd, share->crd_mode);
+	int sts_crd_errornum_flag = 1; // 默认为1，即走spider_get_crd；当spider_get_sts出错，则不走spider_get_crd
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-  int sts_sync = spider_param_sts_sync(thd, share->sts_sync);
+	int sts_sync = spider_param_sts_sync(thd, share->sts_sync);
 #endif
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-  int sts_bg_mode = spider_param_sts_bg_mode(thd, share->sts_bg_mode);
+	int sts_bg_mode = spider_param_sts_bg_mode(thd, share->sts_bg_mode);
 #endif
-  SPIDER_INIT_ERROR_TABLE *spider_init_error_table = NULL;
-  set_error_mode();
-  backup_error_status();
-  DBUG_ENTER("ha_spider::info");
-  DBUG_PRINT("info",("spider this=%p", this));
-  DBUG_PRINT("info",("spider flag=%x", flag));
-  sql_command = thd_sql_command(thd);
-  if (
-    sql_command == SQLCOM_DROP_TABLE ||
-    sql_command == SQLCOM_ALTER_TABLE ||
-    sql_command == SQLCOM_SHOW_CREATE
-  ) {
-    if (flag & HA_STATUS_AUTO)
-    {
-      if (share->auto_increment_value)
-        stats.auto_increment_value = share->auto_increment_value;
-      else
-        stats.auto_increment_value = 1;
-    }
-    DBUG_RETURN(0);
-  }
+	SPIDER_INIT_ERROR_TABLE *spider_init_error_table = NULL;
+	set_error_mode();
+	backup_error_status();
+	DBUG_ENTER("ha_spider::info");
+	DBUG_PRINT("info",("spider this=%p", this));
+	DBUG_PRINT("info",("spider flag=%x", flag));
+	sql_command = thd_sql_command(thd);
+	if (
+		sql_command == SQLCOM_DROP_TABLE ||
+		sql_command == SQLCOM_ALTER_TABLE ||
+		sql_command == SQLCOM_SHOW_CREATE
+		) {
+			if (flag & HA_STATUS_AUTO)
+			{
+				if (share->auto_increment_value)
+					stats.auto_increment_value = share->auto_increment_value;
+				else
+					stats.auto_increment_value = 1;
+			}
+			DBUG_RETURN(0);
+	}
 
-  if (flag &
-    (HA_STATUS_TIME | HA_STATUS_CONST | HA_STATUS_VARIABLE | HA_STATUS_AUTO))
-  {
-    time_t tmp_time = (time_t) time((time_t*) 0);
-    DBUG_PRINT("info",
-      ("spider difftime=%f", difftime(tmp_time, share->sts_get_time)));
-    DBUG_PRINT("info",
-      ("spider sts_interval=%f", sts_interval));
-    int tmp_auto_increment_mode = 0;
-    if (flag & HA_STATUS_AUTO)
-    {
-      tmp_auto_increment_mode = spider_param_auto_increment_mode(thd,
-        share->auto_increment_mode);
+	if (flag & (HA_STATUS_TIME | HA_STATUS_CONST | HA_STATUS_VARIABLE | HA_STATUS_AUTO))
+	{
+		time_t tmp_time = (time_t) time((time_t*) 0);
+		DBUG_PRINT("info",
+			("spider difftime=%f", difftime(tmp_time, share->sts_get_time)));
+		DBUG_PRINT("info",
+			("spider sts_interval=%f", sts_interval));
+		int tmp_auto_increment_mode = 0;
+		if (flag & HA_STATUS_AUTO)
+		{
+			tmp_auto_increment_mode = spider_param_auto_increment_mode(thd,
+				share->auto_increment_mode);
 #ifdef HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
-      info_auto_called = TRUE;
+			info_auto_called = TRUE;
 #endif
-    }
-
-	sts_mode = crd_mode = 1; // 设定都按show table status句式
-    if (spider_param_spider_get_sts_or_crd() && difftime(tmp_time, share->sts_get_time) >= sts_interval)
-    { // 只有在spider_get_sts_or_crd设置为true时有效，默认关闭
-		// 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
-		int roop_count; // 设置此处的conns为null，防止上次操作过程conn在free后未将此值值NULL
-		for (
-			roop_count = spider_conn_link_idx_next(share->link_statuses,
-			this->conn_link_idx, -1, share->link_count,
-			SPIDER_LINK_STATUS_RECOVERY);
-		roop_count < (int) share->link_count;
-		roop_count = spider_conn_link_idx_next(share->link_statuses,
-			this->conn_link_idx, roop_count, share->link_count,
-			SPIDER_LINK_STATUS_RECOVERY)
-			) {
-				this->conns[roop_count] = NULL;
 		}
-		if (error_num = spider_get_sts(share, search_link_idx, tmp_time,
-			this, sts_interval, sts_mode,
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-			0,
-#endif
-			1, HA_STATUS_VARIABLE | HA_STATUS_CONST | HA_STATUS_AUTO))
-		{
-			time_t cur_time = (time_t) time((time_t*) 0);
-			struct tm lt;
-			struct tm *l_time = localtime_r(&cur_time, &lt);
-			fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
-				"error to spider_get_sts in ha_spider::info. table name: %s, errnum: %d.\n",
-				l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-				l_time->tm_hour, l_time->tm_min, l_time->tm_sec, share->table_name, error_num);
 
-			sts_crd_errornum_flag = 0; // 如果spider_get_sts出错，则不走spider_get_crd
-			share->crd_get_time = tmp_time; //sts失败，则crd逻辑不走
+		sts_mode = crd_mode = 1; // 设定都按show table status句式
+		if (spider_param_spider_get_sts_or_crd() && difftime(tmp_time, share->sts_get_time) >= sts_interval)
+		{ // 只有在spider_get_sts_or_crd设置为true时有效，默认关闭
+			// 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
+			int roop_count; // 设置此处的conns为null，防止上次操作过程conn在free后未将此值值NULL
+			for (
+				roop_count = spider_conn_link_idx_next(share->link_statuses,
+				this->conn_link_idx, -1, share->link_count,
+				SPIDER_LINK_STATUS_RECOVERY);
+			roop_count < (int) share->link_count;
+			roop_count = spider_conn_link_idx_next(share->link_statuses,
+				this->conn_link_idx, roop_count, share->link_count,
+				SPIDER_LINK_STATUS_RECOVERY)
+				) {
+					this->conns[roop_count] = NULL;
+			}
+			if (error_num = spider_get_sts(share, search_link_idx, tmp_time,
+				this, sts_interval, sts_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+				0,
+#endif
+				1, HA_STATUS_VARIABLE | HA_STATUS_CONST | HA_STATUS_AUTO))
+			{
+				time_t cur_time = (time_t) time((time_t*) 0);
+				struct tm lt;
+				struct tm *l_time = localtime_r(&cur_time, &lt);
+				fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
+					"error to spider_get_sts in ha_spider::info. table name: %s, errnum: %d.\n",
+					l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+					l_time->tm_hour, l_time->tm_min, l_time->tm_sec, share->table_name, error_num);
+
+				sts_crd_errornum_flag = 0; // 如果spider_get_sts出错，则不走spider_get_crd
+				share->crd_get_time = tmp_time; //sts失败，则crd逻辑不走
+			}
+		}
+
+		if (spider_param_spider_get_sts_or_crd() && difftime(tmp_time, share->crd_get_time) >= crd_interval && sts_crd_errornum_flag)
+		{ // 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
+			int roop_count; // 设置此处的conns为null，防止上次操作过程conn在free后未将此值值NULL
+			for (
+				roop_count = spider_conn_link_idx_next(share->link_statuses,
+				this->conn_link_idx, -1, share->link_count,
+				SPIDER_LINK_STATUS_RECOVERY);
+			roop_count < (int) share->link_count;
+			roop_count = spider_conn_link_idx_next(share->link_statuses,
+				this->conn_link_idx, roop_count, share->link_count,
+				SPIDER_LINK_STATUS_RECOVERY)
+				) {
+					this->conns[roop_count] = NULL;
+			}
+			if (error_num = spider_get_crd(share, search_link_idx, tmp_time,
+				this, table, crd_interval, crd_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+				0,
+#endif
+				1))
+			{
+				time_t cur_time = (time_t) time((time_t*) 0);
+				struct tm lt;
+				struct tm *l_time = localtime_r(&cur_time, &lt);
+				fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
+					"error to spider_get_crd in ha_spider::info. table name: %s, errnum: %d.\n",
+					l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+					l_time->tm_hour, l_time->tm_min, l_time->tm_sec, share->table_name, error_num);
+			}
+		}
+
+
+
+		if (flag & HA_STATUS_CONST)
+		{ // check_crd()中会后台执行spider_get_crd()
+			//      if ((error_num = check_crd()))
+			//       DBUG_RETURN(error_num);
+			spider_db_set_cardinarity(this, table);
+		}
+
+		if (flag & HA_STATUS_TIME)
+			stats.update_time = (ulong) share->update_time;
+		if (flag & (HA_STATUS_CONST | HA_STATUS_VARIABLE))
+		{
+			stats.max_data_file_length = share->max_data_file_length;
+			stats.create_time = (ulong) share->create_time;
+			stats.block_size = spider_param_block_size(thd);
+		}
+		if (flag & HA_STATUS_VARIABLE)
+		{
+			stats.data_file_length = share->data_file_length;
+			stats.index_file_length = share->index_file_length;
+			stats.records = share->records;
+			stats.mean_rec_length = share->mean_rec_length;
+			stats.check_time = (ulong) share->check_time;
+			if (stats.records <= 1 /* && (flag & HA_STATUS_NO_LOCK) */ )
+				stats.records = 2;
+		}
+		if (flag & HA_STATUS_AUTO)
+		{
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+			if (share->partition_share && table->next_number_field)
+			{
+				ulonglong first_value, nb_reserved_values;
+				if (
+					tmp_auto_increment_mode == 0 &&
+					!(
+					table->next_number_field->val_int() != 0 ||
+					(table->auto_increment_field_not_null &&
+					thd->variables.sql_mode & MODE_NO_AUTO_VALUE_ON_ZERO)
+					)
+					) {
+						get_auto_increment(0, 0, 0, &first_value, &nb_reserved_values);
+						share->auto_increment_value = first_value;
+						share->auto_increment_lclval = first_value;
+						share->auto_increment_init = TRUE;
+						DBUG_PRINT("info",("spider init auto_increment_lclval=%llu",
+							share->auto_increment_lclval));
+						stats.auto_increment_value = first_value;
+				} else if (tmp_auto_increment_mode == 1 && !share->auto_increment_init)
+				{
+					share->auto_increment_lclval = share->auto_increment_value;
+					share->auto_increment_init = TRUE;
+					stats.auto_increment_value = share->auto_increment_value;
+				} else {
+					stats.auto_increment_value = share->auto_increment_value;
+				}
+			} else {
+#endif
+				stats.auto_increment_value = share->auto_increment_value;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+			}
+#endif
 		}
 	}
-
-	if (spider_param_spider_get_sts_or_crd() && difftime(tmp_time, share->crd_get_time) >= crd_interval && sts_crd_errornum_flag)
-	{ // 计算间隔时间 sts_interval是通过global variables spider_sts_interval来指定
-		int roop_count; // 设置此处的conns为null，防止上次操作过程conn在free后未将此值值NULL
-		for (
-			roop_count = spider_conn_link_idx_next(share->link_statuses,
-			this->conn_link_idx, -1, share->link_count,
-			SPIDER_LINK_STATUS_RECOVERY);
-		roop_count < (int) share->link_count;
-		roop_count = spider_conn_link_idx_next(share->link_statuses,
-			this->conn_link_idx, roop_count, share->link_count,
-			SPIDER_LINK_STATUS_RECOVERY)
-			) {
-				this->conns[roop_count] = NULL;
-		}
-		if (error_num = spider_get_crd(share, search_link_idx, tmp_time,
-			this, table, crd_interval, crd_mode,
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-			0,
-#endif
-			1))
-		{
-			time_t cur_time = (time_t) time((time_t*) 0);
-			struct tm lt;
-			struct tm *l_time = localtime_r(&cur_time, &lt);
-			fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
-				"error to spider_get_crd in ha_spider::info. table name: %s, errnum: %d.\n",
-				l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
-				l_time->tm_hour, l_time->tm_min, l_time->tm_sec, share->table_name, error_num);
- 		}
-	}
-
-
-
-
-
-    if (flag & HA_STATUS_CONST)
-    { // check_crd()中会后台执行spider_get_crd()
-//      if ((error_num = check_crd()))
- //       DBUG_RETURN(error_num);
-	  spider_db_set_cardinarity(this, table);
-    }
-
-    if (flag & HA_STATUS_TIME)
-      stats.update_time = (ulong) share->update_time;
-    if (flag & (HA_STATUS_CONST | HA_STATUS_VARIABLE))
-    {
-      stats.max_data_file_length = share->max_data_file_length;
-      stats.create_time = (ulong) share->create_time;
-      stats.block_size = spider_param_block_size(thd);
-    }
-    if (flag & HA_STATUS_VARIABLE)
-    {
-      stats.data_file_length = share->data_file_length;
-      stats.index_file_length = share->index_file_length;
-      stats.records = share->records;
-      stats.mean_rec_length = share->mean_rec_length;
-      stats.check_time = (ulong) share->check_time;
-      if (stats.records <= 1 /* && (flag & HA_STATUS_NO_LOCK) */ )
-        stats.records = 2;
-    }
-    if (flag & HA_STATUS_AUTO)
-    {
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-      if (share->partition_share && table->next_number_field)
-      {
-        ulonglong first_value, nb_reserved_values;
-        if (
-          tmp_auto_increment_mode == 0 &&
-          !(
-            table->next_number_field->val_int() != 0 ||
-            (table->auto_increment_field_not_null &&
-              thd->variables.sql_mode & MODE_NO_AUTO_VALUE_ON_ZERO)
-          )
-        ) {
-          get_auto_increment(0, 0, 0, &first_value, &nb_reserved_values);
-          share->auto_increment_value = first_value;
-          share->auto_increment_lclval = first_value;
-          share->auto_increment_init = TRUE;
-          DBUG_PRINT("info",("spider init auto_increment_lclval=%llu",
-            share->auto_increment_lclval));
-          stats.auto_increment_value = first_value;
-        } else if (tmp_auto_increment_mode == 1 && !share->auto_increment_init)
-        {
-          share->auto_increment_lclval = share->auto_increment_value;
-          share->auto_increment_init = TRUE;
-          stats.auto_increment_value = share->auto_increment_value;
-        } else {
-          stats.auto_increment_value = share->auto_increment_value;
-        }
-      } else {
-#endif
-        stats.auto_increment_value = share->auto_increment_value;
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-      }
-#endif
-    }
-  }
-  if (flag & HA_STATUS_ERRKEY)
-    errkey = dup_key_idx;
-  DBUG_RETURN(0);
+	if (flag & HA_STATUS_ERRKEY)
+		errkey = dup_key_idx;
+	DBUG_RETURN(0);
 }
 
 ha_rows ha_spider::records_in_range(
@@ -8582,14 +8590,16 @@ void ha_spider::get_auto_increment(
         table_share->next_number_key_offset);
       error_num = index_read_last_map(table->record[1], key,
         make_prev_keypart_map(table_share->next_number_keypart));
-    } else
+    } 
+	else
+	{
       error_num = index_last(table->record[1]);
+	}
 
     if (error_num)
       *first_value = 1;
     else
-      *first_value = ((ulonglong) table->next_number_field->
-        val_int_offset(table_share->rec_buff_length) + 1);
+      *first_value = ((ulonglong) table->next_number_field->val_int_offset(table_share->rec_buff_length) + 1);
     index_end();
     extra(HA_EXTRA_NO_KEYREAD);
     DBUG_VOID_RETURN;

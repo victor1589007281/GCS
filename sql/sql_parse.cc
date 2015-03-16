@@ -892,6 +892,8 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
                       (char *) thd->security_ctx->host_or_ip);
   
   thd->command=command;
+  thd->insert_with_autoincrement_field = false; // 初始化值为false，只有在insert语句且该表需要获取自增列值为true
+  thd->get_autoincrement_from_remotedb = false;  // 初始值为false，只有在从remote获取最大的auto_incremnt值才为true
   /* To increment the corrent command counter for user stats, 'command' must
      be saved because it is set to COM_SLEEP at the end of this function.
   */
@@ -1487,7 +1489,7 @@ void log_slow_statement(THD *thd)
            (SERVER_QUERY_NO_INDEX_USED | SERVER_QUERY_NO_GOOD_INDEX_USED)) &&
           opt_log_queries_not_using_indexes &&
            !(sql_command_flags[thd->lex->sql_command] & CF_STATUS_COMMAND)) ||
-		   (thd->variables.spider_sql_use_partition_count >=2 && thd->variables.log_sql_use_mutil_partition)
+		   (thd->variables.spider_sql_use_partition_count >=2 && log_sql_use_mutil_partition)
 		   ) &&
         thd->examined_row_count >= thd->variables.min_examined_row_limit)
     {

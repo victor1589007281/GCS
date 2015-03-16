@@ -601,6 +601,7 @@ struct TABLE_SHARE
   ulong   avg_row_length;		/* create information */
   ulong   version, mysql_version;
   ulong   reclength;			/* Recordlength */
+  ulong   max_autoincrement;    /* 0 or the current max auto_increment valus*/
 
   plugin_ref db_plugin;			/* storage engine plugin */
   inline handlerton *db_type() const	/* table_type for handler */

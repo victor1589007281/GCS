@@ -483,8 +483,6 @@ typedef struct system_variables
   my_bool old_passwords;
   my_bool big_tables;
   my_bool blob_compressed;
-//  my_bool spider_with_begin_commit;
-  my_bool  log_sql_use_mutil_partition;
   my_bool  log_slow_include_lock_time;
   uint     spider_sql_use_partition_count;
 
@@ -758,6 +756,8 @@ public:
     This printing is needed at least in SHOW PROCESSLIST and SHOW
     ENGINE INNODB STATUS.
   */
+  bool insert_with_autoincrement_field;
+  bool get_autoincrement_from_remotedb;
   CSET_STRING query_string;
 
   inline char *query() const { return query_string.str(); }

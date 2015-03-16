@@ -263,11 +263,14 @@ int spider_db_conn_queue_action(
 ) {
   int error_num;
   char sql_buf[MAX_FIELD_WIDTH * 2];
+  THD *thd = current_thd;
   spider_string sql_str(sql_buf, sizeof(sql_buf), system_charset_info);
   DBUG_ENTER("spider_db_conn_queue_action");
   DBUG_PRINT("info", ("spider conn=%p", conn));
   sql_str.init_calc_mem(106);
   sql_str.length(0);
+
+
 
   if (conn->queued_connect)
   {
@@ -349,7 +352,8 @@ int spider_db_conn_queue_action(
           append_time_zone(&sql_str, conn->queued_time_zone_val))
       ) ||
       (
-        conn->queued_trx_start && conn->db_conn->trx_transmit_begin_commit() &&
+        (conn->queued_trx_start && conn->db_conn->trx_transmit_begin_commit() ||
+		conn->get_auto_increment_start) && 
         conn->db_conn->trx_start_in_bulk_sql() &&
         (error_num = spider_dbton[conn->dbton_id].db_util->
           append_start_transaction(&sql_str))
@@ -361,9 +365,11 @@ int spider_db_conn_queue_action(
           append_xa_start(&sql_str, conn->queued_xa_start_xid))
       )
     )
+	{
       DBUG_RETURN(error_num);
+	}
     if (sql_str.length())
-    {
+    {// 比如start transaction,  set names等，在query前的SQL走此逻辑来执行
       if ((error_num = conn->db_conn->exec_query(sql_str.ptr(),
         sql_str.length(), -1)))
         DBUG_RETURN(error_num);
@@ -621,6 +627,7 @@ int spider_db_query(
   {
 #endif
     DBUG_PRINT("info", ("spider conn->db_conn %p", conn->db_conn));
+	// 此处执行一些前置状态，比如start transaction
     if (
       !conn->in_before_query &&
       (error_num = spider_db_before_query(conn, need_mon))
@@ -636,6 +643,7 @@ int spider_db_query(
     DBUG_PRINT("info", ("spider query=%s", query));
     DBUG_PRINT("info", ("spider length=%u", length));
 #endif
+	// 此处执行真正意义的SQL
     if ((error_num = conn->db_conn->exec_query(query, length, quick_mode)))
       DBUG_RETURN(error_num);
     DBUG_RETURN(0);

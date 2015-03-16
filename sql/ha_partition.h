@@ -1181,14 +1181,15 @@ private:
     }
   }
   virtual void set_auto_increment_if_higher(Field *field)
-  {
+  {// 在这个方法中，将指定的auto_increment值与自增时应该的值比较，取较大
     ulonglong nr= (((Field_num*) field)->unsigned_flag ||
                    field->val_int() > 0) ? field->val_int() : 0;
     lock_auto_increment();
     DBUG_ASSERT(table_share->ha_part_data->auto_inc_initialized == TRUE);
     /* must check when the mutex is taken */
-    if (nr >= table_share->ha_part_data->next_auto_inc_val)
-      table_share->ha_part_data->next_auto_inc_val= nr + 1;
+	// 如果nr为特定处理的，则nr == table_share->max_autoincrement, next_auto_inc_val值不能被nr替换
+    if (nr != table_share->max_autoincrement && nr >= table_share->ha_part_data->next_auto_inc_val)
+      table_share->ha_part_data->next_auto_inc_val= nr + 1;  // 显示指定自增列的值了，会走这个逻辑，更新next_auto_inc_val
     unlock_auto_increment();
   }
 

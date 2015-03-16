@@ -1916,12 +1916,14 @@ int spider_db_mysql::start_transaction(
 int spider_db_mysql::commit(
   int *need_mon
 ) {
+  THD *thd = current_thd;
   DBUG_ENTER("spider_db_mysql::commit");
   DBUG_PRINT("info",("spider this=%p", this));
 
-  if(trx_transmit_begin_commit())
+  if(trx_transmit_begin_commit() || conn->get_auto_increment_commit)
   {// 如果允许begin与commit，才执行下面的commit
-	if (spider_db_query(
+	  conn->get_auto_increment_commit = false; // commit一次
+	if (spider_db_query( // TODO， 确认是一个分区走
 		conn,
 		SPIDER_SQL_COMMIT_STR,
 		SPIDER_SQL_COMMIT_LEN,
