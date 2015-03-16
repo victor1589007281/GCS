@@ -1258,7 +1258,7 @@ query_parse_audit_tsqlparse(
 				}
 			}
 			
-
+			char buf[256];
 			if(lex->create_info.options & HA_LEX_CREATE_TABLE_LIKE)
 			{
 				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_LIKE</sql_type>\n");
@@ -1267,8 +1267,12 @@ query_parse_audit_tsqlparse(
 			{// TODO,  这个条件是臆断，待证明正确性
 				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_SELECT</sql_type>\n");
 			}
-			else if(lex->create_info.comment.str || lex->create_info.connect_string.str)
-			{// 普通表生成spider表，不能对普通表使用connection或者comment说明
+			else if(lex->create_info.connect_string.str)
+			{
+				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_WITH_CONNECT_STRING</sql_type>\n");
+			}
+			else if(lex->create_info.comment.str && parse_get_shard_key_for_spider(lex->create_info.comment.str, buf, sizeof(buf)))
+			{// 普通表生成spider表，不能对普通表使用connection或者comment说明(合法shard_key除外）
 				fprintf(fp_show_create,"\t\t<sql_type>STMT_CREATE_TABLE_WITH_TABLE_COMMENT</sql_type>\n");
 			}
 			else if(create_table_with_field_charset)
@@ -2478,8 +2482,46 @@ static void parse_append_directory(THD *thd, String *packet, const char *dir_typ
 	}
 }
 
+int parse_get_shard_key_for_spider(
+	char*		table_comment,
+	char*		key_buf,
+	uint		key_len
+)
+{
+	// comment=' shard_key "****"';
+	char* pos = strstr(table_comment, "shard_key");
+	if (!pos)
+		return 1;
 
-int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *table_name, char *result, int result_len)
+	pos += strlen("shard_key");
+
+	// ignore the space
+	while (*pos == ' ' || *pos == '\t')
+	{
+		pos++;
+	}
+
+	// find the beginning "
+	if (*pos=='"')
+		pos++;
+	else 
+		return 1;
+
+	// find the ending "
+	char* end= strstr(pos, "\"");
+
+	if (!end || (end - pos) <= 0)
+		return 1;
+
+	uint len = min(key_len - 1, (uint)(end - pos));
+	strncpy(key_buf, pos, len);
+	key_buf[len] = '\0';
+
+	return 0;
+}
+
+// buf_len means length of key_name ... result, etc
+int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *table_name, char *result, int buf_len)
 {
 	LEX* lex = thd->lex;
 	TABLE_LIST* table_list = lex->query_tables;
@@ -2487,58 +2529,65 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 	Create_field *field;
 	List_iterator<Key> key_iterator(lex->alter_info.key_list);
 	Key *key;
-	const char *shard_key_str = "AS TSPIDER SHARD KEY";
+	//const char *shard_key_str = "AS TSPIDER SHARD KEY";
 	bool has_shard_key = false;
 	Key_part_spec *column;
 	int level = 0;  // 普通key的第一字段，level为1   unique key的第一个字段，level为2   primary key的第一个字段，level=3
-
 
 	strcpy(db_name, table_list->db);
 	strcpy(table_name, table_list->table_name);
     strcpy(result, "SUCCESS");
 
-
-	while(key = key_iterator++)
-	{// 检查指定的shard key。 只允许显示指定一个shard key。 若存在，则保存到key_name中
-		List_iterator<Key_part_spec> cols(key->columns);
-		Key_part_spec *tmp_column = cols++;
-		switch (key->type) 
+	char* table_comment = lex->create_info.comment.str;  
+	if (table_comment)
+	{
+		if (!parse_get_shard_key_for_spider(table_comment, key_name, buf_len))
 		{
-		case Key::PRIMARY:
-		case Key::UNIQUE:
-		case Key::MULTIPLE:
-			while((field = it_field++))
-			{
-				if (!strcmp(field->field_name, tmp_column->field_name.str))
-				{// 对key_name对应的列处理
-					if(field->comment.str && !strncmp(shard_key_str, field->comment.str, strlen(shard_key_str)))
-					{// 先得存在comment
-						if(has_shard_key)
-						{// 已存在shard_key则报错，有且仅有一个shard key
-							strcpy(key_name, "");
-							snprintf(result, result_len, "%s", "ERROR: has more than one shard key");
-							return 1;
-						}
-						else
-						{
-							strcpy(key_name, tmp_column->field_name.str);
-							has_shard_key = true;
-						}
-					}
-				}
-			}
-			break;
-		case Key::FOREIGN_KEY:
-		case Key::FULLTEXT:
-		case Key::SPATIAL:
-		default:
-			{
-				strcpy(key_name, "");
-				snprintf(result, result_len, "%s", "ERROR: no support key type");
-				return 1;
-			}
+			has_shard_key = true;
 		}
 	}
+
+	//while(key = key_iterator++)
+	//{// 检查指定的shard key。 只允许显示指定一个shard key。 若存在，则保存到key_name中
+	//	List_iterator<Key_part_spec> cols(key->columns);
+	//	Key_part_spec *tmp_column = cols++;
+	//	switch (key->type) 
+	//	{
+	//	case Key::PRIMARY:
+	//	case Key::UNIQUE:
+	//	case Key::MULTIPLE:
+	//		while((field = it_field++))
+	//		{
+	//			if (!strcmp(field->field_name, tmp_column->field_name.str))
+	//			{// 对key_name对应的列处理
+	//				if(field->comment.str && !strncmp(shard_key_str, field->comment.str, strlen(shard_key_str)))
+	//				{// 先得存在comment
+	//					if(has_shard_key)
+	//					{// 已存在shard_key则报错，有且仅有一个shard key
+	//						strcpy(key_name, "");
+	//						snprintf(result, result_len, "%s", "ERROR: has more than one shard key");
+	//						return 1;
+	//					}
+	//					else
+	//					{
+	//						strcpy(key_name, tmp_column->field_name.str);
+	//						has_shard_key = true;
+	//					}
+	//				}
+	//			}
+	//		}
+	//		break;
+	//	case Key::FOREIGN_KEY:
+	//	case Key::FULLTEXT:
+	//	case Key::SPATIAL:
+	//	default:
+	//		{
+	//			strcpy(key_name, "");
+	//			snprintf(result, result_len, "%s", "ERROR: no support key type");
+	//			return 1;
+	//		}
+	//	}
+	//}
 	
 
 	key_iterator.rewind();
@@ -2554,15 +2603,15 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
                 {
 					if(has_shard_key && strcmp(key_name, column->field_name.str))
 					{// 已存在shard_key，且不是当前的唯一key，则报错
+						snprintf(result, buf_len, "ERROR: %s as TSpider key, but has other unique key", key_name);
 						strcpy(key_name, "");
-						snprintf(result, result_len, "%s", "ERROR: as TSpider key, but has other unique key");
 						return 1;
 					}
 
                     if (level > 1 && strcmp(key_name, column->field_name.str))
                     {// 多个unique, 如果前缀不同则报错
+                        snprintf(result, buf_len, "%s", "ERROR: too more unique key with the different pre key");
                         strcpy(key_name, "");
-                        snprintf(result, result_len, "%s", "ERROR: too more unique key with the different pre key");
                         return 1;
                     }
 
@@ -2585,7 +2634,7 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
             default:
                 {
                     strcpy(key_name, "");
-                    snprintf(result, result_len, "%s", "ERROR: no support key type");
+                    snprintf(result, buf_len, "%s", "ERROR: no support key type");
                     return 1;
                 }
         }
@@ -2595,7 +2644,7 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
     if (!has_shard_key && level == 1 && lex->alter_info.key_list.elements > 1)
     {
         //strcpy(key_name, "");  // key_name为第一个key
-        snprintf(result, result_len, "%s", "ERROR: too many key more than 1, but without unique key or set shard key");
+        snprintf(result, buf_len, "%s", "ERROR: too many key more than 1, but without unique key or set shard key");
         return 1;
     }
     
@@ -2605,7 +2654,7 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 		uint flags = field->flags;
 		if (!strcmp(field->field_name, key_name)  && !(flags & NOT_NULL_FLAG))
 		{
-			snprintf(result, result_len, "%s", "ERROR: the key must default not null");
+			snprintf(result, buf_len, "%s", "ERROR: the key must default not null");
 			return 1;
 		}
 	}
@@ -2616,7 +2665,7 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
 		return 0;
 	
     strcpy(key_name, "");
-    snprintf(result, result_len, "%s", "ERROR: no key");
+    snprintf(result, buf_len, "%s", "ERROR: no key");
 	return 1;
 }
 

@@ -2258,6 +2258,12 @@ bool select_send::send_data(List<Item> &items)
   Protocol *protocol= thd->protocol;
   DBUG_ENTER("select_send::send_data");
 
+  if (thd->select_offset != -1 && unit->offset_limit_cnt)
+  {
+    DBUG_ASSERT(thd->select_offset == 0);
+	unit->offset_limit_cnt = thd->select_offset;
+  }
+
   if (unit->offset_limit_cnt)
   {						// using limit offset,count
     unit->offset_limit_cnt--;

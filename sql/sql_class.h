@@ -1449,6 +1449,10 @@ private:
   { DBUG_ASSERT(0); return Statement::is_conventional(); }
 
 public:
+  //for spider
+  longlong select_offset;
+  longlong select_limit;
+  //end for spider
   MDL_context mdl_context;
   char* client_program_name;  /* name for client program name */
 

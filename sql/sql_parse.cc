@@ -5414,6 +5414,10 @@ void THD::reset_for_next_command()
   thd->binlog_unsafe_warning_flags= 0;
   thd->variables.spider_sql_use_partition_count = 0;
 
+  //for spider 
+  thd->select_limit = -1;
+  thd->select_offset = -1;
+
   DBUG_PRINT("debug",
              ("is_current_stmt_binlog_format_row(): %d",
               thd->is_current_stmt_binlog_format_row()));

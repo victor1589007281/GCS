@@ -322,7 +322,7 @@ begin
       install plugin spider_conns soname 'ha_spider.dll';
     end if;
   end if;
-  set @have_spider_direct_sql_udf := 0;
+  set @have_spider_direct_sql_udf := 1;
   select @have_spider_direct_sql_udf := 1 from mysql.func where name = 'spider_direct_sql';
   if @have_spider_direct_sql_udf = 0 then
     if @win_plugin = 0 then 
@@ -331,7 +331,7 @@ begin
       create function spider_direct_sql returns int soname 'ha_spider.dll';
     end if;
   end if;
-  set @have_spider_bg_direct_sql_udf := 0;
+  set @have_spider_bg_direct_sql_udf := 1;
   select @have_spider_bg_direct_sql_udf := 1 from mysql.func where name = 'spider_bg_direct_sql';
   if @have_spider_bg_direct_sql_udf = 0 then
     if @win_plugin = 0 then 
@@ -340,7 +340,7 @@ begin
       create aggregate function spider_bg_direct_sql returns int soname 'ha_spider.dll';
     end if;
   end if;
-  set @have_spider_ping_table_udf := 0;
+  set @have_spider_ping_table_udf := 1;
   select @have_spider_ping_table_udf := 1 from mysql.func where name = 'spider_ping_table';
   if @have_spider_ping_table_udf = 0 then
     if @win_plugin = 0 then 
@@ -349,7 +349,7 @@ begin
       create function spider_ping_table returns int soname 'ha_spider.dll';
     end if;
   end if;
-  set @have_spider_copy_tables_udf := 0;
+  set @have_spider_copy_tables_udf := 1;
   select @have_spider_copy_tables_udf := 1 from mysql.func where name = 'spider_copy_tables';
   if @have_spider_copy_tables_udf = 0 then
     if @win_plugin = 0 then 
@@ -359,7 +359,7 @@ begin
     end if;
   end if;
 
-  set @have_spider_flush_table_mon_cache_udf := 0;
+  set @have_spider_flush_table_mon_cache_udf := 1;
   select @have_spider_flush_table_mon_cache_udf := 1 from mysql.func where name = 'spider_flush_table_mon_cache';
   if @have_spider_flush_table_mon_cache_udf = 0 then
     if @win_plugin = 0 then 

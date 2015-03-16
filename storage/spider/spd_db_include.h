@@ -1627,8 +1627,9 @@ typedef struct st_spider_result_list
   int                     bulk_update_mode;
   int                     bulk_update_size;
   spider_bulk_upd_start   bulk_update_start;
-  bool                    check_direct_order_limit;
+  bool                    check_direct_order_limit;		/* 用于控制direct_order_limit,direct_limit_offset,direct_aggregate唯一的赋值 */
   bool                    direct_order_limit;           /* 显式指定order by和limit */
+  bool					  direct_limit_offset;			/* 显式指定offset和limit, 并且是全表查询不带任何其他语法成分 */
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
   bool                    direct_aggregate;
   bool                    snap_mrr_with_cnt;

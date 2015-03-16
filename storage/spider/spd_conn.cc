@@ -4111,7 +4111,15 @@ static void *spider_conn_recycle_action(void *arg)
         }
         
         // NOTE: In worst case, idle connection would be freed in 1.25 * spider_param_idle_conn_recycle_interval
-        sleep(spider_param_idle_conn_recycle_interval() >> 2); 
+		//sleep(spider_param_idle_conn_recycle_interval() >> 2); 
+		int sleep_sec = (spider_param_idle_conn_recycle_interval() >> 2);
+		while (sleep_sec > 0) {
+			sleep(8);
+			sleep_sec -= 8;
+			if (sleep_sec > (spider_param_idle_conn_recycle_interval() >> 2) ) {
+				sleep_sec = (spider_param_idle_conn_recycle_interval() >> 2);
+			}
+		}
     }
 
     free_dynamic_string_array(&idle_conn_key_hash_value_arr);
