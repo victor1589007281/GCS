@@ -8254,7 +8254,7 @@ spider_db_check_invalid_charset(
     CHARSET_INFO* ics = spider_get_item_field_charset(item, spider);
 
     /* 存储不同字符集，返回false */
-    if (ics && !my_charset_same(ics, table_share->table_charset))
+    if (ics && !my_charset_same(ics, table_share->table_charset) && !my_charset_same(ics, &my_charset_bin))
         return ER_SPIDER_COND_SKIP_NUM;
 
     return 0;
