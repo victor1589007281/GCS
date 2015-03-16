@@ -6994,6 +6994,12 @@ int ha_spider::rnd_next_internal(
 
 	if (this->result_list.direct_limit_offset)
 	{
+		if (this->trx->thd->select_limit == 0)
+		{
+			// 表示结果已经取完
+			DBUG_RETURN(check_error_mode_eof(HA_ERR_END_OF_FILE));
+		}
+
 		longlong table_count = this->records();
 		if (table_count <= this->trx->thd->select_offset)
 		{

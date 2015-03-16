@@ -8027,7 +8027,7 @@ int spider_set_direct_limit_offset(
 )
 {
 	THD *thd = spider->trx->thd;
-	SPIDER_SHARE *share = spider->share;
+	//SPIDER_SHARE *share = spider->share;
 	st_select_lex *select_lex;
 	longlong select_limit;
 	longlong offset_limit;

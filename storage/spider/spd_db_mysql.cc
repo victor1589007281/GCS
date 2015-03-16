@@ -1572,7 +1572,7 @@ int spider_db_mysql::exec_query(
 	  uint i,j;
 	  MYSQL_RES *res;
 	  MYSQL_ROW row;
-	  char *sql = "show warnings";
+	  const char *sql = "show warnings";
 	  int sql_len = strlen(sql);
 	  int err_num;
 
