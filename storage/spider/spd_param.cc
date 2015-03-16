@@ -316,6 +316,23 @@ bool spider_param_with_begin_commit(
 	DBUG_RETURN(THDVAR(thd, with_begin_commit));
 }
 
+static MYSQL_THDVAR_BOOL(
+  direct_limit_offset, /* name */
+  PLUGIN_VAR_OPCMDARG, /* opt */
+  "direct send limit and offset", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  TRUE/* def */
+);
+
+bool spider_param_direct_limit_offset(
+	THD *thd
+)
+{
+	DBUG_ENTER("spider_param_direct_limit_offset");
+	DBUG_RETURN(THDVAR(thd, direct_limit_offset));
+}
+
 /*
   FALSE: no use
   TRUE:  use
@@ -2988,6 +3005,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(conn_recycle_strict),
   MYSQL_SYSVAR(sync_trx_isolation),
   MYSQL_SYSVAR(with_begin_commit),
+  MYSQL_SYSVAR(direct_limit_offset),
   MYSQL_SYSVAR(use_consistent_snapshot),
   MYSQL_SYSVAR(internal_xa),
   MYSQL_SYSVAR(internal_xa_snapshot),

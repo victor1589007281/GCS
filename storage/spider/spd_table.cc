@@ -8022,6 +8022,68 @@ bool spider_check_direct_order_limit(
   DBUG_RETURN(FALSE);
 }
 
+int spider_set_direct_limit_offset(
+	ha_spider*		spider
+)
+{
+	THD *thd = spider->trx->thd;
+	SPIDER_SHARE *share = spider->share;
+	st_select_lex *select_lex;
+	longlong select_limit;
+	longlong offset_limit;
+	DBUG_ENTER("spider_set_direct_limit_offset");
+
+	if (spider->result_list.direct_limit_offset)
+		DBUG_RETURN(TRUE);
+
+	if (spider->sql_command != SQLCOM_SELECT ||
+		!spider_param_direct_limit_offset(thd) ||
+		spider->result_list.direct_aggregate ||
+		spider->result_list.direct_order_limit ||
+		spider->prev_index_rnd_init != SPD_RND)    // 必定是做RND_INIT，不能是INDEX_INIT
+		DBUG_RETURN(FALSE);
+
+	spider_get_select_limit(spider, &select_lex, &select_limit, &offset_limit);
+
+	// limit and offset is non-zero
+	if (!(select_limit && offset_limit))
+		DBUG_RETURN(FALSE);
+
+	// more than one table
+	if (!(thd->variables.optimizer_switch & OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN) ||
+		!select_lex ||
+		select_lex->table_list.elements != 1
+		) 
+		DBUG_RETURN(FALSE);
+
+	// contain where
+	if (spider->condition)   // 对于RND_INIT，conditions为空表示可能没有指定where
+		DBUG_RETURN(FALSE);
+
+	// 不直接分析select_lex->where是否为空，是为了忽略 (1=1) 类似条件。但对于in/exists等操作，spider->condition可能为空
+	if (select_lex->where && select_lex->where->with_subselect)
+		DBUG_RETURN(FALSE);
+
+	if (select_lex->group_list.elements ||
+		select_lex->with_sum_func ||
+		select_lex->having ||
+		select_lex->order_list.elements)
+		DBUG_RETURN(FALSE);
+
+	// select 必须是顶层select，不能是派生表
+	if (&thd->lex->select_lex != select_lex)
+		DBUG_RETURN(FALSE);
+
+			//(select_lex->options & OPTION_FOUND_ROWS) ||
+	if (thd->select_offset == -1)
+	{
+		thd->select_offset = offset_limit;
+		thd->select_limit = select_limit;
+	}
+	spider->result_list.direct_limit_offset = TRUE;
+	DBUG_RETURN(TRUE);
+}
+
 int spider_compare_for_sort(
   SPIDER_SORT *a,
   SPIDER_SORT *b

@@ -381,3 +381,4 @@ int spider_param_conn_meta_invalid_max_count();
 my_bool spider_param_get_conn_from_idx();
 uint spider_param_log_result_errors();
 my_bool spider_param_with_sts_crd();
+bool spider_param_direct_limit_offset(THD *thd);

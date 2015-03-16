@@ -142,6 +142,7 @@ ha_spider::ha_spider(
   result_list.tmp_tables_created = FALSE;
   result_list.bgs_working = FALSE;
   result_list.direct_order_limit = FALSE;
+  result_list.direct_limit_offset = FALSE;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   result_list.hs_has_result = FALSE;
 #endif
@@ -243,6 +244,7 @@ ha_spider::ha_spider(
   result_list.tmp_tables_created = FALSE;
   result_list.bgs_working = FALSE;
   result_list.direct_order_limit = FALSE;
+  result_list.direct_limit_offset = FALSE;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   result_list.hs_has_result = FALSE;
 #endif
@@ -1623,6 +1625,7 @@ int ha_spider::reset()
   prev_index_rnd_init = SPD_NONE;
   result_list.have_sql_kind_backup = FALSE;
   result_list.direct_order_limit = FALSE;
+  result_list.direct_limit_offset = FALSE;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if ((error_num2 = reset_hs_strs(SPIDER_SQL_TYPE_UPDATE_HS)))
     error_num = error_num2;
@@ -6988,6 +6991,26 @@ int ha_spider::rnd_next_internal(
 #ifdef WITH_PARTITION_STORAGE_ENGINE
     check_select_column(TRUE);
 #endif
+
+	if (this->result_list.direct_limit_offset)
+	{
+		longlong table_count = this->records();
+		if (table_count <= this->trx->thd->select_offset)
+		{
+			// skip this spider(partition)
+			this->trx->thd->select_offset -= table_count;
+			DBUG_RETURN(check_error_mode_eof(HA_ERR_END_OF_FILE));
+		}
+
+		// make the offset/limit statement
+		result_list.internal_offset = this->trx->thd->select_offset;
+		result_list.internal_limit = this->trx->thd->select_limit;
+		result_list.split_read = this->trx->thd->select_limit;
+
+		// start with this spider(partition)
+		this->trx->thd->select_offset = 0;
+	}
+
     DBUG_PRINT("info",("spider result_list.finish_flg = FALSE"));
     result_list.finish_flg = FALSE;
     result_list.record_num = 0;
@@ -7226,6 +7249,10 @@ int ha_spider::rnd_next_internal(
   if (buf && (error_num = spider_db_seek_next(buf, this, search_link_idx,
     table)))
     DBUG_RETURN(check_error_mode_eof(error_num));
+
+  //每返回一行，limit减一
+  if (result_list.direct_limit_offset && trx->thd->select_limit > 0)
+	  trx->thd->select_limit--;
   DBUG_RETURN(0);
 }
 
@@ -10928,6 +10955,9 @@ void ha_spider::check_direct_order_limit()
         sql_kind[roop_count] = SPIDER_SQL_KIND_SQL;
     } else
       result_list.direct_order_limit = FALSE;
+
+	spider_set_direct_limit_offset(this);
+
     result_list.check_direct_order_limit = TRUE;
   }
   DBUG_VOID_RETURN;
