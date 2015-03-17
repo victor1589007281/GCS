@@ -3437,8 +3437,8 @@ int ha_spider::index_last_internal(
 		  **  这个赋值需要放在执行sql前，主要用来控制发送start transaction的。
 		  **  前面的set names query也会走spider_db_mysql::exec_query, 所在此赋值要放在此处
 		  **********************/
-		  if(thd->get_autoincrement_from_remotedb)
-		  { 
+		  if(thd->get_autoincrement_from_remotedb && !thd_test_options(trx->thd, OPTION_BEGIN))
+		  { // 且没有显示指定事务。 避免重复start transaction
 			  conn->get_auto_increment_start = true;
 			  conn->get_auto_increment_commit = true;
 		  }

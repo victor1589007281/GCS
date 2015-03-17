@@ -3036,6 +3036,12 @@ static Sys_var_mybool Sys_log_sql_use_mutil_partition(
 	"log the sql in spider invoke partition more than 1",
 	GLOBAL_VAR(log_sql_use_mutil_partition), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_maintain_auto_increment_by_self(
+	"maintain_auto_increment_by_self", 
+	"default true, enable spider to maintain auto_increment value by itself",
+	GLOBAL_VAR(maintain_auto_increment_by_self), CMD_LINE(OPT_ARG), DEFAULT(TRUE));
+
+
 
 static Sys_var_mybool Sys_alter_query_log(
     "alter_query_log",
