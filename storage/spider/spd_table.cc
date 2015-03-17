@@ -3029,7 +3029,7 @@ int spider_parse_connect_info(
           MYF(0), share->tgt_hosts[roop_count], "host");
         goto error;
       }
-
+/*
 	  DBUG_PRINT("info",
 		  ("spider tgt_shard_keys_lengths[%d] = %u", roop_count,
 		  share->tgt_shard_keys_lengths[roop_count]));
@@ -3040,7 +3040,7 @@ int spider_parse_connect_info(
 			  MYF(0), share->tgt_shard_keys[roop_count], "shard_key");
 		  goto error;
 	  }
-
+*/
       DBUG_PRINT("info",
         ("spider tgt_usernames_lengths[%d] = %u", roop_count,
         share->tgt_usernames_lengths[roop_count]));
