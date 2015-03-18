@@ -3029,18 +3029,17 @@ int spider_parse_connect_info(
           MYF(0), share->tgt_hosts[roop_count], "host");
         goto error;
       }
-/*
-	  DBUG_PRINT("info",
-		  ("spider tgt_shard_keys_lengths[%d] = %u", roop_count,
-		  share->tgt_shard_keys_lengths[roop_count]));
-	  if (share->tgt_shard_keys_lengths[roop_count] > SPIDER_CONNECT_INFO_MAX_LEN)
+
+	  // tgt_shard_keys_lengths¿ÉÄÜÎªNULL
+	  if (share->tgt_shard_keys_lengths && 
+		  share->tgt_shard_keys_lengths[roop_count] > SPIDER_CONNECT_INFO_MAX_LEN)
 	  {
 		  error_num = ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM;
 		  my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR,
 			  MYF(0), share->tgt_shard_keys[roop_count], "shard_key");
 		  goto error;
 	  }
-*/
+
       DBUG_PRINT("info",
         ("spider tgt_usernames_lengths[%d] = %u", roop_count,
         share->tgt_usernames_lengths[roop_count]));

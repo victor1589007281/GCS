@@ -2560,6 +2560,12 @@ bool select_export::send_data(List<Item> &items)
   String tmp(buff,sizeof(buff),&my_charset_bin),*res;
   tmp.length(0);
 
+  if (thd->select_offset != -1 && unit->offset_limit_cnt)
+  {
+	DBUG_ASSERT(thd->select_offset == 0);
+	unit->offset_limit_cnt = thd->select_offset;
+  }
+
   if (unit->offset_limit_cnt)
   {						// using limit offset,count
     unit->offset_limit_cnt--;
@@ -2815,6 +2821,12 @@ bool select_dump::send_data(List<Item> &items)
   tmp.length(0);
   Item *item;
   DBUG_ENTER("select_dump::send_data");
+
+  if (thd->select_offset != -1 && unit->offset_limit_cnt)
+  {
+	DBUG_ASSERT(thd->select_offset == 0);
+	unit->offset_limit_cnt = thd->select_offset;
+  }
 
   if (unit->offset_limit_cnt)
   {						// using limit offset,count
@@ -3365,6 +3377,12 @@ bool select_dumpvar::send_data(List<Item> &items)
   my_var *mv;
   Item_func_set_user_var **suv;
   DBUG_ENTER("select_dumpvar::send_data");
+
+  if (thd->select_offset != -1 && unit->offset_limit_cnt)
+  {
+	DBUG_ASSERT(thd->select_offset == 0);
+	unit->offset_limit_cnt = thd->select_offset;
+  }
 
   if (unit->offset_limit_cnt)
   {						// using limit offset,count
