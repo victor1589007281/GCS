@@ -3460,8 +3460,8 @@ int ha_partition::write_row(uchar * buf)
   */
   if (have_auto_increment)
   {
-	  // 是insert语句，且有自增列；则将thd中的insert_with_autoincrement_field标识置为true
-	  if(thd->lex->sql_command == SQLCOM_INSERT)
+	  // 是insert语句，且有自增列；则将thd中的insert_with_autoincrement_field标识置为true; 且要求是spider存储引擎
+	  if(maintain_auto_increment_by_self && thd->lex->sql_command == SQLCOM_INSERT && m_file && *m_file && m_file[0]->is_support_get_autoinc_by_self())
 		  thd->insert_with_autoincrement_field = true;
 #ifdef HA_CAN_BULK_ACCESS
     if (!bulk_access_executing || !bulk_access_info_exec_tgt->called)
@@ -6937,7 +6937,8 @@ int ha_partition::info(uint flag)
 			  {// TODO 
 			   // 期间有过自己指定自增列字段的值，且指定的字段值 > max_autoincrement， 就会走此处逻辑
 			   // 后续
-
+				// 当前逻辑下，这个分支不可能走到。
+				  DBUG_PRINT("info", ("Impossible to to satisfy this condition"));
 			  }
 		  }
 		  else

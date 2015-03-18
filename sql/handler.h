@@ -210,6 +210,7 @@ Only innobase supports this function.
 */
 #define HA_BLOB_COMPRESSED				 (LL(1) << 50)
 
+
 /*
   Set of all binlog flags. Currently only contain the capabilities
   flags.
@@ -2572,6 +2573,10 @@ public:
  virtual bool is_support_auto_increment()
  {
 	 return true;
+ }
+ virtual bool is_support_get_autoinc_by_self()
+ {
+	 return false;
  }
 
 protected:

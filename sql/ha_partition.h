@@ -1189,7 +1189,13 @@ private:
     /* must check when the mutex is taken */
 	// 如果nr为特定处理的，则nr == table_share->max_autoincrement, next_auto_inc_val值不能被nr替换
     if (nr != table_share->max_autoincrement && nr >= table_share->ha_part_data->next_auto_inc_val)
+	{
       table_share->ha_part_data->next_auto_inc_val= nr + 1;  // 显示指定自增列的值了，会走这个逻辑，更新next_auto_inc_val
+
+	}
+	// 如果指定的自增列值大于当前区间的最大值，在下次操作中，重新设定max_autoincrement值
+	if(nr > table_share->max_autoincrement)
+		table_share->max_autoincrement = 0;
     unlock_auto_increment();
   }
 

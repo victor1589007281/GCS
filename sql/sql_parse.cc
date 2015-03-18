@@ -892,8 +892,6 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
                       (char *) thd->security_ctx->host_or_ip);
   
   thd->command=command;
-  thd->insert_with_autoincrement_field = false; // 初始化值为false，只有在insert语句且该表需要获取自增列值为true
-  thd->get_autoincrement_from_remotedb = false;  // 初始值为false，只有在从remote获取最大的auto_incremnt值才为true
   /* To increment the corrent command counter for user stats, 'command' must
      be saved because it is set to COM_SLEEP at the end of this function.
   */
@@ -5417,6 +5415,10 @@ void THD::reset_for_next_command()
   //for spider 
   thd->select_limit = -1;
   thd->select_offset = -1;
+
+  // for spider
+  thd->insert_with_autoincrement_field = false; // 初始化值为false，只有在insert语句且该表需要获取自增列值为true
+  thd->get_autoincrement_from_remotedb = false;  // 初始值为false，只有在从remote获取最大的auto_incremnt值才为true
 
   DBUG_PRINT("debug",
              ("is_current_stmt_binlog_format_row(): %d",

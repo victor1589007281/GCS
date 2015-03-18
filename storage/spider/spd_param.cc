@@ -2840,6 +2840,7 @@ static MYSQL_SYSVAR_BOOL(
 );
 
 
+
 static my_bool spider_client_found_rows;
 static MYSQL_SYSVAR_BOOL(
   client_found_rows,
@@ -2868,6 +2869,8 @@ my_bool spider_param_general_log()
   DBUG_ENTER("spider_param_general_log");
   DBUG_RETURN(spider_general_log);
 }
+
+
 
 my_bool spider_param_client_found_rows()
 {
