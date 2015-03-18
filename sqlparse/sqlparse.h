@@ -137,8 +137,8 @@ struct parse_option
 	bool is_show_create;
 	char file_path[256];
 	char show_create_file[256];
-	// 传一个全局的文件句柄，指向的是 *show_create_file文件
-	FILE *fp_show_create;   
+ /** 传一个全局的文件句柄，指向的是 *show_create_file文件 **/
+	void *fp_show_create;   
 };
 
 

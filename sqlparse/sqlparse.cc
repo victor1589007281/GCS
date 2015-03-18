@@ -1223,7 +1223,7 @@ query_parse_audit_tsqlparse(
 			bool create_table_with_field_charset = false;
             parse_getkey_for_spider(thd, key_name, db_name, table_name, result, sizeof(result));
 
-			fp_show_create = sqlparse_option.fp_show_create;
+			fp_show_create = (FILE*)sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 			fputs("\t\t<convert_sql>", fp_show_create);
 			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
@@ -1296,7 +1296,7 @@ query_parse_audit_tsqlparse(
         }
         else if(lex->sql_command == SQLCOM_CREATE_DB)
         {
-            fp_show_create = sqlparse_option.fp_show_create;
+            fp_show_create = (FILE*)sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 			fputs("\t\t<convert_sql>", fp_show_create);
 			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
@@ -1315,7 +1315,7 @@ query_parse_audit_tsqlparse(
             //if (!mysql_change_db(thd, &db_str, FALSE))
             //    my_ok(thd);
 
-            fp_show_create = sqlparse_option.fp_show_create;
+            fp_show_create = (FILE*)sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);
@@ -1331,7 +1331,7 @@ query_parse_audit_tsqlparse(
         }
         else if(lex->sql_command == SQLCOM_DROP_DB)
         {
-            fp_show_create = sqlparse_option.fp_show_create;
+            fp_show_create = (FILE*)sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);
@@ -1348,7 +1348,7 @@ query_parse_audit_tsqlparse(
         }
         else if(lex->sql_command == SQLCOM_DROP_TABLE)
         {
-            fp_show_create = sqlparse_option.fp_show_create;
+            fp_show_create = (FILE*)sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);
@@ -1365,7 +1365,7 @@ query_parse_audit_tsqlparse(
         else if(lex->sql_command == SQLCOM_ALTER_TABLE)
         {
 			bool is_add_or_drop_unique = false;
-            fp_show_create = sqlparse_option.fp_show_create;
+            fp_show_create = (FILE*)sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);
@@ -1401,7 +1401,7 @@ query_parse_audit_tsqlparse(
         }
         else
         {
-            fp_show_create = sqlparse_option.fp_show_create;
+            fp_show_create = (FILE*)sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);

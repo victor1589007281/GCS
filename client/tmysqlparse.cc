@@ -1230,7 +1230,7 @@ int main(int argc,char *argv[])
 	{
 		fp_show_create = fopen(show_create_path,"w+");
 		strcpy(sqlparse_option.show_create_file, show_create_path);
-		sqlparse_option.fp_show_create = fp_show_create;
+		sqlparse_option.fp_show_create = (void*)fp_show_create;
 		fputs("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n",fp_show_create);
 		fputs("<result>\n",fp_show_create);;
 	}
