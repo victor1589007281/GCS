@@ -6937,7 +6937,8 @@ int ha_partition::info(uint flag)
 			  {// TODO 
 			   // 期间有过自己指定自增列字段的值，且指定的字段值 > max_autoincrement， 就会走此处逻辑
 			   // 后续
-
+				// 当前逻辑下，这个分支不可能走到。
+				  DBUG_PRINT("info", ("Impossible to to satisfy this condition"));
 			  }
 		  }
 		  else

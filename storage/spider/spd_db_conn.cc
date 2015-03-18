@@ -5475,6 +5475,10 @@ int spider_db_bulk_insert(
           -1,
           &spider->need_mons[roop_count2])
         ) {
+			// 如果执行insert有自增字段的表，remotedb执行sql出错，则将table_share的max_autoincrement值置0
+			if(thd->insert_with_autoincrement_field && table && table->s)
+				table->s->max_autoincrement = 0;
+
           if (spider->sql_kinds & SPIDER_SQL_KIND_SQL)
             spider->set_insert_to_pos_sql(SPIDER_SQL_TYPE_INSERT_SQL);
           error_num = spider_db_errorno(conn);
