@@ -19,7 +19,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
 * add by willhan. 2013-06-08
 *
 **/
-#include "sqlparse.h"
 #include "client_priv.h"
 #include <m_ctype.h>
 #include <stdarg.h>
@@ -30,6 +29,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
 #include "my_readline.h"
 #include <signal.h>
 #include <violite.h>
+#include "sqlparse.h"
 
 #if defined(USE_LIBEDIT_INTERFACE) && defined(HAVE_LOCALE_H)
 #include <locale.h>
@@ -1072,7 +1072,7 @@ int main(int argc,char *argv[])
 	MY_INIT(argv[0]);
 	DBUG_ENTER("main");
 	DBUG_PROCESS(argv[0]);
-	FILE *fp_tmp;
+	FILE *fp_show_create;
 
 	//_CrtSetBreakAlloc(85);
 
@@ -1228,11 +1228,11 @@ int main(int argc,char *argv[])
 	memset(sqlparse_option.show_create_file, sizeof(sqlparse_option.show_create_file), 0);
 	if(show_create && show_create_path)
 	{
-		fp_tmp = fopen(show_create_path,"w+");
+		fp_show_create = fopen(show_create_path,"w+");
 		strcpy(sqlparse_option.show_create_file, show_create_path);
-		fputs("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n",fp_tmp);
-		fputs("<result>\n",fp_tmp);
-		fclose(fp_tmp);
+		sqlparse_option.fp_show_create = fp_show_create;
+		fputs("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n",fp_show_create);
+		fputs("<result>\n",fp_show_create);;
 	}
 
 
@@ -1271,9 +1271,8 @@ int main(int argc,char *argv[])
 
 	if(show_create && show_create_path)
 	{
-		fp_tmp = fopen(show_create_path,"a+");
-		fputs("</result>\n",fp_tmp);
-		fclose(fp_tmp);
+		fputs("</result>\n",fp_show_create);
+		fclose(fp_show_create);
 	}
 
 	if(audit_output_file)//use -f or --file

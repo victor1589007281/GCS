@@ -1,5 +1,6 @@
 #define MYSQL_LEX 1
 #include "my_global.h"
+#include "stdio.h"
 #include "unireg.h"                    // REQUIRED: for other includes
 #include "sql_parse.h"        // sql_kill, *_precheck, *_prepare
 #include "sql_db.h"           // mysql_change_db, mysql_create_db,
@@ -70,6 +71,8 @@ void cp_parse_option(parse_option *dest, parse_option *src)
 
 	dest->is_show_create = src->is_show_create;
 	strcpy(dest->show_create_file, src->show_create_file);
+
+	dest->fp_show_create = src->fp_show_create;
 }
 
 
@@ -1220,7 +1223,7 @@ query_parse_audit_tsqlparse(
 			bool create_table_with_field_charset = false;
             parse_getkey_for_spider(thd, key_name, db_name, table_name, result, sizeof(result));
 
-            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+			fp_show_create = sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 			fputs("\t\t<convert_sql>", fp_show_create);
 			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
@@ -1290,11 +1293,10 @@ query_parse_audit_tsqlparse(
             fprintf(fp_show_create,"\t\t<parse_result>%s</parse_result>\n", result);
 
             fputs("\t</sql>\n",fp_show_create);
-            fclose(fp_show_create);
         }
         else if(lex->sql_command == SQLCOM_CREATE_DB)
         {
-            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fp_show_create = sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 			fputs("\t\t<convert_sql>", fp_show_create);
 			print_quoted_xml_for_parse(fp_show_create, query, strlen(query));
@@ -1306,7 +1308,6 @@ query_parse_audit_tsqlparse(
             fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
-            fclose(fp_show_create);
         }
         else if(lex->sql_command == SQLCOM_CHANGE_DB)
         {
@@ -1314,7 +1315,7 @@ query_parse_audit_tsqlparse(
             //if (!mysql_change_db(thd, &db_str, FALSE))
             //    my_ok(thd);
 
-            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fp_show_create = sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);
@@ -1327,11 +1328,10 @@ query_parse_audit_tsqlparse(
             fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
-            fclose(fp_show_create);
         }
         else if(lex->sql_command == SQLCOM_DROP_DB)
         {
-            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fp_show_create = sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);
@@ -1345,11 +1345,10 @@ query_parse_audit_tsqlparse(
             fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
-            fclose(fp_show_create);
         }
         else if(lex->sql_command == SQLCOM_DROP_TABLE)
         {
-            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fp_show_create = sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);
@@ -1362,12 +1361,11 @@ query_parse_audit_tsqlparse(
             fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
-            fclose(fp_show_create);
         }
         else if(lex->sql_command == SQLCOM_ALTER_TABLE)
         {
 			bool is_add_or_drop_unique = false;
-            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fp_show_create = sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);
@@ -1400,11 +1398,10 @@ query_parse_audit_tsqlparse(
             fprintf(fp_show_create,"\t\t<parse_result>%s</parse_result>\n", result);
 
             fputs("\t</sql>\n",fp_show_create);
-            fclose(fp_show_create);
         }
         else
         {
-            fp_show_create = fopen(sqlparse_option.show_create_file, "a+");
+            fp_show_create = sqlparse_option.fp_show_create;
             fputs("\t<sql>\n",fp_show_create);
 
 			fputs("\t\t<convert_sql>", fp_show_create);
@@ -1434,7 +1431,6 @@ query_parse_audit_tsqlparse(
             fputs("\t\t<parse_result>SUCCESS</parse_result>\n", fp_show_create);
 
             fputs("\t</sql>\n",fp_show_create);
-            fclose(fp_show_create);
         }
 
         // »¹Ô­result_type

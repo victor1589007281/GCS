@@ -128,16 +128,17 @@ struct parse_result_struct {
 };
 typedef struct parse_result_struct parse_result_t;
 
-
-
 // 这个结构体用来从tmysqlparse的client部分将option传过来，
 // 针对不同的参数进行行为处理
+
 struct parse_option
 {
 	bool is_split_sql;
 	bool is_show_create;
 	char file_path[256];
 	char show_create_file[256];
+	// 传一个全局的文件句柄，指向的是 *show_create_file文件
+	FILE *fp_show_create;   
 };
 
 
