@@ -6902,12 +6902,15 @@ int ha_partition::info(uint flag)
 #endif
         table_share->ha_part_data->auto_inc_initialized
       )
+	  {
         stats.auto_increment_value = table_share->ha_part_data->next_auto_inc_val;
+	  }
       else
       {
         handler *file, **file_array;
         ulonglong auto_increment_value= 0;
         file_array= m_file;
+		unlock_auto_increment();
         DBUG_PRINT("info",
                    ("checking all partitions for auto_increment_value"));
         do
@@ -6916,22 +6919,20 @@ int ha_partition::info(uint flag)
 
 		  if(thd->insert_with_autoincrement_field)
 		  {// 先置条件，是insert且table带有自增列
-			  if(table_share->max_autoincrement == 0)
+			  lock_auto_increment();
+			  if(table_share->max_autoincrement == 0 || table_share->ha_part_data->next_auto_inc_val == table_share->max_autoincrement)
 			  {// max_autoincrement尚未初始化，须从remotedb节点获取自增列值
 			   // 在remotedb获取值时，需要begin; select for update; commit。 即加读锁
+	 		   // 若当前spider节点的auto_increment值满了，则需要重新读取remoet节点
 				  thd->get_autoincrement_from_remotedb = true;  // select from remote时，开启事务begin
+				  unlock_auto_increment();
 				  file->info(HA_STATUS_AUTO | no_lock_flag);
+				  lock_auto_increment();
 				  set_if_bigger(auto_increment_value, file->stats.auto_increment_value);
 			  }
 			  else if(table_share->ha_part_data->next_auto_inc_val < table_share->max_autoincrement)
 			  {// 若存在可用空间，则直接取当前可用的自增列值
 				  auto_increment_value = table_share->ha_part_data->next_auto_inc_val;
-			  }
-			  else if(table_share->ha_part_data->next_auto_inc_val == table_share->max_autoincrement)
-			  {// 若当前spider节点的auto_increment值满了，则需要重新读取remoet节点
-				  thd->get_autoincrement_from_remotedb = true;
-				  file->info(HA_STATUS_AUTO | no_lock_flag);
-				  set_if_bigger(auto_increment_value, file->stats.auto_increment_value);
 			  }
 			  else
 			  {// TODO 
@@ -6940,6 +6941,7 @@ int ha_partition::info(uint flag)
 				// 当前逻辑下，这个分支不可能走到。
 				  DBUG_PRINT("info", ("Impossible to to satisfy this condition"));
 			  }
+			  unlock_auto_increment();
 		  }
 		  else
 		  {// 非insert语句且带自增列的逻辑
@@ -6948,6 +6950,7 @@ int ha_partition::info(uint flag)
 		  }
         } while (*(++file_array));
 
+		lock_auto_increment();
         //DBUG_ASSERT(auto_increment_value);
 		if(thd->insert_with_autoincrement_field &&
 			(table_share->max_autoincrement == 0 || 

@@ -3191,7 +3191,7 @@ int spider_rollback(
           do {
             if (
               !conn->server_lost &&
-              (conn->autocommit != 1 || conn->trx_start) &&
+              (conn->autocommit != 1 || conn->trx_start || conn->get_auto_increment_commit) &&
               (tmp_error_num = spider_db_rollback(conn))
             ) {
               SPIDER_CONN_RESTORE_DASTATUS_AND_RESET_TMP_ERROR_NUM;

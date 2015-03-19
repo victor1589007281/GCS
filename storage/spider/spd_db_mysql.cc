@@ -1966,6 +1966,7 @@ int spider_db_mysql::rollback(
       DBUG_RETURN(error_num);
     }
   }
+   conn->get_auto_increment_commit = false; // ÔÚrollbackºóÖÃÎªfalse£¬
   conn->mta_conn_mutex_unlock_later = FALSE;
   SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
   pthread_mutex_unlock(&conn->mta_conn_mutex);
