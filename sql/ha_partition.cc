@@ -3539,6 +3539,14 @@ int ha_partition::write_row(uchar * buf)
 
   tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
   error= m_file[part_id]->ha_write_row(buf);
+
+	if(error && thd->insert_with_autoincrement_field)
+	{// insert auto_increment失败，则将table_share->max_autoincrement值置0
+		lock_auto_increment();
+		table_share->max_autoincrement = 0;
+		unlock_auto_increment();
+	}
+
   if (have_auto_increment && !table->s->next_number_keypart)
     set_auto_increment_if_higher(table->next_number_field);
   reenable_binlog(thd);
@@ -4114,6 +4122,7 @@ int ha_partition::end_bulk_insert()
 {
   int error= 0;
   uint i;
+  THD *thd = current_thd;
   DBUG_ENTER("ha_partition::end_bulk_insert");
 
   if (!bitmap_is_set(&m_bulk_insert_started, m_tot_parts))
@@ -4124,7 +4133,15 @@ int ha_partition::end_bulk_insert()
     int tmp;
     if (bitmap_is_set(&m_bulk_insert_started, i) &&
         (tmp= m_file[i]->ha_end_bulk_insert()))
+	{
       error= tmp;
+
+	  // insert auto_increment失败，则将table_share->max_autoincrement值置0
+	  lock_auto_increment();
+	  if(thd->insert_with_autoincrement_field)
+		  table_share->max_autoincrement = 0;
+	  unlock_auto_increment();
+	}
   }
   bitmap_clear_all(&m_bulk_insert_started);
   DBUG_RETURN(error);
