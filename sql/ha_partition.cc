@@ -3540,12 +3540,26 @@ int ha_partition::write_row(uchar * buf)
   tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
   error= m_file[part_id]->ha_write_row(buf);
 
-	if(error && thd->insert_with_autoincrement_field)
+  lock_auto_increment();
+  if(thd->insert_with_autoincrement_field)
+  {
+	if(error)
 	{// insert auto_increment失败，则将table_share->max_autoincrement值置0
-		lock_auto_increment();
 		table_share->max_autoincrement = 0;
-		unlock_auto_increment();
 	}
+/***********************************
+此处不一定有实际执行insert的query。 将table_share的max_autoincrement值放在insert成功后
+	else
+	{ // 成功插入max_autoincrement
+		if(table_share->max_autoincrement == ULLONG_MAX)
+		{
+			table_share->max_autoincrement = thd->thd_max_autoincrement_value;
+			thd->thd_max_autoincrement_value = 0;
+		}
+	}
+*****************************/
+  }
+  unlock_auto_increment();
 
   if (have_auto_increment && !table->s->next_number_keypart)
     set_auto_increment_if_higher(table->next_number_field);
@@ -4128,6 +4142,7 @@ int ha_partition::end_bulk_insert()
   if (!bitmap_is_set(&m_bulk_insert_started, m_tot_parts))
     DBUG_RETURN(error);
 
+  lock_auto_increment();
   for (i= 0; i < m_tot_parts; i++)
   {
     int tmp;
@@ -4135,14 +4150,18 @@ int ha_partition::end_bulk_insert()
         (tmp= m_file[i]->ha_end_bulk_insert()))
 	{
       error= tmp;
-
 	  // insert auto_increment失败，则将table_share->max_autoincrement值置0
-	  lock_auto_increment();
 	  if(thd->insert_with_autoincrement_field)
 		  table_share->max_autoincrement = 0;
-	  unlock_auto_increment();
 	}
   }
+  if(thd->insert_with_autoincrement_field && !error && table_share->max_autoincrement == ULLONG_MAX)
+  {
+	  table_share->max_autoincrement = thd->thd_max_autoincrement_value;
+	  thd->thd_max_autoincrement_value = 0;
+  }
+  unlock_auto_increment();
+
   bitmap_clear_all(&m_bulk_insert_started);
   DBUG_RETURN(error);
 }
@@ -6971,6 +6990,10 @@ int ha_partition::info(uint flag)
 				(auto_increment_value + HANDLER_INTERVAL_FOR_AUTO_INCREMENT - 2)/HANDLER_INTERVAL_FOR_AUTO_INCREMENT*HANDLER_INTERVAL_FOR_AUTO_INCREMENT 
 				+ HANDLER_INTERVAL_FOR_AUTO_INCREMENT;
 			auto_increment_value = table_share->max_autoincrement; // 当前插入的值为max_autoincrement值
+
+			// 在当前的max_autoincrement未insert成功前，保存最大的ulong标识起来。 其它thread读到这个值，则等待。 
+			thd->thd_max_autoincrement_value = table_share->max_autoincrement;
+			table_share->max_autoincrement = ULLONG_MAX; 
 		}
 
         stats.auto_increment_value= auto_increment_value;
@@ -6980,7 +7003,7 @@ int ha_partition::info(uint flag)
 			{ // 在需要从remote获取最大的auto_increment值时， 插入对remotedb的值应该为 max_autoincrement
 			  // 因此，此处的自增列值应该为插入max_autoincrement后，下一个该区间的最小值。
 			  // 比如区间长度为1000， max_autoincrement为2000， 下一个该插入的值为1001。 此处值为1000，因为后续逻辑会+1
-				table_share->ha_part_data->next_auto_inc_val = table_share->max_autoincrement - HANDLER_INTERVAL_FOR_AUTO_INCREMENT + 1;
+				table_share->ha_part_data->next_auto_inc_val = auto_increment_value - HANDLER_INTERVAL_FOR_AUTO_INCREMENT + 1;
 			}
 			else
 			{//走以前的逻辑

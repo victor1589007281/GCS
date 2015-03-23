@@ -758,6 +758,7 @@ public:
   */
   bool insert_with_autoincrement_field;
   bool get_autoincrement_from_remotedb;
+  ulonglong thd_max_autoincrement_value;
   CSET_STRING query_string;
 
   inline char *query() const { return query_string.str(); }
