@@ -4155,12 +4155,15 @@ int ha_partition::end_bulk_insert()
 		  table_share->max_autoincrement = 0;
 	}
   }
+  unlock_auto_increment();
+
+  // 此处逻辑不能放在锁里，   ha_partiton::info里面的锁，会永久循环，死锁。
   if(thd->insert_with_autoincrement_field && !error && table_share->max_autoincrement == ULLONG_MAX)
   {
 	  table_share->max_autoincrement = thd->thd_max_autoincrement_value;
 	  thd->thd_max_autoincrement_value = 0;
   }
-  unlock_auto_increment();
+
 
   bitmap_clear_all(&m_bulk_insert_started);
   DBUG_RETURN(error);
@@ -6951,6 +6954,11 @@ int ha_partition::info(uint flag)
         do
         { // 在这个循环里，auto_increment_value取了各个分片下的最大值
           file= *file_array;
+
+		  while(table_share->max_autoincrement == ULLONG_MAX)
+		  { // 如果读取到这个值，则等待。
+			  Sleep(100);
+		  }
 
 		  if(thd->insert_with_autoincrement_field)
 		  {// 先置条件，是insert且table带有自增列
