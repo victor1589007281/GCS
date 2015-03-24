@@ -3540,16 +3540,17 @@ int ha_partition::write_row(uchar * buf)
   tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
   error= m_file[part_id]->ha_write_row(buf);
 
-  lock_auto_increment();
-  if(thd->insert_with_autoincrement_field)
+
+  if(thd->insert_with_autoincrement_field && error)
   {
-	if(error)
-	{// insert auto_increment失败，则将table_share->max_autoincrement值置0
+	    lock_auto_increment();
+	// insert auto_increment失败，则将table_share->max_autoincrement值置0
 		table_share->max_autoincrement = 0;
-	}
+		  unlock_auto_increment();
 /***********************************
 此处不一定有实际执行insert的query。 将table_share的max_autoincrement值放在insert成功后
 	else
+
 	{ // 成功插入max_autoincrement
 		if(table_share->max_autoincrement == ULLONG_MAX)
 		{
@@ -3559,7 +3560,7 @@ int ha_partition::write_row(uchar * buf)
 	}
 *****************************/
   }
-  unlock_auto_increment();
+
 
   if (have_auto_increment && !table->s->next_number_keypart)
     set_auto_increment_if_higher(table->next_number_field);
@@ -4142,7 +4143,7 @@ int ha_partition::end_bulk_insert()
   if (!bitmap_is_set(&m_bulk_insert_started, m_tot_parts))
     DBUG_RETURN(error);
 
-  lock_auto_increment();
+  
   for (i= 0; i < m_tot_parts; i++)
   {
     int tmp;
@@ -4152,18 +4153,28 @@ int ha_partition::end_bulk_insert()
       error= tmp;
 	  // insert auto_increment失败，则将table_share->max_autoincrement值置0
 	  if(thd->insert_with_autoincrement_field)
+	  {
+		  lock_auto_increment();
 		  table_share->max_autoincrement = 0;
+		  unlock_auto_increment();
+
+	  }
 	}
   }
 
 
   // 此处逻辑不能放在锁里，   ha_partiton::info里面的锁，会永久循环，死锁。
-  if(thd->insert_with_autoincrement_field && !error && table_share->max_autoincrement == ULLONG_MAX)
+  if(thd->insert_with_autoincrement_field && !error)
   {
-	  table_share->max_autoincrement = thd->thd_max_autoincrement_value;
-	  thd->thd_max_autoincrement_value = 0;
+	  lock_auto_increment();
+	  if(table_share->max_autoincrement == ULLONG_MAX)
+	  {
+		  table_share->max_autoincrement = thd->thd_max_autoincrement_value;
+		  thd->thd_max_autoincrement_value = 0;
+	  }
+	  unlock_auto_increment();
   }
-  unlock_auto_increment();
+
 
   bitmap_clear_all(&m_bulk_insert_started);
   DBUG_RETURN(error);

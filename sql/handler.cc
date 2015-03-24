@@ -2785,9 +2785,9 @@ int handler::update_auto_increment()
 
 
   // 在处理spider的自增列时， 当需要获取remotedb的increment的最大值，插入到remotedb的自增列的值
-  // 即thd->get_autoincrement_from_remotedb为真，则当前remotedb插入的值为max_autoincrement
+  // 即thd->get_autoincrement_from_remotedb为真
   tmp_nr = nr;
-  if(thd->get_autoincrement_from_remotedb && table_share->max_autoincrement == ULLONG_MAX)
+  if(thd->get_autoincrement_from_remotedb)
   {
 	  nr = thd->thd_max_autoincrement_value;
 	  thd->get_autoincrement_from_remotedb = false;  //  一次有效，置为false
