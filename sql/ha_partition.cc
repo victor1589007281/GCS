@@ -3552,7 +3552,7 @@ int ha_partition::write_row(uchar * buf)
 	else
 
 	{ // 成功插入max_autoincrement
-		if(table_share->max_autoincrement == ULLONG_MAX)
+		if(table_share->max_autoincrement == ULLONG_MAX_UNIX)
 		{
 			table_share->max_autoincrement = thd->thd_max_autoincrement_value;
 			thd->thd_max_autoincrement_value = 0;
@@ -4167,7 +4167,7 @@ int ha_partition::end_bulk_insert()
   if(thd->insert_with_autoincrement_field && !error)
   {
 	  lock_auto_increment();
-	  if(table_share->max_autoincrement == ULLONG_MAX)
+	  if(table_share->max_autoincrement == ULLONG_MAX_UNIX)
 	  {
 		  table_share->max_autoincrement = thd->thd_max_autoincrement_value;
 		  thd->thd_max_autoincrement_value = 0;
@@ -6964,7 +6964,7 @@ int ha_partition::info(uint flag)
         DBUG_PRINT("info",
                    ("checking all partitions for auto_increment_value"));
 
-		while(table_share->max_autoincrement == ULLONG_MAX)
+		while(table_share->max_autoincrement == ULLONG_MAX_UNIX)
 		{ // 如果读取到这个值，则等待。
 			unlock_auto_increment();
 			my_sleep(100);
@@ -7016,7 +7016,7 @@ int ha_partition::info(uint flag)
 
 			// 在当前的max_autoincrement未insert成功前，保存最大的ulong标识起来。 其它thread读到这个值，则等待。 
 			thd->thd_max_autoincrement_value = table_share->max_autoincrement;
-			table_share->max_autoincrement = ULLONG_MAX; 
+			table_share->max_autoincrement = ULLONG_MAX_UNIX; 
 		}
 
         stats.auto_increment_value= auto_increment_value;
