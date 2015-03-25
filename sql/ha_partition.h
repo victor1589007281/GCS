@@ -50,7 +50,7 @@ typedef struct st_partition_bulk_access_info
 } PARTITION_BULK_ACCESS_INFO;
 #endif
 
-#define ULLONG_MAX_UNIX    0xffffffffffffffffui64       /* maximum unsigned long long int value */
+#define ULLONG_MAX_UNIX    0xffffffffffffffff       /* maximum unsigned long long int value */
 #define PARTITION_BYTES_IN_POS 2
 #define PARTITION_ENABLED_TABLE_FLAGS (HA_FILE_BASED | HA_REC_NOT_IN_SEQ)
 #define PARTITION_DISABLED_TABLE_FLAGS (HA_CAN_GEOMETRY | \
