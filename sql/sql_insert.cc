@@ -961,10 +961,13 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
     if (thd->locked_tables_mode <= LTM_LOCK_TABLES &&
         table->file->ha_end_bulk_insert() && !error)
     {
-		if(thd->insert_with_autoincrement_field)
+/******************
+暂时只考虑有分区的情况。 无分区的自增列，不用考虑这么多。
+if(thd->insert_with_autoincrement_field)
 		{
 			  table->s->max_autoincrement = 0;
 		}
+**********************/
 
       table->file->print_error(my_errno,MYF(0));
 
