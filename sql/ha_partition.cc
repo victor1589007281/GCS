@@ -3540,13 +3540,19 @@ int ha_partition::write_row(uchar * buf)
   tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
   error= m_file[part_id]->ha_write_row(buf);
 
-
+/**************************************
+在实际insert前，此外出现error的话。会导致死锁。 
+1, 没实际insert，还未发commit;
+2, 另个线程则select for update
   if(thd->insert_with_autoincrement_field && error)
   {
-	    lock_auto_increment();
-	// insert auto_increment失败，则将table_share->max_autoincrement值置0
-		table_share->max_autoincrement = 0;
-		  unlock_auto_increment();
+	  lock_auto_increment();
+	  // insert auto_increment失败，则将table_share->max_autoincrement值置0
+	  table_share->max_autoincrement = 0;
+	  unlock_auto_increment();
+  }
+*********************************/
+
 /***********************************
 此处不一定有实际执行insert的query。 将table_share的max_autoincrement值放在insert成功后
 	else
@@ -3559,7 +3565,6 @@ int ha_partition::write_row(uchar * buf)
 		}
 	}
 *****************************/
-  }
 
 
   if (have_auto_increment && !table->s->next_number_keypart)
@@ -4157,7 +4162,6 @@ int ha_partition::end_bulk_insert()
 		  lock_auto_increment();
 		  table_share->max_autoincrement = 0;
 		  unlock_auto_increment();
-
 	  }
 	}
   }
@@ -6965,7 +6969,7 @@ int ha_partition::info(uint flag)
         DBUG_PRINT("info",
                    ("checking all partitions for auto_increment_value"));
 
-		while(table_share->max_autoincrement == ULLONG_MAX_UNIX)
+		while(table_share->max_autoincrement == ULLONG_MAX_UNIX )
 		{ // 如果读取到这个值，则等待。
 			unlock_auto_increment();
 			my_sleep(100);
@@ -7023,7 +7027,7 @@ int ha_partition::info(uint flag)
         stats.auto_increment_value= auto_increment_value;
 		if (auto_inc_is_first_in_idx)
 		{// TODO,  自增列是index的第一个field有什么特别呢？
-			if(thd->get_autoincrement_from_remotedb)
+			if(get_from_remote_flag)
 			{ // 在需要从remote获取最大的auto_increment值时， 插入对remotedb的值应该为 max_autoincrement
 			  // 因此，此处的自增列值应该为插入max_autoincrement后，下一个该区间的最小值。
 			  // 比如区间长度为1000， max_autoincrement为2000， 下一个该插入的值为1001。 此处值为1000，因为后续逻辑会+1

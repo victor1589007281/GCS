@@ -1608,6 +1608,7 @@ int spider_db_mysql::exec_query(
   {
     time_t cur_time = (time_t) time((time_t*) 0);
     struct tm lt;
+
     struct tm *l_time = localtime_r(&cur_time, &lt);
     fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
       "from [%s] %ld to %ld:  "
@@ -3008,7 +3009,7 @@ int spider_db_mysql_util::append_lock_table_head(
   str->q_append(SPIDER_SQL_LOCK_TABLE_STR, SPIDER_SQL_LOCK_TABLE_LEN);
   DBUG_RETURN(0);
 }
-
+// 通过本方法，来拼lock table spider_test.t1 write的语句。
 int spider_db_mysql_util::append_lock_table_body(
   spider_string *str,
   const char *db_name,
@@ -5954,6 +5955,17 @@ int spider_mysql_handler::append_select_part(
 ) {
   int error_num;
   spider_string *str;
+  
+ /************************************** 
+  THD *thd = current_thd;
+  String *pt_db_table;
+  char *str_lock = "lock table ";
+  char *lock_write = " write;";
+  if(thd->insert_with_autoincrement_field && thd->get_autoincrement_from_remotedb)
+  {
+	  pt_db_table = this->mysql_share->db_table_str->get_str();
+  }
+  *********************************************/
   DBUG_ENTER("spider_mysql_handler::append_select_part");
   DBUG_PRINT("info",("spider this=%p", this));
   switch (sql_type)
@@ -5967,6 +5979,12 @@ int spider_mysql_handler::append_select_part(
     default:
       DBUG_RETURN(0);
   }
+/*******************************************************  
+//  str->q_append(str_lock, strlen(str_lock));
+//  str->q_append(pt_db_table->ptr(), pt_db_table->length());
+// str->q_append(lock_write, strlen(lock_write));
+********************************************************/
+
   error_num = append_select(str, sql_type);
   DBUG_RETURN(error_num);
 }

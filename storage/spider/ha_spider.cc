@@ -1177,7 +1177,7 @@ THR_LOCK_DATA **ha_spider::store_lock(
             spider_param_semi_table_lock(thd, share->semi_table_lock) &&
             !spider_param_local_lock_table(thd)
           ) { // local_lock_table 默认为1, 此逻辑不走
-            SPIDER_CONN *conn = conns[roop_count];
+            SPIDER_CONN *conn = spider_get_conn_by_idx(roop_count);
             int appended = 0;
             if ((error_num = dbton_handler[conn->dbton_id]->
               append_lock_tables_list(conn, roop_count, &appended)))
