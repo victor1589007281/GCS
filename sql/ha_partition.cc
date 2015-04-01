@@ -4143,6 +4143,7 @@ int ha_partition::end_bulk_insert()
   int error= 0;
   uint i;
   THD *thd = current_thd;
+  FILE *fp_by_will;
   DBUG_ENTER("ha_partition::end_bulk_insert");
 
   if (!bitmap_is_set(&m_bulk_insert_started, m_tot_parts))
@@ -4156,29 +4157,38 @@ int ha_partition::end_bulk_insert()
         (tmp= m_file[i]->ha_end_bulk_insert()))
 	{
       error= tmp;
-	  // insert auto_increment失败，则将table_share->max_autoincrement值置0
-	  if(thd->insert_with_autoincrement_field)
-	  {
-		  lock_auto_increment();
-		  table_share->max_autoincrement = 0;
-		  unlock_auto_increment();
-	  }
 	}
   }
 
-
-  // 此处逻辑不能放在锁里，   ha_partiton::info里面的锁，会永久循环，死锁。
-  if(thd->insert_with_autoincrement_field && !error)
+  
+  if(thd->insert_with_autoincrement_field)
   {
-	  lock_auto_increment();
-	  if(table_share->max_autoincrement == ULLONG_MAX_UNIX)
+	  if(error)
 	  {
-		  table_share->max_autoincrement = thd->thd_max_autoincrement_value;
-		  thd->thd_max_autoincrement_value = 0;
+		  // insert auto_increment失败，则将table_share->max_autoincrement值置0
+		  lock_auto_increment();
+		  table_share->max_autoincrement = 0;
+		  fp_by_will = fopen("file_test_by_will.log", "a+");
+		  fprintf(fp_by_will, "ha_partition.cc:4172 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu\n", table_share->max_autoincrement, thd->thd_max_autoincrement_value);
+		  fclose(fp_by_will);
+		  unlock_auto_increment();
 	  }
-	  unlock_auto_increment();
+	  else
+	  {
+		  // insert执行成功，且此时需要将table_share的max_autoincrement值置为当前区间最大。
+		  lock_auto_increment();
+		  if(table_share->max_autoincrement == ULLONG_MAX_UNIX)
+		  {
+			  fp_by_will = fopen("file_test_by_will.log", "a+");
+			  fprintf(fp_by_will, "ha_partition.cc:4183 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu\n", table_share->max_autoincrement, thd->thd_max_autoincrement_value);
+			  table_share->max_autoincrement = thd->thd_max_autoincrement_value;
+			  thd->thd_max_autoincrement_value = 0;
+			  fprintf(fp_by_will, "ha_partition.cc:4186 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu\n", table_share->max_autoincrement, thd->thd_max_autoincrement_value);
+			  fclose(fp_by_will);
+		  }
+		  unlock_auto_increment();
+	  }
   }
-
 
   bitmap_clear_all(&m_bulk_insert_started);
   DBUG_RETURN(error);
@@ -6926,7 +6936,7 @@ int ha_partition::info(uint flag)
   uint no_lock_flag= flag & HA_STATUS_NO_LOCK;
   uint extra_var_flag= flag & HA_STATUS_VARIABLE_EXTRA;
   my_bool get_from_remote_flag = FALSE;
-
+  FILE *fp_by_will;
 
   THD *thd= ha_thd();
 
@@ -7014,6 +7024,7 @@ int ha_partition::info(uint flag)
         //DBUG_ASSERT(auto_increment_value);
 		if(get_from_remote_flag)
 		{// 满足这种条件下，需要进table_share->max_autoincrement重新赋值
+			fp_by_will = fopen("file_test_by_will.log", "a+");
 			table_share->max_autoincrement = 
 				(auto_increment_value + HANDLER_INTERVAL_FOR_AUTO_INCREMENT - 2)/HANDLER_INTERVAL_FOR_AUTO_INCREMENT*HANDLER_INTERVAL_FOR_AUTO_INCREMENT 
 				+ HANDLER_INTERVAL_FOR_AUTO_INCREMENT;
@@ -7021,7 +7032,10 @@ int ha_partition::info(uint flag)
 
 			// 在当前的max_autoincrement未insert成功前，保存最大的ulong标识起来。 其它thread读到这个值，则等待。 
 			thd->thd_max_autoincrement_value = table_share->max_autoincrement;
+			fprintf(fp_by_will, "ha_partition.cc:7026 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu\n", table_share->max_autoincrement, thd->thd_max_autoincrement_value);
 			table_share->max_autoincrement = ULLONG_MAX_UNIX; 
+			fprintf(fp_by_will, "ha_partition.cc:7029 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu\n", table_share->max_autoincrement,thd->thd_max_autoincrement_value);
+			fclose(fp_by_will);
 		}
 
         stats.auto_increment_value= auto_increment_value;
