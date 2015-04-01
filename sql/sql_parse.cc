@@ -5419,6 +5419,7 @@ void THD::reset_for_next_command()
   // for spider
   thd->insert_with_autoincrement_field = false; // 初始化值为false，只有在insert语句且该表需要获取自增列值为true
   thd->get_autoincrement_from_remotedb = false;  // 初始值为false，只有在从remote获取最大的auto_incremnt值才为true
+  thd->thd_max_autoincrement_value = 0;
 
   DBUG_PRINT("debug",
              ("is_current_stmt_binlog_format_row(): %d",

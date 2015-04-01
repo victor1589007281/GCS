@@ -3123,9 +3123,6 @@ Statement::Statement(LEX *lex_arg, MEM_ROOT *mem_root_arg,
   db_length(0)
 {
   name.str= NULL;
-  insert_with_autoincrement_field = false;
-  get_autoincrement_from_remotedb = false;
-  thd_max_autoincrement_value = 0;
 }
 
 
