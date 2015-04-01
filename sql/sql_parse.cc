@@ -5365,7 +5365,6 @@ void mysql_reset_thd_for_next_command(THD *thd)
 void THD::reset_for_next_command()
 {
   THD *thd= this;
-  FILE *fp_by_will;
   DBUG_ENTER("mysql_reset_thd_for_next_command");
   DBUG_ASSERT(!thd->spcont); /* not for substatements of routines */
   DBUG_ASSERT(! thd->in_sub_stmt);
@@ -5421,10 +5420,6 @@ void THD::reset_for_next_command()
   thd->insert_with_autoincrement_field = false; // 初始化值为false，只有在insert语句且该表需要获取自增列值为true
   thd->get_autoincrement_from_remotedb = false;  // 初始值为false，只有在从remote获取最大的auto_incremnt值才为true
   thd->thd_max_autoincrement_value = 0;
-
-  fp_by_will = fopen("file_test_by_will.log", "a+");
-  fprintf(fp_by_will, "sql_parse.cc:5425 thd->thd_max_autoincrement_value is %llu\n",  thd->thd_max_autoincrement_value);
-  fclose(fp_by_will);
   DBUG_PRINT("debug",
              ("is_current_stmt_binlog_format_row(): %d",
               thd->is_current_stmt_binlog_format_row()));
