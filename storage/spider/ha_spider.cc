@@ -3191,7 +3191,6 @@ int ha_spider::index_last_internal(
 ) {
   int error_num;
   SPIDER_CONN *conn;
-  THD *thd = current_thd;
   backup_error_status();
   DBUG_ENTER("ha_spider::index_last_internal");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -3431,17 +3430,8 @@ int ha_spider::index_last_internal(
             }
             DBUG_RETURN(check_error_mode_eof(error_num));
           }
-          spider_conn_set_timeout_from_share(conn, roop_count, trx->thd, share);
-
-		  /********************
-		  **  这个赋值需要放在执行sql前，主要用来控制发送start transaction的。
-		  **  前面的set names query也会走spider_db_mysql::exec_query, 所在此赋值要放在此处
-		  **********************/
-		  if(thd->get_autoincrement_from_remotedb && !thd_test_options(trx->thd, OPTION_BEGIN))
-		  { // 且没有显示指定事务。 避免重复start transaction
-			  conn->get_auto_increment_start = true;
-			  conn->get_auto_increment_commit = true;
-		  }
+          spider_conn_set_timeout_from_share(conn, roop_count,
+            trx->thd, share);
           if (dbton_hdl->execute_sql(
             sql_type,
             conn,
@@ -3450,7 +3440,6 @@ int ha_spider::index_last_internal(
           ) {
             conn->mta_conn_mutex_lock_already = FALSE;
             conn->mta_conn_mutex_unlock_later = FALSE;
-			conn->get_auto_increment_start = FALSE; // 一个query,只可能有一个start transaction
             error_num = spider_db_errorno(conn);
             if (
               share->monitoring_kind[roop_count] &&
@@ -3473,7 +3462,6 @@ int ha_spider::index_last_internal(
             }
             DBUG_RETURN(check_error_mode_eof(error_num));
           }
-		  conn->get_auto_increment_start = FALSE; // 一个query,只可能有一个start transaction
           connection_ids[roop_count] = conn->connection_id;
           conn->mta_conn_mutex_lock_already = FALSE;
           conn->mta_conn_mutex_unlock_later = FALSE;
@@ -7889,15 +7877,16 @@ int ha_spider::ft_read(
 且分别对每个spider执行
 *****************************************/
 
-int ha_spider::info(uint flag) 
-{
-	int error_num;
-	THD *thd = ha_thd();
-	double sts_interval = spider_param_sts_interval(thd, share->sts_interval);
-	int sts_mode = spider_param_sts_mode(thd, share->sts_mode);
-	double crd_interval = spider_param_crd_interval(thd, share->crd_interval);
-	int crd_mode = spider_param_crd_mode(thd, share->crd_mode);
-	int sts_crd_errornum_flag = 1; // 默认为1，即走spider_get_crd；当spider_get_sts出错，则不走spider_get_crd
+int ha_spider::info(
+  uint flag
+) {
+  int error_num;
+  THD *thd = ha_thd();
+  double sts_interval = spider_param_sts_interval(thd, share->sts_interval);
+  int sts_mode = spider_param_sts_mode(thd, share->sts_mode);
+  double crd_interval = spider_param_crd_interval(thd, share->crd_interval);
+  int crd_mode = spider_param_crd_mode(thd, share->crd_mode);
+  int sts_crd_errornum_flag = 1; // 默认为1，即走spider_get_crd；当spider_get_sts出错，则不走spider_get_crd
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 	int sts_sync = spider_param_sts_sync(thd, share->sts_sync);
@@ -7927,18 +7916,19 @@ int ha_spider::info(uint flag)
 			DBUG_RETURN(0);
 	}
 
-	if (flag & (HA_STATUS_TIME | HA_STATUS_CONST | HA_STATUS_VARIABLE | HA_STATUS_AUTO))
-	{
-		time_t tmp_time = (time_t) time((time_t*) 0);
-		DBUG_PRINT("info",
-			("spider difftime=%f", difftime(tmp_time, share->sts_get_time)));
-		DBUG_PRINT("info",
-			("spider sts_interval=%f", sts_interval));
-		int tmp_auto_increment_mode = 0;
-		if (flag & HA_STATUS_AUTO)
-		{
-			tmp_auto_increment_mode = spider_param_auto_increment_mode(thd,
-				share->auto_increment_mode);
+  if (flag &
+    (HA_STATUS_TIME | HA_STATUS_CONST | HA_STATUS_VARIABLE | HA_STATUS_AUTO))
+  {
+    time_t tmp_time = (time_t) time((time_t*) 0);
+    DBUG_PRINT("info",
+      ("spider difftime=%f", difftime(tmp_time, share->sts_get_time)));
+    DBUG_PRINT("info",
+      ("spider sts_interval=%f", sts_interval));
+    int tmp_auto_increment_mode = 0;
+    if (flag & HA_STATUS_AUTO)
+    {
+      tmp_auto_increment_mode = spider_param_auto_increment_mode(thd,
+        share->auto_increment_mode);
 #ifdef HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
 			info_auto_called = TRUE;
 #endif

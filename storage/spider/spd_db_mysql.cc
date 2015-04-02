@@ -1608,7 +1608,6 @@ int spider_db_mysql::exec_query(
   {
     time_t cur_time = (time_t) time((time_t*) 0);
     struct tm lt;
-
     struct tm *l_time = localtime_r(&cur_time, &lt);
     fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
       "from [%s] %ld to %ld:  "
@@ -1917,14 +1916,12 @@ int spider_db_mysql::start_transaction(
 int spider_db_mysql::commit(
   int *need_mon
 ) {
-  THD *thd = current_thd;
   DBUG_ENTER("spider_db_mysql::commit");
   DBUG_PRINT("info",("spider this=%p", this));
 
-  if(trx_transmit_begin_commit() || conn->get_auto_increment_commit)
+  if(trx_transmit_begin_commit())
   {// 如果允许begin与commit，才执行下面的commit
-	  conn->get_auto_increment_commit = false; // commit一次
-	if (spider_db_query( // TODO， 确认是一个分区走
+	if (spider_db_query(
 		conn,
 		SPIDER_SQL_COMMIT_STR,
 		SPIDER_SQL_COMMIT_LEN,
@@ -1967,7 +1964,6 @@ int spider_db_mysql::rollback(
       DBUG_RETURN(error_num);
     }
   }
-   conn->get_auto_increment_commit = false; // 在rollback后置为false，
   conn->mta_conn_mutex_unlock_later = FALSE;
   SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
   pthread_mutex_unlock(&conn->mta_conn_mutex);

@@ -1274,7 +1274,6 @@ void spider_conn_clear_queue(
   conn->queued_time_zone = FALSE;
   conn->queued_trx_start = FALSE;
   conn->queued_xa_start = FALSE;
-  conn->get_auto_increment_start = FALSE;
   DBUG_VOID_RETURN;
 }
 
@@ -1285,8 +1284,6 @@ void spider_conn_clear_queue_at_commit(
   DBUG_PRINT("info", ("spider conn=%p", conn));
   conn->queued_trx_start = FALSE;
   conn->queued_xa_start = FALSE;
-  conn->get_auto_increment_start = FALSE;
-  conn->get_auto_increment_commit = FALSE;
   DBUG_VOID_RETURN;
 }
 

@@ -3460,9 +3460,6 @@ int ha_partition::write_row(uchar * buf)
   */
   if (have_auto_increment)
   {
-	  // 是insert语句，且有自增列；则将thd中的insert_with_autoincrement_field标识置为true; 且要求是spider存储引擎
-	  if(maintain_auto_increment_by_self && thd->lex->sql_command == SQLCOM_INSERT && m_file && *m_file && m_file[0]->is_support_get_autoinc_by_self())
-		  thd->insert_with_autoincrement_field = true;
 #ifdef HA_CAN_BULK_ACCESS
     if (!bulk_access_executing || !bulk_access_info_exec_tgt->called)
     {
@@ -3539,34 +3536,6 @@ int ha_partition::write_row(uchar * buf)
 
   tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
   error= m_file[part_id]->ha_write_row(buf);
-
-/**************************************
-在实际insert前，此外出现error的话。会导致死锁。 
-1, 没实际insert，还未发commit;
-2, 另个线程则select for update
-  if(thd->insert_with_autoincrement_field && error)
-  {
-	  lock_auto_increment();
-	  // insert auto_increment失败，则将table_share->max_autoincrement值置0
-	  table_share->max_autoincrement = 0;
-	  unlock_auto_increment();
-  }
-*********************************/
-
-/***********************************
-此处不一定有实际执行insert的query。 将table_share的max_autoincrement值放在insert成功后
-	else
-
-	{ // 成功插入max_autoincrement
-		if(table_share->max_autoincrement == ULLONG_MAX_UNIX)
-		{
-			table_share->max_autoincrement = thd->thd_max_autoincrement_value;
-			thd->thd_max_autoincrement_value = 0;
-		}
-	}
-*****************************/
-
-
   if (have_auto_increment && !table->s->next_number_keypart)
     set_auto_increment_if_higher(table->next_number_field);
   reenable_binlog(thd);
@@ -4142,58 +4111,21 @@ int ha_partition::end_bulk_insert()
 {
   int error= 0;
   uint i;
-  THD *thd = current_thd;
-  FILE *fp_by_will;
   DBUG_ENTER("ha_partition::end_bulk_insert");
 
   if (!bitmap_is_set(&m_bulk_insert_started, m_tot_parts))
     DBUG_RETURN(error);
 
-  
   for (i= 0; i < m_tot_parts; i++)
   {
     int tmp;
     if (bitmap_is_set(&m_bulk_insert_started, i) &&
         (tmp= m_file[i]->ha_end_bulk_insert()))
-	{
       error= tmp;
-	}
   }
-
-  
-  if(thd->insert_with_autoincrement_field)
-  {
-	  if(error)
-	  {
-		  // insert auto_increment失败，则将table_share->max_autoincrement值置0
-		  lock_auto_increment();
-		  table_share->max_autoincrement = 0;
-		  fp_by_will = fopen("file_test_by_will.log", "a+");
-		  fprintf(fp_by_will, "ha_partition.cc:4172 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu, thd=%p\n", table_share->max_autoincrement, thd->thd_max_autoincrement_value, thd);
-		  fclose(fp_by_will);
-		  unlock_auto_increment();
-	  }
-	  else
-	  {
-		  // insert执行成功，且此时需要将table_share的max_autoincrement值置为当前区间最大。
-		  lock_auto_increment();
-		  if(table_share->max_autoincrement == ULLONG_MAX_UNIX)
-		  {
-			  fp_by_will = fopen("file_test_by_will.log", "a+");
-			  fprintf(fp_by_will, "ha_partition.cc:4183 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu, thd=%p\n", table_share->max_autoincrement, thd->thd_max_autoincrement_value, thd);
-			  table_share->max_autoincrement = thd->thd_max_autoincrement_value;
-			  thd->thd_max_autoincrement_value = 0;
-			  fprintf(fp_by_will, "ha_partition.cc:4186 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu, thd=%p\n", table_share->max_autoincrement, thd->thd_max_autoincrement_value, thd);
-			  fclose(fp_by_will);
-		  }
-		  unlock_auto_increment();
-	  }
-  }
-
   bitmap_clear_all(&m_bulk_insert_started);
   DBUG_RETURN(error);
 }
-
 
 
 /****************************************************************************
@@ -6935,8 +6867,7 @@ int ha_partition::info(uint flag)
 {
   uint no_lock_flag= flag & HA_STATUS_NO_LOCK;
   uint extra_var_flag= flag & HA_STATUS_VARIABLE_EXTRA;
-  my_bool get_from_remote_flag = FALSE;
-  FILE *fp_by_will;
+
 
   THD *thd= ha_thd();
 
@@ -6968,9 +6899,8 @@ int ha_partition::info(uint flag)
 #endif
         table_share->ha_part_data->auto_inc_initialized
       )
-	  {
-        stats.auto_increment_value = table_share->ha_part_data->next_auto_inc_val;
-	  }
+        stats.auto_increment_value=
+                                 table_share->ha_part_data->next_auto_inc_val;
       else
       {
         handler *file, **file_array;
@@ -6978,83 +6908,24 @@ int ha_partition::info(uint flag)
         file_array= m_file;
         DBUG_PRINT("info",
                    ("checking all partitions for auto_increment_value"));
-
-		while(table_share->max_autoincrement == ULLONG_MAX_UNIX )
-		{ // 如果读取到这个值，则等待。
-			unlock_auto_increment();
-			my_sleep(100);
-			lock_auto_increment();
-		}
-
         do
         { // 在这个循环里，auto_increment_value取了各个分片下的最大值
           file= *file_array;
-
-		  if(thd->insert_with_autoincrement_field)
-		  {// 先置条件，是insert且table带有自增列
-			  if(table_share->max_autoincrement == 0 || table_share->ha_part_data->next_auto_inc_val >= table_share->max_autoincrement)
-			  {// max_autoincrement尚未初始化，须从remotedb节点获取自增列值
-			   // 在remotedb获取值时，需要begin; select for update; commit。 即加读锁
-	 		   // 若当前spider节点的auto_increment值满了，则需要重新读取remoet节点
-				  get_from_remote_flag = TRUE;
-				  thd->get_autoincrement_from_remotedb = true;  // select from remote时，开启事务begin
-				  file->info(HA_STATUS_AUTO | no_lock_flag);
-				  set_if_bigger(auto_increment_value, file->stats.auto_increment_value);
-			  }
-			  else if(table_share->ha_part_data->next_auto_inc_val < table_share->max_autoincrement)
-			  {// 若存在可用空间，则直接取当前可用的自增列值
-				  auto_increment_value = table_share->ha_part_data->next_auto_inc_val;
-			  }
-			  else 
-			  {// TODO 
-			   // 期间有过自己指定自增列字段的值，且指定的字段值 > max_autoincrement， 就会走此处逻辑
-			   // 后续
-				// 当前逻辑下，这个分支不可能走到。
-				  assert(0);
-				  DBUG_PRINT("info", ("Impossible to to satisfy this condition"));
-			  }
-		  }
-		  else
-		  {// 非insert语句且带自增列的逻辑
-			  file->info(HA_STATUS_AUTO | no_lock_flag);
-			  set_if_bigger(auto_increment_value, file->stats.auto_increment_value);
-		  }
+          file->info(HA_STATUS_AUTO | no_lock_flag);
+          set_if_bigger(auto_increment_value,
+                        file->stats.auto_increment_value);
         } while (*(++file_array));
 
         //DBUG_ASSERT(auto_increment_value);
-		if(get_from_remote_flag)
-		{// 满足这种条件下，需要进table_share->max_autoincrement重新赋值
-			fp_by_will = fopen("file_test_by_will.log", "a+");
-			table_share->max_autoincrement = 
-				(auto_increment_value + HANDLER_INTERVAL_FOR_AUTO_INCREMENT - 2)/HANDLER_INTERVAL_FOR_AUTO_INCREMENT*HANDLER_INTERVAL_FOR_AUTO_INCREMENT 
-				+ HANDLER_INTERVAL_FOR_AUTO_INCREMENT;
-			auto_increment_value = table_share->max_autoincrement; // 当前插入的值为max_autoincrement值
-
-			// 在当前的max_autoincrement未insert成功前，保存最大的ulong标识起来。 其它thread读到这个值，则等待。 
-			thd->thd_max_autoincrement_value = table_share->max_autoincrement;
-			fprintf(fp_by_will, "ha_partition.cc:7026 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu, thd=%p\n", table_share->max_autoincrement, thd->thd_max_autoincrement_value, thd);
-			table_share->max_autoincrement = ULLONG_MAX_UNIX; 
-			fprintf(fp_by_will, "ha_partition.cc:7029 table_share->max_autoincrement is %llu, thd->thd_max_autoincrement_value is %llu, thd=%p\n", table_share->max_autoincrement,thd->thd_max_autoincrement_value, thd);
-			fclose(fp_by_will);
-		}
-
         stats.auto_increment_value= auto_increment_value;
-		if (auto_inc_is_first_in_idx)
-		{// TODO,  自增列是index的第一个field有什么特别呢？
-			if(get_from_remote_flag)
-			{ // 在需要从remote获取最大的auto_increment值时， 插入对remotedb的值应该为 max_autoincrement
-			  // 因此，此处的自增列值应该为插入max_autoincrement后，下一个该区间的最小值。
-			  // 比如区间长度为1000， max_autoincrement为2000， 下一个该插入的值为1001。 此处值为1000，因为后续逻辑会+1
-				table_share->ha_part_data->next_auto_inc_val = auto_increment_value - HANDLER_INTERVAL_FOR_AUTO_INCREMENT + 1;
-			}
-			else
-			{//走以前的逻辑
-				set_if_bigger(table_share->ha_part_data->next_auto_inc_val, auto_increment_value);
-			}
-			table_share->ha_part_data->auto_inc_initialized= TRUE;
-			DBUG_PRINT("info", ("initializing next_auto_inc_val to %lu",
-				(ulong) table_share->ha_part_data->next_auto_inc_val));
-		}
+        if (auto_inc_is_first_in_idx)
+        {
+          set_if_bigger(table_share->ha_part_data->next_auto_inc_val,
+                        auto_increment_value);
+          table_share->ha_part_data->auto_inc_initialized= TRUE;
+          DBUG_PRINT("info", ("initializing next_auto_inc_val to %lu",
+                       (ulong) table_share->ha_part_data->next_auto_inc_val));
+        }
       }
       unlock_auto_increment();
     }

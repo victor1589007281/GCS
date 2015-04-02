@@ -37,7 +37,6 @@
 #include <keycache.h>
 
 //#define HANDLER_HAS_TOP_TABLE_FIELDS            //for vp only
-#define HANDLER_INTERVAL_FOR_AUTO_INCREMENT  1000  // for spider only
 #define HANDLER_HAS_DIRECT_UPDATE_ROWS
 #define HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
 #define HANDLER_HAS_DIRECT_AGGREGATE            
@@ -209,7 +208,6 @@ enum enum_alter_inplace_result {
 Only innobase supports this function.
 */
 #define HA_BLOB_COMPRESSED				 (LL(1) << 50)
-
 
 /*
   Set of all binlog flags. Currently only contain the capabilities
@@ -2573,10 +2571,6 @@ public:
  virtual bool is_support_auto_increment()
  {
 	 return true;
- }
- virtual bool is_support_get_autoinc_by_self()
- {
-	 return false;
  }
 
 protected:

@@ -3121,9 +3121,9 @@ int spider_commit(
           int tmp_error_num;
           do {
             if (
-              (conn->autocommit != 1 || conn->trx_start || conn->get_auto_increment_commit) &&
+              (conn->autocommit != 1 || conn->trx_start) &&
               (tmp_error_num = spider_db_commit(conn))
-            ) { // get_autoincrement_from_remotedb×´Ì¬ÏÂ£¬¿ªÆôbegin/commit
+            ) {
               SPIDER_CONN_RESTORE_DASTATUS_AND_RESET_TMP_ERROR_NUM;
               if (tmp_error_num)
                 error_num = tmp_error_num;
@@ -3191,7 +3191,7 @@ int spider_rollback(
           do {
             if (
               !conn->server_lost &&
-              (conn->autocommit != 1 || conn->trx_start || conn->get_auto_increment_commit) &&
+              (conn->autocommit != 1 || conn->trx_start) &&
               (tmp_error_num = spider_db_rollback(conn))
             ) {
               SPIDER_CONN_RESTORE_DASTATUS_AND_RESET_TMP_ERROR_NUM;

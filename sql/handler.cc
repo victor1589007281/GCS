@@ -1466,7 +1466,6 @@ int ha_commit_one_phase(THD *thd, bool all)
       ha_info_next= ha_info->next();
       ha_info->reset(); /* keep it conveniently zero-filled */
     }
-	thd->get_autoincrement_from_remotedb = false; // 在commit后，将get_autoincrement_from_remotedb置为false
     trans->ha_list= 0;
     trans->no_2pc=0;
     if (all)
@@ -2672,7 +2671,7 @@ prev_insert_id(ulonglong nr, struct system_variables *variables)
 
 int handler::update_auto_increment()
 {
-  ulonglong nr, nb_reserved_values, tmp_nr;
+  ulonglong nr, nb_reserved_values;
   bool append= FALSE;
   THD *thd= table->in_use;
   struct system_variables *variables= &thd->variables;
@@ -2783,17 +2782,8 @@ int handler::update_auto_increment()
 
   DBUG_PRINT("info",("auto_increment: %lu", (ulong) nr));
 
-
-  // 在处理spider的自增列时， 当需要获取remotedb的increment的最大值，插入到remotedb的自增列的值
-  // 即thd->get_autoincrement_from_remotedb为真
-  tmp_nr = nr;
-  if(thd->get_autoincrement_from_remotedb)
-  {
-	  nr = thd->thd_max_autoincrement_value;
-	  thd->get_autoincrement_from_remotedb = false;  //  一次有效，置为false
-  }
   if (unlikely(table->next_number_field->store((longlong) nr, TRUE)))
-  {// 此处将获取的auto_increment值写入buf，供存储层落地
+  {
     /*
       first test if the query was aborted due to strict mode constraints
     */
@@ -2812,10 +2802,6 @@ int handler::update_auto_increment()
     if (unlikely(table->next_number_field->store((longlong) nr, TRUE)))
       nr= table->next_number_field->val_int();
   }
-
-  // 将nr的值恢复
-  nr = tmp_nr;
-
   if (append)
   {
     auto_inc_interval_for_cur_row.replace(nr, nb_reserved_values,

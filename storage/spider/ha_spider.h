@@ -1081,12 +1081,6 @@ public:
 	  return false;
   }
 
-  bool is_support_get_autoinc_by_self()
-  {
-	  return true;
-  }
-
-
   my_bool support_more_partiton_log()
   {// spider存储引擎记录跨分区的行为，query记录到slow log
 	  return TRUE;

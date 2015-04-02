@@ -1457,9 +1457,6 @@ public:
   String mysql_check_ret_msg;  /* point to store msg return by mysql_check */
   /* Used to execute base64 coded binlog events in MySQL server */
   Relay_log_info* rli_fake;
-  bool insert_with_autoincrement_field;
-  bool get_autoincrement_from_remotedb;
-  ulonglong thd_max_autoincrement_value;
 
   void reset_for_next_command();
   /*

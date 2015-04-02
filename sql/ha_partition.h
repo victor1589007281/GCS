@@ -50,7 +50,6 @@ typedef struct st_partition_bulk_access_info
 } PARTITION_BULK_ACCESS_INFO;
 #endif
 
-#define ULLONG_MAX_UNIX    0xffffffffffffffff       /* maximum unsigned long long int value */
 #define PARTITION_BYTES_IN_POS 2
 #define PARTITION_ENABLED_TABLE_FLAGS (HA_FILE_BASED | HA_REC_NOT_IN_SEQ)
 #define PARTITION_DISABLED_TABLE_FLAGS (HA_CAN_GEOMETRY | \
@@ -1185,20 +1184,11 @@ private:
   {// 在这个方法中，将指定的auto_increment值与自增时应该的值比较，取较大
     ulonglong nr= (((Field_num*) field)->unsigned_flag ||
                    field->val_int() > 0) ? field->val_int() : 0;
-	THD *thd = current_thd;
-
+    lock_auto_increment();
     DBUG_ASSERT(table_share->ha_part_data->auto_inc_initialized == TRUE);
-	lock_auto_increment();
     /* must check when the mutex is taken */
-	// 如果nr为特定处理的，则nr == table_share->max_autoincrement, next_auto_inc_val值不能被nr替换
-    // 在insert成功前，table_share->max_autoincrement值还是一个ULONGLONGMAX标识，实际值为thd->thd_max_autoincrement_value
-    if (nr != thd->thd_max_autoincrement_value  && nr >= table_share->ha_part_data->next_auto_inc_val)
-	{
-      table_share->ha_part_data->next_auto_inc_val= nr + 1;  // 显示指定自增列的值了，会走这个逻辑，更新next_auto_inc_val
-	}
-	// 如果指定的自增列值大于当前区间的最大值，在下次操作中，重新设定max_autoincrement值
-//	if(nr > thd->thd_max_autoincrement_value && ((nr > table_share->max_autoincrement) || (table_share->max_autoincrement == ULLONG_MAX_UNIX)))
-//		table_share->max_autoincrement = 0;
+    if (nr >= table_share->ha_part_data->next_auto_inc_val)
+      table_share->ha_part_data->next_auto_inc_val= nr + 1;
     unlock_auto_increment();
   }
 

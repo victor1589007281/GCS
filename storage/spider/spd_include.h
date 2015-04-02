@@ -398,8 +398,6 @@ typedef struct st_spider_conn
   bool               queued_sql_log_off;
   bool               queued_time_zone;
   bool               queued_trx_start;
-  bool               get_auto_increment_start;
-  bool               get_auto_increment_commit;
   bool               queued_xa_start;
   bool               queued_net_timeout;
   SPIDER_SHARE       *queued_connect_share;
