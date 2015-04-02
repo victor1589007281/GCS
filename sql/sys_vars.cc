@@ -3037,17 +3037,23 @@ static Sys_var_mybool Sys_log_sql_use_mutil_partition(
 	GLOBAL_VAR(log_sql_use_mutil_partition), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 
-static Sys_var_mybool Sys_auto_increment_mode_switch(
-	"auto_increment_mode_switch", 
-	"the switch use to control if use the auto_increment_mode, default true ",
-	GLOBAL_VAR(auto_increment_mode_switch), CMD_LINE(OPT_ARG), DEFAULT(TRUE));
+static Sys_var_mybool Sys_spider_auto_increment_mode_switch(
+	"spider_auto_increment_mode_switch", 
+	"the switch use to control if use the spider_auto_increment_mode, default true ",
+	READ_ONLY GLOBAL_VAR(spider_auto_increment_mode_switch), CMD_LINE(OPT_ARG), DEFAULT(TRUE));
 
 
-static Sys_var_uint Sys_auto_increment_mode_value(
-	"auto_increment_mode_value", 
+static Sys_var_uint Sys_spider_auto_increment_mode_value(
+	"spider_auto_increment_mode_value", 
 	"the values, as the auto_increment mode 32. auto_increment add by 32",
-	GLOBAL_VAR(auto_increment_mode_value), NO_CMD_LINE,
-	VALID_RANGE(0, UINT_MAX), DEFAULT(0), BLOCK_SIZE(1));
+	GLOBAL_VAR(spider_auto_increment_mode_value), NO_CMD_LINE,
+	VALID_RANGE(0, 64), DEFAULT(3), BLOCK_SIZE(1));
+
+static Sys_var_uint Sys_spider_auto_increment_step(
+	"spider_auto_increment_step", 
+	"the values set spider auto_increment add by spider_auto_increment_step",
+	GLOBAL_VAR(spider_auto_increment_step), NO_CMD_LINE,
+	VALID_RANGE(0, 64), DEFAULT(32), BLOCK_SIZE(1));
 
 
 static Sys_var_mybool Sys_alter_query_log(

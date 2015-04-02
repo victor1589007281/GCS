@@ -6908,14 +6908,45 @@ int ha_partition::info(uint flag)
         file_array= m_file;
         DBUG_PRINT("info",
                    ("checking all partitions for auto_increment_value"));
-        do
-        { // 在这个循环里，auto_increment_value取了各个分片下的最大值
-          file= *file_array;
-          file->info(HA_STATUS_AUTO | no_lock_flag);
-          set_if_bigger(auto_increment_value,
-                        file->stats.auto_increment_value);
-        } while (*(++file_array));
+		do
+		{ // 在这个循环里，auto_increment_value取了各个分片下的最大值
+			file= *file_array;
+			if(spider_auto_increment_mode_switch)
+			{// 开启spider获取自增列的模式。
+				if(table_share->ha_part_data->next_auto_inc_val == 0)
+				{// 如果当前重启过mysql或有过flush tables，这个值会被置0，需要重新从remote db获取
+					file->info(HA_STATUS_AUTO | no_lock_flag);
+					set_if_bigger(auto_increment_value,	file->stats.auto_increment_value);
+				}
+				else
+				{// TODO, 考虑下指定值时此处的逻辑。
+					if(table->next_number_field->val_int() != 0)
+						// 如果自增列的值有指定， 则auto_increment_value为0
+						auto_increment_value = 0;
+					else
+						auto_increment_value = table_share->ha_part_data->next_auto_inc_val;
+				}
+			}
+			else
+			{// 旧的模式
+				file->info(HA_STATUS_AUTO | no_lock_flag);
+				set_if_bigger(auto_increment_value,	file->stats.auto_increment_value);
+			}
+		} while (*(++file_array));
 
+/****************************************
+	特殊处理获取的auto_increment_value值
+	1，如上，只有table_share->ha_part_data->next_auto_inc_val == 0，即重启过mysql或有过flush tables，这个值会被置0，
+	    则需要重新从remote db获取最大值;
+	2，如果table_share->ha_part_data->next_auto_inc_val不为0，则auto_increment_value为table_share->ha_part_data->next_auto_inc_val。
+	3，对上述的auto_increment_value值进行处理。需要auto_increment_value的值满足: auto_increment_value%spider_auto_increment_step = spider_auto_increment_mode_value。
+		且auto_increment_value不能出现过。
+***************************************/
+		if(spider_auto_increment_mode_switch)
+		{// 打开开头，默认打开的。也是read only
+			auto_increment_value = (auto_increment_value + spider_auto_increment_step - spider_auto_increment_mode_value)/spider_auto_increment_step*spider_auto_increment_step 
+									+ spider_auto_increment_mode_value;
+		}
         //DBUG_ASSERT(auto_increment_value);
         stats.auto_increment_value= auto_increment_value;
         if (auto_inc_is_first_in_idx)
