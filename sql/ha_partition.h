@@ -318,6 +318,7 @@ public:
 
   // 用于限制在spider上使用auto_increment
   bool is_support_auto_increment();
+  bool is_spider_storage_engine();
   
 
   /* fast inplace alter partition table,we just support fast add column(s) yet */

@@ -1888,7 +1888,7 @@ public:
 
 
   // 在partition下面， 该存储引擎是否需要将跨分区的query记录到slow log
-  virtual my_bool support_more_partiton_log() {return FALSE;}
+  virtual bool support_more_partiton_log() {return FALSE;}
 
   /**
     This method is used to analyse the error to see whether the error
@@ -2571,6 +2571,10 @@ public:
  virtual bool is_support_auto_increment()
  {
 	 return true;
+ }
+ virtual bool is_spider_storage_engine()
+ {
+	 return false;
  }
 
 protected:

@@ -4121,7 +4121,13 @@ int ha_partition::end_bulk_insert()
     int tmp;
     if (bitmap_is_set(&m_bulk_insert_started, i) &&
         (tmp= m_file[i]->ha_end_bulk_insert()))
+	{
       error= tmp;
+	  if(spider_auto_increment_mode_switch && is_spider_storage_engine())
+	  {// 如果执行出错，则将next_auto_inc_val值为0，下次读取remote的最大值。
+		  table_share->ha_part_data->next_auto_inc_val = 0;
+	  }
+	}
   }
   bitmap_clear_all(&m_bulk_insert_started);
   DBUG_RETURN(error);
@@ -6911,7 +6917,7 @@ int ha_partition::info(uint flag)
 		do
 		{ // 在这个循环里，auto_increment_value取了各个分片下的最大值
 			file= *file_array;
-			if(spider_auto_increment_mode_switch)
+			if(spider_auto_increment_mode_switch && is_spider_storage_engine())
 			{// 开启spider获取自增列的模式。
 				if(table_share->ha_part_data->next_auto_inc_val == 0)
 				{// 如果当前重启过mysql或有过flush tables，这个值会被置0，需要重新从remote db获取
@@ -6942,7 +6948,7 @@ int ha_partition::info(uint flag)
 	3，对上述的auto_increment_value值进行处理。需要auto_increment_value的值满足: auto_increment_value%spider_auto_increment_step = spider_auto_increment_mode_value。
 		且auto_increment_value不能出现过。
 ***************************************/
-		if(spider_auto_increment_mode_switch)
+		if(spider_auto_increment_mode_switch && is_spider_storage_engine())
 		{// 打开开头，默认打开的。也是read only
 			auto_increment_value = (auto_increment_value + spider_auto_increment_step - spider_auto_increment_mode_value)/spider_auto_increment_step*spider_auto_increment_step 
 									+ spider_auto_increment_mode_value;
@@ -9866,6 +9872,21 @@ bool ha_partition::is_support_auto_increment()
 			DBUG_RETURN(is_support_auto_increment);
 	}	
 	DBUG_RETURN(is_support_auto_increment);	
+}
+
+bool ha_partition::is_spider_storage_engine()
+{
+	DBUG_ENTER("ha_partition::is_spider_storage_engine");	
+	handler ** file;
+	bool    is_spider = TRUE;
+
+	for(file=m_file; *file; file++)
+	{
+		is_spider = (*file)->is_spider_storage_engine();
+		if(!is_spider) 
+			DBUG_RETURN(is_spider);
+	}
+	DBUG_RETURN(is_spider);
 }
 
 /* partition inplace alter table */
