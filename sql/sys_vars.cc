@@ -3053,7 +3053,7 @@ static Sys_var_uint Sys_spider_auto_increment_step(
 	"spider_auto_increment_step", 
 	"the values set spider auto_increment add by spider_auto_increment_step",
 	READ_ONLY GLOBAL_VAR(spider_auto_increment_step), NO_CMD_LINE,
-	VALID_RANGE(1, 64), DEFAULT(17), BLOCK_SIZE(1));
+	VALID_RANGE(1, 64), DEFAULT(1), BLOCK_SIZE(1));
 
 
 static Sys_var_mybool Sys_alter_query_log(
