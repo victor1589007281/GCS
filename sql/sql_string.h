@@ -402,6 +402,8 @@ public:
     return FALSE;
   }
   void print(String *print);
+  void UrlDecode(String& ret);
+  void UrlEncode(String& ret);
 
   /* Swap two string objects. Efficient way to exchange data without memcpy. */
   void swap(String &s);

@@ -26,6 +26,7 @@
 #include <mysql_com.h>
 
 #include "sql_string.h"
+#include <url.h>
 
 /*****************************************************************************
 ** String functions
@@ -1153,6 +1154,29 @@ void String::print(String *str)
   }
 }
 
+void String::UrlEncode(String& ret)
+{
+  char* dst = NULL;
+  int dst_len = 0;
+  url_encode((unsigned char*)this->c_ptr(), this->length(), (unsigned char**)&dst, &dst_len);
+
+  //ret.length(0);
+  ret.append(dst, dst_len);
+
+  my_free(dst);
+}
+
+void String::UrlDecode(String& ret)
+{
+  char* dst = NULL;
+  int dst_len = 0;
+  url_decode((unsigned char*)this->c_ptr(), this->length(), (unsigned char**)&dst, &dst_len);
+
+  //ret.length(0);
+  ret.append(dst, dst_len, this->charset());
+
+  my_free(dst);
+}
 
 /*
   Exchange state of this object and argument.
