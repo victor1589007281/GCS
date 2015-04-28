@@ -519,6 +519,7 @@ const char* get_warnings_type_str(int type)
 	case DROP_TABLE: return "DROP_TABLE";
 	case DROP_VIEW: return "DROP_VIEW";
 	case DROP_COLUMN: return "DROP_COLUMN";
+	case ADD_OR_DROP_UNIQUE_KEY: return "ADD_OR_DROP_UNIQUE_KEY";
 	case TRUNCATE_TABLE: return "TRUNCATE";
 	case DELETE_WITHOUT_WHERE: return "DELETE_WITHOUT_WHERE";
 	case UPDATE_WITHOUT_WHERE: return "UPDATE_WITHOUT_WHERE";
@@ -1140,6 +1141,12 @@ query_parse_audit_tsqlparse(
 					pra->result_type = 1;
 					pra->warning_type = DROP_COLUMN ;
 				}
+			}
+
+			if(is_add_or_drop_unique_key(thd, lex->alter_info.flags))
+			{// 增加或者删除unique key，则告警
+				pra->result_type = 1;
+				pra->warning_type = ADD_OR_DROP_UNIQUE_KEY ;
 			}
 		}
 		break;
