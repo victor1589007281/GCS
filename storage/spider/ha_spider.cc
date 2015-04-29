@@ -8396,6 +8396,7 @@ ulonglong ha_spider::table_flags() const
   DBUG_ENTER("ha_spider::table_flags");
   DBUG_PRINT("info",("spider this=%p", this));
   ulonglong flags =
+	HA_BLOB_COMPRESSED |
     HA_REC_NOT_IN_SEQ |
     HA_CAN_GEOMETRY |
     HA_NULL_IN_KEY |
