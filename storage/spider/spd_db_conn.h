@@ -891,6 +891,16 @@ int spider_db_open_item_string(
   CHARSET_INFO *field_charset
 );
 
+int spider_db_open_item_hex_string(
+   Item *item,
+   ha_spider *spider,
+   spider_string *str,
+   const char *alias,
+   uint alias_length,
+   uint dbton_id,
+   CHARSET_INFO* field_charset
+);
+
 int spider_db_open_item_int(
   Item *item,
   ha_spider *spider,

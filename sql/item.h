@@ -911,6 +911,11 @@ public:
     str->append(full_name());
   }
 
+  virtual inline void print_for_x(String *str, enum_query_type query_type)
+  {
+	  str->append(full_name());
+  }
+
   void print_item_w_name(String *, enum_query_type query_type);
   virtual void update_used_tables() {}
   virtual void split_sum_func(THD *thd, Item **ref_pointer_array,
@@ -2408,6 +2413,7 @@ public:
   enum Item_result cast_to_int_type() const { return INT_RESULT; }
   enum_field_types field_type() const { return MYSQL_TYPE_VARCHAR; }
   virtual void print(String *str, enum_query_type query_type);
+  virtual void print_for_x(String *str, enum_query_type query_type);
   bool eq(const Item *item, bool binary_cmp) const;
   virtual Item *safe_charset_converter(CHARSET_INFO *tocs);
   bool check_partition_func_processor(uchar *int_arg) {return FALSE;}
