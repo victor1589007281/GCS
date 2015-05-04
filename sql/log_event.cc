@@ -50,6 +50,7 @@
 
 #include <base64.h>
 #include <my_bitmap.h>
+#include <zlib.h>
 #include "rpl_utility.h"
 
 #define log_cs	&my_charset_latin1
@@ -574,6 +575,187 @@ char *str_to_hex(char *to, const char *from, uint len)
   else
     to= strmov(to, "\"\"");
   return to;                               // pointer to end 0 of 'to'
+}
+
+/**
+   Compress a sql statement from 'src' to 'dst', the size after compress
+   stored in 'comlen'. The caller should call my_free to release 'dst'.
+   return zero if successful, others otherwise.
+*/
+int statement_compress(const char *src, uchar **dst, uint32 len, uint32 *comlen)
+{
+	/* 5 for the begin content*/
+	size_t buflen = 5 + compressBound(len);
+	*dst = (uchar *)my_malloc(buflen, MYF(MY_FAE | MY_WME));
+	if (!dst) {
+		return 1;
+	}
+
+	uchar lenlen = bool(len & 0xff) + bool(len & 0xff00) + bool(len & 0xff0000) + bool(len & 0xff000000);
+	(*dst)[0] = 0x80 | (lenlen & 0x07);
+	switch(lenlen){
+	case 1:
+		(*dst)[1] = uchar(len);
+		break;
+	case 2:
+		(*dst)[1] = uchar(len >> 8);
+		(*dst)[2] = uchar(len);
+		break;
+	case 3:
+		(*dst)[1] = uchar(len >> 16);
+		(*dst)[2] = uchar(len >> 8);
+		(*dst)[3] = uchar(len);
+		break;
+	case 4:
+		(*dst)[1] = uchar(len >> 24);
+		(*dst)[2] = uchar(len >> 16);
+		(*dst)[3] = uchar(len >> 8);
+		(*dst)[4] = uchar(len);
+		break;
+	default:
+		return 1;
+	}
+
+	*comlen = buflen - 1 - lenlen - 1;
+	if (compress((Bytef *)(*dst) + 1 + lenlen, (uLongf *)comlen, (const Bytef *)src, (uLongf)len) != Z_OK)
+	{
+		my_free(*dst);
+		return 1;
+	}
+	*comlen += 1 + lenlen;
+	return 0;
+}
+
+int query_event_uncompress(const Format_description_log_event *description_event,
+						   const char *src, char **dst, ulong len, ulong *newlen)
+{
+	ulong data_len;
+	const char *tmp = src;
+
+	uint16 flags = uint2korr(src + FLAGS_OFFSET);
+
+	uint8 common_header_len= description_event->common_header_len;
+	uint8 post_header_len= description_event->post_header_len[QUERY_EVENT-1];
+
+	tmp += common_header_len;
+
+	uint db_len = (uint)tmp[Q_DB_LEN_OFFSET];
+	uint16 status_vars_len= uint2korr(tmp + Q_STATUS_VARS_LEN_OFFSET);
+
+	tmp += post_header_len + status_vars_len + db_len + 1;
+
+	uint32 un_len = statement_get_uncompress_len(tmp);
+	*newlen = (len - un_len < (tmp - src) || un_len > len) ? (tmp - src) + un_len : len;
+
+	*dst = (char *)my_malloc(*newlen , MYF(MY_FAE | MY_WME));
+	if (!*dst)
+	{
+		return 1;
+	}
+
+	memcpy(*dst, src , len);
+	un_len = len - (tmp - src);
+	if (statement_uncompress(*dst + (tmp - src), &un_len))
+	{
+		my_free(*dst);
+		return 1;
+	}
+
+	*newlen = (tmp - src) + un_len;
+
+	int2store(*dst + FLAGS_OFFSET, flags & (~LOG_EVENT_COMPRESSED_F));
+	int4store(*dst + EVENT_LEN_OFFSET, *newlen);
+	return 0;
+}
+
+/**
+  Get the length of uncompress content.
+*/
+
+uint32 statement_get_uncompress_len(const char *buf)
+{
+	if ((buf[0] & 0x80) == 0)
+	{
+		return strlen((const char *)buf);
+	}
+
+	uint32 lenlen = buf[0] & 0x07;
+	uint32 len;
+	switch(lenlen)
+	{
+	case 1:
+		len = uchar(buf[1]);
+		break;
+	case 2:
+		len = uchar(buf[1]) << 8 | uchar(buf[2]);
+		break;
+	case 3:
+		len = uchar(buf[1]) << 16 | uchar(buf[2]) << 8 | uchar(buf[3]);
+		break;
+	case 4:
+		len = uchar(buf[1]) << 24 | uchar(buf[2]) << 16 | uchar(buf[3]) << 8 | uchar(buf[4]);
+		break;
+	default:
+		DBUG_ASSERT(lenlen >= 1 && lenlen <= 4);
+		break;
+	}
+	return len;
+}
+
+/**
+   Uncompress the content in 'buf' with length of 'len'
+
+   Note:
+   1) The 'buf' will be overwrite with the uncompress content. Then the caller should 
+   guarantee the length of 'buf' is enough to hold it.
+   2) 'len' will be set as the length of uncompress content.
+
+   return zero if successful, others otherwise.
+*/
+int statement_uncompress(char *buf, uint32 *len)
+{
+	if((buf[0] & 0x80) == 0)
+	{
+		return 1;
+	}
+
+	uint32 lenlen = buf[0] & 0x07;
+	uint32 buflen;
+	switch(lenlen)
+	{
+	case 1:
+		buflen = uchar(buf[1]);
+		break;
+	case 2:
+		buflen = uchar(buf[1]) << 8 | uchar(buf[2]);
+		break;
+	case 3:
+		buflen = uchar(buf[1]) << 16 | uchar(buf[2]) << 8 | uchar(buf[3]);
+		break;
+	case 4:
+		buflen = uchar(buf[1]) << 24 | uchar(buf[2]) << 16 | uchar(buf[3]) << 8 | uchar(buf[4]);
+		break;
+	default:
+		DBUG_ASSERT(lenlen >= 1 && lenlen <= 4);
+		break;
+	}
+	
+	char *tmp = (char *)my_malloc(buflen, MYF(MY_FAE | MY_WME));
+	if(!tmp)
+	{
+		return 1;
+	}
+
+	if(uncompress((Bytef *)tmp, (uLongf *)&buflen, (const Bytef*)buf + 1 + lenlen, *len) != Z_OK)
+	{
+		my_free(tmp);
+		return 1;
+	}
+
+	memcpy(buf, tmp, buflen);
+	my_free(tmp);
+	*len = buflen;
+	return 0;
 }
 
 #ifndef MYSQL_CLIENT
@@ -2442,15 +2624,29 @@ bool Query_log_event::write(IO_CACHE* file)
   DBUG_ASSERT(status_vars_len <= MAX_SIZE_LOG_EVENT_STATUS);
   int2store(buf + Q_STATUS_VARS_LEN_OFFSET, status_vars_len);
 
+  const char *query_log;
+  uint32 q_log_len;
+  if(should_compress()  && !statement_compress(query, (uchar **)&query_log, q_len, &q_log_len))
+  {
+	flags |= LOG_EVENT_COMPRESSED_F;
+  }
+  else
+  {
+	query_log=query;
+	q_log_len=q_len;
+
+  }
+
   /*
     Calculate length of whole event
     The "1" below is the \0 in the db's length
   */
-  event_length= (uint) (start-buf) + get_post_header_size_for_derived() + db_len + 1 + q_len;
+  event_length= (uint) (start-buf) + get_post_header_size_for_derived() + db_len + 1 + q_log_len;
 
   //return (write_header(file, event_length) ||
   if(opt_binlog_user_ip && !thd->slave_thread)
   {
+	  assert(0);
 	  event_length+= 4 + user_len + ip_host_len;
   }
   bool rflag = 0;
@@ -2468,7 +2664,7 @@ bool Query_log_event::write(IO_CACHE* file)
 	/*
 		don't need to record user and ip in binary log
 	*/
-		rflag = rflag || my_b_safe_write(file, (uchar*) query, q_len);
+		rflag = rflag || my_b_safe_write(file, (uchar*) query_log, q_log_len);
 	}
 	else
 	{
@@ -2476,16 +2672,22 @@ bool Query_log_event::write(IO_CACHE* file)
 		add user and ip into query event
 
 	*/
-		uchar *query_tmp = (uchar*)my_malloc(q_len+1, MYF(MY_WME));
-		memmove(query_tmp, query, q_len);
-		query_tmp[q_len] = 0;
-		rflag = rflag || my_b_safe_write(file, (uchar*) query_tmp, q_len+1);
+	    assert(0);
+		uchar *query_tmp = (uchar*)my_malloc(q_log_len+1, MYF(MY_WME));
+		memmove(query_tmp, query_log, q_log_len);
+		query_tmp[q_log_len] = 0;
+		rflag = rflag || my_b_safe_write(file, (uchar*) query_tmp, q_log_len+1);
 		my_free(query_tmp);
 		rflag = rflag || (my_b_safe_write(file, (uchar*) "\n", 1) ||
 		my_b_safe_write(file, (uchar*) "#", 1) ||
 		my_b_safe_write(file, (uchar*) thd->security_ctx->user, user_len) ||
 		my_b_safe_write(file, (uchar*) "@", 1) ||
 		my_b_safe_write(file, (uchar*) ip_host, ip_host_len));
+	}
+
+	if(flags & LOG_EVENT_COMPRESSED_F)
+	{
+		my_free((void *)query_log);
 	}
 	return rflag ? 1 : 0;
 }
@@ -2558,7 +2760,6 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
   db_len = (db) ? (uint32) strlen(db) : 0;
   if (thd_arg->variables.collation_database != thd_arg->db_charset)
     charset_database_number= thd_arg->variables.collation_database->number;
-  
   /*
     We only replicate over the bits of flags2 that we need: the rest
     are masked out by "& OPTIONS_WRITTEN_TO_BINLOG".
@@ -2963,11 +3164,20 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
       pos= (const uchar*) end;                         // Break loop
     }
   }
-  
+
+  /* calculate the max buff length of statement, and get the real event length*/
+  uint32 q_len_max = data_len - db_len - 1;
+  if(flags & LOG_EVENT_COMPRESSED_F)
+  {
+	uint32 un_len = statement_get_uncompress_len((const char *)end + db_len + 1);
+	data_written = data_written - (data_len - db_len -1) + un_len;
+	q_len_max = un_len > q_len_max ? un_len : q_len_max;
+  }
 #if !defined(MYSQL_CLIENT) && defined(HAVE_QUERY_CACHE)
   if (!(start= data_buf = (Log_event::Byte*) my_malloc(catalog_len + 1 +
                                               time_zone_len + 1 +
-                                              data_len + 1 +
+                                              db_len + 1 +
+											  q_len_max + 1 +
                                               QUERY_CACHE_FLAGS_SIZE +
                                               user.length + 1 +
                                               host.length + 1 +
@@ -2976,7 +3186,8 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
 #else
   if (!(start= data_buf = (Log_event::Byte*) my_malloc(catalog_len + 1 +
                                              time_zone_len + 1 +
-                                             data_len + 1 +
+                                             db_len + 1 +
+											 q_len_max + 1 +
                                              user.length + 1 +
                                              host.length + 1,
                                              MYF(MY_WME))))
@@ -3021,11 +3232,19 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
  // q_len= data_len - db_len -1;
   if(opt_binlog_user_ip)
   {
+    assert(0);
 	q_len= strlen(query);
-   }
+  }
   else
   {
 	q_len= data_len - db_len -1;
+  }
+
+  if (flags & LOG_EVENT_COMPRESSED_F)
+  {
+	statement_uncompress((char *)query, &q_len);
+	((char *)query)[q_len]=0;
+	flags &= (~LOG_EVENT_COMPRESSED_F);
   }
   DBUG_VOID_RETURN;
 }

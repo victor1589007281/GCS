@@ -3812,7 +3812,6 @@ static int queue_binlog_ver_3_event(Master_info *mi, const char *buf,
 {
   const char *errmsg = 0;
   ulong inc_pos;
-  char *tmp_buf = 0;
   Relay_log_info *rli= &mi->rli;
   DBUG_ENTER("queue_binlog_ver_3_event");
 
@@ -3824,7 +3823,6 @@ static int queue_binlog_ver_3_event(Master_info *mi, const char *buf,
     sql_print_error("Read invalid event from master: '%s',\
  master could be corrupt but a more likely cause of this is a bug",
                     errmsg);
-    my_free(tmp_buf);
     DBUG_RETURN(1);
   }
   mysql_mutex_lock(&mi->data_lock);
@@ -3907,6 +3905,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   Relay_log_info *rli= &mi->rli;
   mysql_mutex_t *log_lock= rli->relay_log.get_log_lock();
   ulong s_id;
+  bool compressed_event = false;
   DBUG_ENTER("queue_event");
 
   LINT_INIT(inc_pos);
@@ -4033,7 +4032,18 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
     goto skip_relay_logging;
   }
   break;
-
+  
+  case QUERY_EVENT:
+    inc_pos= event_len;
+	if (uint2korr(buf + FLAGS_OFFSET) & LOG_EVENT_COMPRESSED_F)
+	{
+	  if (query_event_uncompress(mi->rli.relay_log.description_event_for_queue, buf, (char **)&buf, event_len, &event_len))
+	  {
+		goto err;
+	  }
+	  compressed_event = true;
+	}
+	break; 
   default:
     inc_pos= event_len;
     break;
@@ -4119,6 +4129,10 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
 skip_relay_logging:
   
 err:
+  if(compressed_event)
+  {
+	  my_free((void *)buf);
+  }
   mysql_mutex_unlock(&mi->data_lock);
   DBUG_PRINT("info", ("error: %d", error));
   if (error)
