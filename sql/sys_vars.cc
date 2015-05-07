@@ -3046,14 +3046,14 @@ static Sys_var_mybool Sys_spider_auto_increment_mode_switch(
 static Sys_var_uint Sys_spider_auto_increment_mode_value(
 	"spider_auto_increment_mode_value", 
 	"the values, as the auto_increment mode 32. auto_increment add by 32",
-	READ_ONLY GLOBAL_VAR(spider_auto_increment_mode_value), NO_CMD_LINE,
+	READ_ONLY GLOBAL_VAR(spider_auto_increment_mode_value), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(0, 64), DEFAULT(1), BLOCK_SIZE(1));
 
 static Sys_var_uint Sys_spider_auto_increment_step(
 	"spider_auto_increment_step", 
 	"the values set spider auto_increment add by spider_auto_increment_step",
-	READ_ONLY GLOBAL_VAR(spider_auto_increment_step), NO_CMD_LINE,
-	VALID_RANGE(1, 64), DEFAULT(1), BLOCK_SIZE(1));
+	READ_ONLY GLOBAL_VAR(spider_auto_increment_step), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(1, 64), DEFAULT(13), BLOCK_SIZE(1));
 
 
 static Sys_var_mybool Sys_alter_query_log(
