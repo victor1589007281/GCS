@@ -6951,11 +6951,11 @@ int ha_partition::info(uint flag)
 	3，对上述的auto_increment_value值进行处理。需要auto_increment_value的值满足: auto_increment_value%spider_auto_increment_step = spider_auto_increment_mode_value。
 		且auto_increment_value不能出现过。
 ***************************************/
-		if(spider_auto_increment_mode_switch && is_spider_storage_engine())
-		{// 打开开头，默认打开的。也是read only
-			auto_increment_value = (auto_increment_value + spider_auto_increment_step - spider_auto_increment_mode_value)/spider_auto_increment_step*spider_auto_increment_step 
-									+ spider_auto_increment_mode_value;
-		}
+//		if(spider_auto_increment_mode_switch && is_spider_storage_engine())
+//		{// 打开开头，默认打开的。也是read only
+//			auto_increment_value = (auto_increment_value + spider_auto_increment_step - spider_auto_increment_mode_value)/spider_auto_increment_step*spider_auto_increment_step 
+//									+ spider_auto_increment_mode_value;
+//		}
         //DBUG_ASSERT(auto_increment_value);
         stats.auto_increment_value= auto_increment_value;
         if (auto_inc_is_first_in_idx)
@@ -8848,10 +8848,26 @@ void ha_partition::get_auto_increment(ulonglong offset, ulonglong increment,
       auto_increment_safe_stmt_log_lock= TRUE;
     }
 
+/****************************************
+	特殊处理获取的auto_increment_value值
+	1，如上，只有table_share->ha_part_data->next_auto_inc_val == 0，即重启过mysql或有过flush tables，这个值会被置0，
+	    则需要重新从remote db获取最大值;
+	2，如果table_share->ha_part_data->next_auto_inc_val不为0，则auto_increment_value为table_share->ha_part_data->next_auto_inc_val。
+	3，对上述的auto_increment_value值进行处理。需要auto_increment_value的值满足: auto_increment_value%spider_auto_increment_step = spider_auto_increment_mode_value。
+		且auto_increment_value不能出现过。
+***************************************/
+	if(spider_auto_increment_mode_switch && is_spider_storage_engine())
+	{// 打开开头，默认打开的。也是read only
+		table_share->ha_part_data->next_auto_inc_val = (table_share->ha_part_data->next_auto_inc_val + spider_auto_increment_step - spider_auto_increment_mode_value)/spider_auto_increment_step*spider_auto_increment_step 
+			+ spider_auto_increment_mode_value;
+	}
+
     /* this gets corrected (for offset/increment) in update_auto_increment */
-    *first_value= table_share->ha_part_data->next_auto_inc_val;
-    table_share->ha_part_data->next_auto_inc_val+=
-                                              nb_desired_values * increment;
+    *first_value = table_share->ha_part_data->next_auto_inc_val;
+	if(spider_auto_increment_mode_switch && is_spider_storage_engine())
+		table_share->ha_part_data->next_auto_inc_val += 1;
+	else
+	    table_share->ha_part_data->next_auto_inc_val += nb_desired_values * increment;
 
     unlock_auto_increment();
     DBUG_PRINT("info", ("*first_value: %lu", (ulong) *first_value));
