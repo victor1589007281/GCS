@@ -4125,7 +4125,10 @@ int ha_partition::end_bulk_insert()
       error= tmp;
 	  if(spider_auto_increment_mode_switch && is_spider_storage_engine())
 	  {// 如果执行出错，则将next_auto_inc_val值为0，下次读取remote的最大值。
+		  lock_auto_increment();
 		  table_share->ha_part_data->next_auto_inc_val = 0;
+		  table_share->ha_part_data->auto_inc_initialized= FALSE;
+		  unlock_auto_increment();
 	  }
 	}
   }
