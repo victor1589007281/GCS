@@ -2740,7 +2740,7 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
    lc_time_names_number(thd_arg->variables.lc_time_names->number),
    charset_database_number(0),
    table_map_for_update((ulonglong)thd_arg->table_map_for_update),
-   master_data_written(0)
+   master_data_written(0),compress_flags(thd_arg->binlog_compress_flags)
 {
   time_t end_time;
 

@@ -5410,6 +5410,7 @@ void THD::reset_for_next_command()
 
   thd->reset_current_stmt_binlog_format_row();
   thd->binlog_unsafe_warning_flags= 0;
+  thd->binlog_compress_flags = 0;
   thd->variables.spider_sql_use_partition_count = 0;
 
   //for spider 

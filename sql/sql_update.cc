@@ -953,6 +953,7 @@ int mysql_update(THD *thd,
             else
                 errcode= query_error_code(thd, killed_status == THD::NOT_KILLED);
 
+			setup_binlog_compress_flags(thd, table);
             if (thd->binlog_query(THD::ROW_QUERY_TYPE,
                 thd->query(), thd->query_length(),
                 transactional_table, FALSE, FALSE, errcode))

@@ -1718,7 +1718,8 @@ public:
 
   Query_log_event(THD* thd_arg, const char* query_arg, ulong query_length,
                   bool using_trans, bool direct, bool suppress_use, int error);
-  bool should_compress() { return true; }
+  uint compress_flags;
+  bool should_compress() { return opt_bin_log_compress && compress_flags && q_len>= 256; }
   const char* get_db() { return db; }
 #ifdef HAVE_REPLICATION
   void pack_info(Protocol* protocol);
