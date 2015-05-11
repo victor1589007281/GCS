@@ -498,6 +498,14 @@ struct sql_ex_info
 #define LOG_EVENT_RELAY_LOG_F 0x40
 
 /**
+   @def LOG_EVENT_COMPRESSED_F
+
+   This flag indicate that the binlog has been compressed. It is only
+   meaningful in Query log temporarily.
+*/
+#define LOG_EVENT_COMPRESSED_F 0x8000
+
+/**
   @def OPTIONS_WRITTEN_TO_BIN_LOG
 
   OPTIONS_WRITTEN_TO_BIN_LOG are the bits of thd->options which must
@@ -1710,6 +1718,8 @@ public:
 
   Query_log_event(THD* thd_arg, const char* query_arg, ulong query_length,
                   bool using_trans, bool direct, bool suppress_use, int error);
+  uint compress_flags;
+  bool should_compress() { return opt_bin_log_compress && compress_flags && q_len>= 256; }
   const char* get_db() { return db; }
 #ifdef HAVE_REPLICATION
   void pack_info(Protocol* protocol);
@@ -4084,6 +4094,14 @@ private:
 
 int append_query_string(THD *thd, CHARSET_INFO *csinfo,
                         String const *from, String *to);
+
+
+int statement_compress(const char *src, char **dst, uint32 len, uint32 *comlen);
+int statement_uncompress(char *buf, uint32 *len);
+uint32 statement_get_uncompress_len(const char *buf);
+
+int query_event_uncompress(const Format_description_log_event *description_event,
+						   const char *src, char **dst, ulong len, ulong *newlen);
 
 /**
   @} (end of group Replication)
