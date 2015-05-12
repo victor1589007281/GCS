@@ -8857,15 +8857,15 @@ void ha_partition::get_auto_increment(ulonglong offset, ulonglong increment,
 		且auto_increment_value不能出现过。
 ***************************************/
 	if(spider_auto_increment_mode_switch && is_spider_storage_engine())
-	{// 打开开头，默认打开的。也是read only
-		table_share->ha_part_data->next_auto_inc_val = (table_share->ha_part_data->next_auto_inc_val + spider_auto_increment_step - spider_auto_increment_mode_value)/spider_auto_increment_step*spider_auto_increment_step 
+	{// 打开开头，默认打开的。也是read only。  大于或者等于当前值的符合条件的值。
+		table_share->ha_part_data->next_auto_inc_val = (table_share->ha_part_data->next_auto_inc_val + spider_auto_increment_step - spider_auto_increment_mode_value-1)/spider_auto_increment_step*spider_auto_increment_step 
 			+ spider_auto_increment_mode_value;
 	}
 
     /* this gets corrected (for offset/increment) in update_auto_increment */
     *first_value = table_share->ha_part_data->next_auto_inc_val;
 	if(spider_auto_increment_mode_switch && is_spider_storage_engine())
-		table_share->ha_part_data->next_auto_inc_val += 1;
+		table_share->ha_part_data->next_auto_inc_val += nb_desired_values * spider_auto_increment_step;
 	else
 	    table_share->ha_part_data->next_auto_inc_val += nb_desired_values * increment;
 

@@ -2517,12 +2517,19 @@ int handler::read_first_row(uchar * buf, uint primary_key)
   @verbatim 1,5,15,25,35,... @endverbatim
 */
 inline ulonglong
-compute_next_insert_id(ulonglong nr,struct system_variables *variables)
+compute_next_insert_id(handler *hd, ulonglong nr,struct system_variables *variables)
 {
   const ulonglong save_nr= nr;
-
-  if (variables->auto_increment_increment == 1)
+  if(spider_auto_increment_mode_switch && hd->is_spider_storage_engine())
+  {// 打开开头，默认打开的。也是read only
+   // 此处计算下一个 nr 值，因此，不用-1.   是大于当前的符合条件的值。
+	  nr = (nr + spider_auto_increment_step - spider_auto_increment_mode_value)/spider_auto_increment_step*spider_auto_increment_step 
+		  + spider_auto_increment_mode_value;
+  }
+  else if (variables->auto_increment_increment == 1)
+  {
     nr= nr + 1; // optimization of the formula below
+  }
   else
   {
     nr= (((nr+ variables->auto_increment_increment -
@@ -2547,7 +2554,7 @@ void handler::adjust_next_insert_id_after_explicit_value(ulonglong nr)
     THD::next_insert_id to be greater than the explicit value.
   */
   if ((next_insert_id > 0) && (nr >= next_insert_id))
-    set_next_insert_id(compute_next_insert_id(nr, &table->in_use->variables));
+    set_next_insert_id(compute_next_insert_id(this, nr, &table->in_use->variables));
 }
 
 
@@ -2757,7 +2764,10 @@ int handler::update_auto_increment()
         if it did we cannot do anything about it (calling the engine again
         will not help as we inserted no row).
       */
-      nr= compute_next_insert_id(nr-1, variables);
+	  if(!(spider_auto_increment_mode_switch && is_spider_storage_engine()))
+	  {// 在spider逻辑中不走此逻辑
+	      nr= compute_next_insert_id(this, nr-1, variables);
+	  }
     }
 
     if (table->s->next_number_keypart == 0)
@@ -2804,14 +2814,22 @@ int handler::update_auto_increment()
   }
   if (append)
   {
-    auto_inc_interval_for_cur_row.replace(nr, nb_reserved_values,
-                                          variables->auto_increment_increment);
-    auto_inc_intervals_count++;
-    /* Row-based replication does not need to store intervals in binlog */
-    if (mysql_bin_log.is_open() && !thd->is_current_stmt_binlog_format_row())
-        thd->auto_inc_intervals_in_cur_stmt_for_binlog.append(auto_inc_interval_for_cur_row.minimum(),
-                                                              auto_inc_interval_for_cur_row.values(),
-                                                              variables->auto_increment_increment);
+	  if((spider_auto_increment_mode_switch && is_spider_storage_engine()))
+	  {// 在spider逻辑中不走此逻辑
+		  auto_inc_interval_for_cur_row.replace(nr, nb_reserved_values,
+			  spider_auto_increment_step);
+	  }
+	  else
+	  {
+		  auto_inc_interval_for_cur_row.replace(nr, nb_reserved_values,
+			  variables->auto_increment_increment);
+	  }
+	  auto_inc_intervals_count++;
+	  /* Row-based replication does not need to store intervals in binlog */
+	  if (mysql_bin_log.is_open() && !thd->is_current_stmt_binlog_format_row())
+		  thd->auto_inc_intervals_in_cur_stmt_for_binlog.append(auto_inc_interval_for_cur_row.minimum(),
+		  auto_inc_interval_for_cur_row.values(),
+		  variables->auto_increment_increment);
   }
 
   /*
@@ -2826,7 +2844,7 @@ int handler::update_auto_increment()
     Set next insert id to point to next auto-increment value to be able to
     handle multi-row statements.
   */
-  set_next_insert_id(compute_next_insert_id(nr, variables));
+  set_next_insert_id(compute_next_insert_id(this, nr, variables));
 
   DBUG_RETURN(0);
 }

@@ -1188,8 +1188,16 @@ private:
     lock_auto_increment();
     DBUG_ASSERT(table_share->ha_part_data->auto_inc_initialized == TRUE);
     /* must check when the mutex is taken */
-    if (nr >= table_share->ha_part_data->next_auto_inc_val)
-      table_share->ha_part_data->next_auto_inc_val= nr + 1;
+	if (nr >= table_share->ha_part_data->next_auto_inc_val)
+	{
+		if(spider_auto_increment_mode_switch && is_spider_storage_engine())
+		{
+			table_share->ha_part_data->next_auto_inc_val = (nr + spider_auto_increment_step - spider_auto_increment_mode_value)/spider_auto_increment_step*spider_auto_increment_step 
+				+ spider_auto_increment_mode_value;
+		}
+		else
+			table_share->ha_part_data->next_auto_inc_val= nr + 1;
+	}
     unlock_auto_increment();
   }
 

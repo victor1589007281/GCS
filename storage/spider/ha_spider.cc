@@ -7908,10 +7908,10 @@ int ha_spider::info(
 		) {
 			if (flag & HA_STATUS_AUTO)
 			{
-				if (share->auto_increment_value)
-					stats.auto_increment_value = share->auto_increment_value;
-				else
-					stats.auto_increment_value = 1;
+				// if (share->auto_increment_value)
+				//		stats.auto_increment_value = share->auto_increment_value;
+				// else
+				stats.auto_increment_value = 0;
 			}
 			DBUG_RETURN(0);
 	}
