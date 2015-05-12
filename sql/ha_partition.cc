@@ -6928,12 +6928,8 @@ int ha_partition::info(uint flag)
 					set_if_bigger(auto_increment_value,	file->stats.auto_increment_value);
 				}
 				else
-				{// TODO, 考虑下指定值时此处的逻辑。
-					if(table->next_number_field->val_int() != 0)
-						// 如果自增列的值有指定， 则auto_increment_value为0
-						auto_increment_value = 0;
-					else
-						auto_increment_value = table_share->ha_part_data->next_auto_inc_val;
+				{
+					auto_increment_value = table_share->ha_part_data->next_auto_inc_val;
 				}
 			}
 			else

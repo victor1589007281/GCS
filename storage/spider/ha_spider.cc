@@ -8037,7 +8037,7 @@ int ha_spider::info(
 				if (
 					tmp_auto_increment_mode == 0 &&
 					!(
-					table->next_number_field->val_int() != 0 ||
+				//	table->next_number_field->val_int() != 0 ||
 					(table->auto_increment_field_not_null &&
 					thd->variables.sql_mode & MODE_NO_AUTO_VALUE_ON_ZERO)
 					)
