@@ -4039,6 +4039,8 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
 	{
 	  if (query_event_uncompress(mi->rli.relay_log.description_event_for_queue, buf, (char **)&buf, event_len, &event_len))
 	  {
+        /* uncompress query event failed  */
+        error= ER_BINLOG_UNCOMPRESS_ERROR;
 		goto err;
 	  }
 	  compressed_event = true;

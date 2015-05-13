@@ -591,38 +591,42 @@ int statement_compress(const char *src, uchar **dst, uint32 len, uint32 *comlen)
 		return 1;
 	}
 
-	uchar lenlen = bool(len & 0xff) + bool(len & 0xff00) + bool(len & 0xff0000) + bool(len & 0xff000000);
-	(*dst)[0] = 0x80 | (lenlen & 0x07);
-	switch(lenlen){
-	case 1:
-		(*dst)[1] = uchar(len);
-		break;
-	case 2:
-		(*dst)[1] = uchar(len >> 8);
-		(*dst)[2] = uchar(len);
-		break;
-	case 3:
-		(*dst)[1] = uchar(len >> 16);
-		(*dst)[2] = uchar(len >> 8);
-		(*dst)[3] = uchar(len);
-		break;
-	case 4:
+    uchar lenlen;
+    if (len & 0xff000000)
+    {
 		(*dst)[1] = uchar(len >> 24);
 		(*dst)[2] = uchar(len >> 16);
 		(*dst)[3] = uchar(len >> 8);
 		(*dst)[4] = uchar(len);
-		break;
-	default:
-		return 1;
-	}
+        lenlen = 4;
+    }
+    else if (len & 0x00FF0000)
+    {
+		(*dst)[1] = uchar(len >> 16);
+		(*dst)[2] = uchar(len >> 8);
+		(*dst)[3] = uchar(len);
+        lenlen = 3;
+    }
+    else if (len & 0x0000ff00)
+    {
+		(*dst)[1] = uchar(len >> 8);
+		(*dst)[2] = uchar(len);
+        lenlen = 2;
+    }
+    else 
+    {
+		(*dst)[1] = uchar(len);
+        lenlen = 1;
+    }
+	(*dst)[0] = 0x80 | (lenlen & 0x07);
 
-	*comlen = buflen - 1 - lenlen - 1;
-	if (compress((Bytef *)(*dst) + 1 + lenlen, (uLongf *)comlen, (const Bytef *)src, (uLongf)len) != Z_OK)
+    uLongf tmplen = (uLongf)buflen - 1 - lenlen - 1;
+	if (compress((Bytef *)(*dst) + 1 + lenlen, &tmplen, (const Bytef *)src, (uLongf)len) != Z_OK)
 	{
 		my_free(*dst);
 		return 1;
 	}
-	*comlen += 1 + lenlen;
+	*comlen = (uint32)tmplen + 1 + lenlen;
 	return 0;
 }
 
@@ -720,7 +724,7 @@ int statement_uncompress(char *buf, uint32 *len)
 	}
 
 	uint32 lenlen = buf[0] & 0x07;
-	uint32 buflen;
+	uLongf buflen;
 	switch(lenlen)
 	{
 	case 1:
@@ -746,7 +750,7 @@ int statement_uncompress(char *buf, uint32 *len)
 		return 1;
 	}
 
-	if(uncompress((Bytef *)tmp, (uLongf *)&buflen, (const Bytef*)buf + 1 + lenlen, *len) != Z_OK)
+	if(uncompress((Bytef *)tmp, &buflen, (const Bytef*)buf + 1 + lenlen, *len) != Z_OK)
 	{
 		my_free(tmp);
 		return 1;
@@ -754,7 +758,7 @@ int statement_uncompress(char *buf, uint32 *len)
 
 	memcpy(buf, tmp, buflen);
 	my_free(tmp);
-	*len = buflen;
+	*len = (uint32)buflen;
 	return 0;
 }
 
@@ -3242,7 +3246,7 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
 
   if (flags & LOG_EVENT_COMPRESSED_F)
   {
-	statement_uncompress((char *)query, &q_len);
+	assert(!statement_uncompress((char *)query, &q_len));
 	((char *)query)[q_len]=0;
 	flags &= (~LOG_EVENT_COMPRESSED_F);
   }
