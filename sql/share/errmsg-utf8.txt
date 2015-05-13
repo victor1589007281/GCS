@@ -6520,6 +6520,10 @@ ER_COLUMN_CAN_NOT_CHARSET_IN_CURRENT_STORAGE
 
 ER_COLUMN_CAN_NOT_AUTOINCREMENT_IN_CURRENT_STORAGE
   eng "Field '%-.192s' can not set auto_increment for column in this storage"
+
+ER_BINLOG_UNCOMPRESS_ERROR
+  eng "uncompress the compressed binlog failed"
+
 #
 #  End of 5.5 error messages.
 #

@@ -1002,7 +1002,7 @@ static Sys_var_mybool Sys_log_bin(
 
 static Sys_var_mybool Sys_log_bin_compress(
        "log_bin_compress", "Whether the binary log can be compressed",
-       GLOBAL_VAR(opt_bin_log_compress), NO_CMD_LINE, DEFAULT(FALSE));
+       GLOBAL_VAR(opt_bin_log_compress), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 static Sys_var_mybool Sys_trust_function_creators(
        "log_bin_trust_function_creators",
