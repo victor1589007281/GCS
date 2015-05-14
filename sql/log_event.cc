@@ -578,57 +578,75 @@ char *str_to_hex(char *to, const char *from, uint len)
 }
 
 /**
-   Compress a sql statement from 'src' to 'dst', the size after compress
-   stored in 'comlen'. The caller should call my_free to release 'dst'.
+  Get the length of compress content.
+*/
+
+uint32 statement_get_compress_len(uint32 len)
+{
+	/* 5 for the begin content, 1 reserved for a '\0'*/
+    return 5 + compressBound(len) + 1;
+}
+
+/**
+   Compress a sql statement from 'src' to 'dst'.
+
+   Note: 1) Then the caller should guarantee the length of 'dst', which
+      can be got by statement_get_uncompress_len, is enough to hold
+      the content uncompressed.
+         2) The 'comlen' should stored the length of 'dst', and it will
+      be set as the size of compressed content after return.
+
    return zero if successful, others otherwise.
 */
-int statement_compress(const char *src, uchar **dst, uint32 len, uint32 *comlen)
+int statement_compress(const char *src, char *dst, uint32 len, uint32 *comlen)
 {
-	/* 5 for the begin content*/
-	size_t buflen = 5 + compressBound(len);
-	*dst = (uchar *)my_malloc(buflen, MYF(MY_FAE | MY_WME));
-	if (!dst) {
-		return 1;
-	}
-
     uchar lenlen;
     if (len & 0xff000000)
     {
-		(*dst)[1] = uchar(len >> 24);
-		(*dst)[2] = uchar(len >> 16);
-		(*dst)[3] = uchar(len >> 8);
-		(*dst)[4] = uchar(len);
+		dst[1] = uchar(len >> 24);
+		dst[2] = uchar(len >> 16);
+		dst[3] = uchar(len >> 8);
+		dst[4] = uchar(len);
         lenlen = 4;
     }
     else if (len & 0x00FF0000)
     {
-		(*dst)[1] = uchar(len >> 16);
-		(*dst)[2] = uchar(len >> 8);
-		(*dst)[3] = uchar(len);
+		dst[1] = uchar(len >> 16);
+		dst[2] = uchar(len >> 8);
+		dst[3] = uchar(len);
         lenlen = 3;
     }
     else if (len & 0x0000ff00)
     {
-		(*dst)[1] = uchar(len >> 8);
-		(*dst)[2] = uchar(len);
+		dst[1] = uchar(len >> 8);
+		dst[2] = uchar(len);
         lenlen = 2;
     }
     else 
     {
-		(*dst)[1] = uchar(len);
+		dst[1] = uchar(len);
         lenlen = 1;
     }
-	(*dst)[0] = 0x80 | (lenlen & 0x07);
+	dst[0] = 0x80 | (lenlen & 0x07);
 
-    uLongf tmplen = (uLongf)buflen - 1 - lenlen - 1;
-	if (compress((Bytef *)(*dst) + 1 + lenlen, &tmplen, (const Bytef *)src, (uLongf)len) != Z_OK)
+    uLongf tmplen = (uLongf)*comlen - 1 - lenlen - 1;
+	if (compress((Bytef *)dst + 1 + lenlen, &tmplen, (const Bytef *)src, (uLongf)len) != Z_OK)
 	{
-		my_free(*dst);
 		return 1;
 	}
 	*comlen = (uint32)tmplen + 1 + lenlen;
 	return 0;
 }
+
+/**
+   Uncompress a query event from 'src' to 'dst'(malloced inside), the size
+   after compress stored in 'newlen'. 
+
+   @Warning:
+      1)The caller should call my_free to release 'dst'.
+
+   return zero if successful, others otherwise.
+*/
 
 int query_event_uncompress(const Format_description_log_event *description_event,
 						   const char *src, char **dst, ulong len, ulong *newlen)
@@ -651,15 +669,15 @@ int query_event_uncompress(const Format_description_log_event *description_event
 	uint32 un_len = statement_get_uncompress_len(tmp);
 	*newlen = (len - un_len < (tmp - src) || un_len > len) ? (tmp - src) + un_len : len;
 
-	*dst = (char *)my_malloc(*newlen , MYF(MY_FAE | MY_WME));
+	*dst = (char *)my_malloc(*newlen , MYF(MY_FAE));
 	if (!*dst)
 	{
 		return 1;
 	}
 
-	memcpy(*dst, src , len);
-	un_len = len - (tmp - src);
-	if (statement_uncompress(*dst + (tmp - src), &un_len))
+    /* copy the head*/
+	memcpy(*dst, src , tmp - src);
+	if (statement_uncompress(tmp, *dst + (tmp - src), len - (tmp - src), &un_len))
 	{
 		my_free(*dst);
 		return 1;
@@ -707,58 +725,31 @@ uint32 statement_get_uncompress_len(const char *buf)
 }
 
 /**
-   Uncompress the content in 'buf' with length of 'len'
+   Uncompress the content in 'src' with length of 'len' to 'dst'.
 
-   Note:
-   1) The 'buf' will be overwrite with the uncompress content. Then the caller should 
-   guarantee the length of 'buf' is enough to hold it.
-   2) 'len' will be set as the length of uncompress content.
+   Note: 1) Then the caller should guarantee the length of 'dst' (which
+      can be got by statement_get_uncompress_len) is enough to hold
+      the content uncompressed.
+         2) The 'newlen' should stored the length of 'dst', and it will
+      be set as the size of uncompressed content after return.
 
    return zero if successful, others otherwise.
 */
-int statement_uncompress(char *buf, uint32 *len)
+int statement_uncompress(const char *src, char *dst, uint32 len, uint32 *newlen)
 {
-	if((buf[0] & 0x80) == 0)
+	if((src[0] & 0x80) == 0)
 	{
 		return 1;
 	}
 
-	uint32 lenlen = buf[0] & 0x07;
-	uLongf buflen;
-	switch(lenlen)
-	{
-	case 1:
-		buflen = uchar(buf[1]);
-		break;
-	case 2:
-		buflen = uchar(buf[1]) << 8 | uchar(buf[2]);
-		break;
-	case 3:
-		buflen = uchar(buf[1]) << 16 | uchar(buf[2]) << 8 | uchar(buf[3]);
-		break;
-	case 4:
-		buflen = uchar(buf[1]) << 24 | uchar(buf[2]) << 16 | uchar(buf[3]) << 8 | uchar(buf[4]);
-		break;
-	default:
-		DBUG_ASSERT(lenlen >= 1 && lenlen <= 4);
-		break;
-	}
-	
-	char *tmp = (char *)my_malloc(buflen, MYF(MY_FAE | MY_WME));
-	if(!tmp)
+	uint32 lenlen = src[0] & 0x07;
+    uLongf buflen  = *newlen;
+	if(uncompress((Bytef *)dst, &buflen, (const Bytef*)src + 1 + lenlen, len) != Z_OK)
 	{
 		return 1;
 	}
 
-	if(uncompress((Bytef *)tmp, &buflen, (const Bytef*)buf + 1 + lenlen, *len) != Z_OK)
-	{
-		my_free(tmp);
-		return 1;
-	}
-
-	memcpy(buf, tmp, buflen);
-	my_free(tmp);
-	*len = (uint32)buflen;
+	*newlen = (uint32)buflen;
 	return 0;
 }
 
@@ -2630,9 +2621,20 @@ bool Query_log_event::write(IO_CACHE* file)
 
   const char *query_log;
   uint32 q_log_len;
-  if(should_compress()  && !statement_compress(query, (uchar **)&query_log, q_len, &q_log_len))
+  if(should_compress()) 
   {
-	flags |= LOG_EVENT_COMPRESSED_F;
+    q_log_len = statement_get_compress_len(q_len);
+    query_log = (const char *)my_malloc(q_log_len, MYF(MY_FAE));
+    if(query_log && !statement_compress(query, (char *)query_log, q_len, &q_log_len))
+    {
+	  flags |= LOG_EVENT_COMPRESSED_F;
+    }
+    else
+    {
+      my_free((void *)query_log);
+	  query_log=query;
+	  q_log_len=q_len;
+    }
   }
   else
   {
@@ -3170,10 +3172,10 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
   }
 
   /* calculate the max buff length of statement, and get the real event length*/
-  uint32 q_len_max = data_len - db_len - 1;
+  uint32 un_len,q_len_max = data_len - db_len - 1;
   if(flags & LOG_EVENT_COMPRESSED_F)
   {
-	uint32 un_len = statement_get_uncompress_len((const char *)end + db_len + 1);
+	un_len = statement_get_uncompress_len((const char *)end + db_len + 1);
 	data_written = data_written - (data_len - db_len -1) + un_len;
 	q_len_max = un_len > q_len_max ? un_len : q_len_max;
   }
@@ -3229,27 +3231,30 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
   */
 
   /* A 2nd variable part; this is common to all versions */ 
-  memcpy((char*) start, end, data_len);          // Copy db and query
-  start[data_len]= '\0';              // End query with \0 (For safetly)
+  memcpy((char*) start, end, db_len + 1);          // Copy db, the query can be compressed, so copy it latter.
   db= (char *)start;
+  end += db_len + 1;
+
   query= (char *)(start + db_len + 1);
- // q_len= data_len - db_len -1;
-  if(opt_binlog_user_ip)
-  {
-    assert(0);
-	q_len= strlen(query);
-  }
-  else
-  {
-	q_len= data_len - db_len -1;
-  }
+  q_len= data_len - db_len -1;
 
   if (flags & LOG_EVENT_COMPRESSED_F)
   {
-	assert(!statement_uncompress((char *)query, &q_len));
-	((char *)query)[q_len]=0;
-	flags &= (~LOG_EVENT_COMPRESSED_F);
+	if(!statement_uncompress((const char *)end, (char *)query, q_len, &un_len))
+    {
+      q_len = un_len;
+	  flags &= (~LOG_EVENT_COMPRESSED_F);
+    }
+    else
+    {
+      memcpy((char *)start + db_len + 1, end, q_len);
+    }
   }
+  else
+  {
+      memcpy((char *)start + db_len + 1, end, q_len);
+  }
+  ((char *)query)[q_len]=0;    // End query with \0 (For safetly)
   DBUG_VOID_RETURN;
 }
 

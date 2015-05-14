@@ -4037,13 +4037,16 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
     inc_pos= event_len;
 	if (uint2korr(buf + FLAGS_OFFSET) & LOG_EVENT_COMPRESSED_F)
 	{
-	  if (query_event_uncompress(mi->rli.relay_log.description_event_for_queue, buf, (char **)&buf, event_len, &event_len))
+      char *tmpbuf;
+	  if (!query_event_uncompress(mi->rli.relay_log.description_event_for_queue, buf, &tmpbuf, event_len, &event_len))
 	  {
-        /* uncompress query event failed  */
-        error= ER_BINLOG_UNCOMPRESS_ERROR;
-		goto err;
+        buf = tmpbuf;
+	    compressed_event = true;
 	  }
-	  compressed_event = true;
+      else
+      {
+        event_len = inc_pos;
+      }
 	}
 	break; 
   default:
