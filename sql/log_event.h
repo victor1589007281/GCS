@@ -4096,8 +4096,9 @@ int append_query_string(THD *thd, CHARSET_INFO *csinfo,
                         String const *from, String *to);
 
 
-int statement_compress(const char *src, char **dst, uint32 len, uint32 *comlen);
-int statement_uncompress(char *buf, uint32 *len);
+int statement_compress(const char *src, char *dst, uint32 len, uint32 *comlen);
+int statement_uncompress(const char *src, char *dst, uint32 len, uint32 *newlen);
+uint32 statement_get_compress_len(uint32 len);
 uint32 statement_get_uncompress_len(const char *buf);
 
 int query_event_uncompress(const Format_description_log_event *description_event,
