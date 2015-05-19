@@ -639,8 +639,9 @@ int statement_compress(const char *src, char *dst, uint32 len, uint32 *comlen)
 }
 
 /**
-   Uncompress a query event from 'src' to 'dst'(malloced inside), the size
-   after compress stored in 'newlen'. 
+   Convert a query_compressed_log_event to query_log_event
+   from 'src' to 'dst'(malloced inside), the size after compress
+   stored in 'newlen'. 
 
    @Warning:
       1)The caller should call my_free to release 'dst'.
@@ -651,13 +652,10 @@ int statement_compress(const char *src, char *dst, uint32 len, uint32 *comlen)
 int query_event_uncompress(const Format_description_log_event *description_event,
 						   const char *src, char **dst, ulong len, ulong *newlen)
 {
-	ulong data_len;
 	const char *tmp = src;
 
-	uint16 flags = uint2korr(src + FLAGS_OFFSET);
-
 	uint8 common_header_len= description_event->common_header_len;
-	uint8 post_header_len= description_event->post_header_len[QUERY_EVENT-1];
+	uint8 post_header_len= description_event->post_header_len[QUERY_COMPRESSED_EVENT-1];
 
 	tmp += common_header_len;
 
@@ -684,8 +682,7 @@ int query_event_uncompress(const Format_description_log_event *description_event
 	}
 
 	*newlen = (tmp - src) + un_len;
-
-	int2store(*dst + FLAGS_OFFSET, flags & (~LOG_EVENT_COMPRESSED_F));
+    (*dst)[EVENT_TYPE_OFFSET] = QUERY_EVENT;
 	int4store(*dst + EVENT_LEN_OFFSET, *newlen);
 	return 0;
 }
@@ -702,7 +699,7 @@ uint32 statement_get_uncompress_len(const char *buf)
 	}
 
 	uint32 lenlen = buf[0] & 0x07;
-	uint32 len;
+	uint32 len = 0;
 	switch(lenlen)
 	{
 	case 1:
@@ -864,6 +861,7 @@ const char* Log_event::get_type_str(Log_event_type type)
   case BEGIN_LOAD_QUERY_EVENT: return "Begin_load_query";
   case EXECUTE_LOAD_QUERY_EVENT: return "Execute_load_query";
   case INCIDENT_EVENT: return "Incident";
+  case QUERY_COMPRESSED_EVENT: return "Query_compressed";
   default: return "Unknown";				/* impossible */
   }
 }
@@ -1433,6 +1431,9 @@ Log_event* Log_event::read_log_event(const char* buf, uint event_len,
     switch(event_type) {
     case QUERY_EVENT:
       ev  = new Query_log_event(buf, event_len, description_event, QUERY_EVENT);
+      break;
+    case QUERY_COMPRESSED_EVENT:
+      ev  = new Query_compressed_log_event(buf, event_len, description_event, QUERY_COMPRESSED_EVENT);
       break;
     case LOAD_EVENT:
       ev = new Load_log_event(buf, event_len, description_event);
@@ -2389,7 +2390,7 @@ static void write_str_with_code_and_len(uchar **dst, const char *src,
     will print!
 */
 
-bool Query_log_event::write(IO_CACHE* file)
+bool Query_log_event::write_real(IO_CACHE* file, const char *query, uint32 q_len)
 {
   uchar buf[QUERY_HEADER_LEN + MAX_SIZE_LOG_EVENT_STATUS];
   uchar *start, *start_of_status;
@@ -2619,83 +2620,38 @@ bool Query_log_event::write(IO_CACHE* file)
   DBUG_ASSERT(status_vars_len <= MAX_SIZE_LOG_EVENT_STATUS);
   int2store(buf + Q_STATUS_VARS_LEN_OFFSET, status_vars_len);
 
-  const char *query_log;
-  uint32 q_log_len;
-  if(should_compress()) 
-  {
-    q_log_len = statement_get_compress_len(q_len);
-    query_log = (const char *)my_malloc(q_log_len, MYF(MY_FAE));
-    if(query_log && !statement_compress(query, (char *)query_log, q_len, &q_log_len))
-    {
-	  flags |= LOG_EVENT_COMPRESSED_F;
-    }
-    else
-    {
-      my_free((void *)query_log);
-	  query_log=query;
-	  q_log_len=q_len;
-    }
-  }
-  else
-  {
-	query_log=query;
-	q_log_len=q_len;
-
-  }
-
   /*
     Calculate length of whole event
     The "1" below is the \0 in the db's length
   */
-  event_length= (uint) (start-buf) + get_post_header_size_for_derived() + db_len + 1 + q_log_len;
+  event_length= (uint) (start-buf) + get_post_header_size_for_derived() + db_len + 1 + q_len;
 
-  //return (write_header(file, event_length) ||
-  if(opt_binlog_user_ip && !thd->slave_thread)
-  {
-	  assert(0);
-	  event_length+= 4 + user_len + ip_host_len;
-  }
-  bool rflag = 0;
-  rflag = (write_header(file, event_length) ||
+  return (write_header(file, event_length) ||
           my_b_safe_write(file, (uchar*) buf, QUERY_HEADER_LEN) ||
           write_post_header_for_derived(file) ||
           my_b_safe_write(file, (uchar*) start_of_status,
                           (uint) (start-start_of_status)) ||
-//          my_b_safe_write(file, (db) ? (uchar*) db : (uchar*)"", db_len + 1) ||
-//          my_b_safe_write(file, (uchar*) query, q_len)) ? 1 : 0;
-			my_b_safe_write(file, (db) ? (uchar*) db : (uchar*)"", db_len + 1));
+          my_b_safe_write(file, (db) ? (uchar*) db : (uchar*)"", db_len + 1) ||
+          my_b_safe_write(file, (uchar*) query, q_len)) ? 1 : 0;
+}
 
-	if(!opt_binlog_user_ip || thd->slave_thread)
+bool Query_log_event::write(IO_CACHE* file)
+{
+    return write_real(file, query, q_len);
+}
+
+bool Query_compressed_log_event::write(IO_CACHE* file)
+{
+    uint32 q_log_len = statement_get_compress_len(q_len);
+    char *query_log = (char *)my_malloc(q_log_len, MYF(MY_FAE));
+    if(!query_log || statement_compress(query, query_log, q_len, &q_log_len))
     {
-	/*
-		don't need to record user and ip in binary log
-	*/
-		rflag = rflag || my_b_safe_write(file, (uchar*) query_log, q_log_len);
-	}
-	else
-	{
-	/*
-		add user and ip into query event
+        return 1;
+    }
 
-	*/
-	    assert(0);
-		uchar *query_tmp = (uchar*)my_malloc(q_log_len+1, MYF(MY_WME));
-		memmove(query_tmp, query_log, q_log_len);
-		query_tmp[q_log_len] = 0;
-		rflag = rflag || my_b_safe_write(file, (uchar*) query_tmp, q_log_len+1);
-		my_free(query_tmp);
-		rflag = rflag || (my_b_safe_write(file, (uchar*) "\n", 1) ||
-		my_b_safe_write(file, (uchar*) "#", 1) ||
-		my_b_safe_write(file, (uchar*) thd->security_ctx->user, user_len) ||
-		my_b_safe_write(file, (uchar*) "@", 1) ||
-		my_b_safe_write(file, (uchar*) ip_host, ip_host_len));
-	}
-
-	if(flags & LOG_EVENT_COMPRESSED_F)
-	{
-		my_free((void *)query_log);
-	}
-	return rflag ? 1 : 0;
+    bool rflag = write_real(file, query_log, q_log_len);
+    my_free(query_log);
+    return rflag ? 1 : 0;
 }
 
 /**
@@ -2746,7 +2702,7 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
    lc_time_names_number(thd_arg->variables.lc_time_names->number),
    charset_database_number(0),
    table_map_for_update((ulonglong)thd_arg->table_map_for_update),
-   master_data_written(0),compress_flags(thd_arg->binlog_compress_flags)
+   master_data_written(0)
 {
   time_t end_time;
 
@@ -2868,6 +2824,16 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
   DBUG_ASSERT(cache_type != Log_event::EVENT_INVALID_CACHE);
   DBUG_PRINT("info",("Query_log_event has flags2: %lu  sql_mode: %lu",
                      (ulong) flags2, sql_mode));
+}
+
+
+Query_compressed_log_event::Query_compressed_log_event(THD* thd_arg, const char* query_arg,
+				            ulong query_length, bool using_trans,
+				            bool direct, bool suppress_use, int errcode)
+  :Query_log_event(thd_arg, query_arg, query_length, using_trans, direct, suppress_use, errcode),
+   query_buf(0)
+{
+
 }
 #endif /* MYSQL_CLIENT */
 
@@ -3170,20 +3136,11 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
       pos= (const uchar*) end;                         // Break loop
     }
   }
-
-  /* calculate the max buff length of statement, and get the real event length*/
-  uint32 un_len,q_len_max = data_len - db_len - 1;
-  if(flags & LOG_EVENT_COMPRESSED_F)
-  {
-	un_len = statement_get_uncompress_len((const char *)end + db_len + 1);
-	data_written = data_written - (data_len - db_len -1) + un_len;
-	q_len_max = un_len > q_len_max ? un_len : q_len_max;
-  }
+  
 #if !defined(MYSQL_CLIENT) && defined(HAVE_QUERY_CACHE)
   if (!(start= data_buf = (Log_event::Byte*) my_malloc(catalog_len + 1 +
                                               time_zone_len + 1 +
-                                              db_len + 1 +
-											  q_len_max + 1 +
+                                              data_len + 1 +
                                               QUERY_CACHE_FLAGS_SIZE +
                                               user.length + 1 +
                                               host.length + 1 +
@@ -3192,8 +3149,7 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
 #else
   if (!(start= data_buf = (Log_event::Byte*) my_malloc(catalog_len + 1 +
                                              time_zone_len + 1 +
-                                             db_len + 1 +
-											 q_len_max + 1 +
+                                             data_len + 1 +
                                              user.length + 1 +
                                              host.length + 1,
                                              MYF(MY_WME))))
@@ -3231,31 +3187,44 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
   */
 
   /* A 2nd variable part; this is common to all versions */ 
-  memcpy((char*) start, end, db_len + 1);          // Copy db, the query can be compressed, so copy it latter.
+  memcpy((char*) start, end, data_len);          // Copy db and query
+  start[data_len]= '\0';              // End query with \0 (For safetly)
   db= (char *)start;
-  end += db_len + 1;
-
   query= (char *)(start + db_len + 1);
-  q_len= data_len - db_len -1;
-
-  if (flags & LOG_EVENT_COMPRESSED_F)
+ // q_len= data_len - db_len -1;
+  if(opt_binlog_user_ip)
   {
-	if(!statement_uncompress((const char *)end, (char *)query, q_len, &un_len))
-    {
-      q_len = un_len;
-	  flags &= (~LOG_EVENT_COMPRESSED_F);
-    }
-    else
-    {
-      memcpy((char *)start + db_len + 1, end, q_len);
-    }
-  }
+	q_len= strlen(query);
+   }
   else
   {
-      memcpy((char *)start + db_len + 1, end, q_len);
+	q_len= data_len - db_len -1;
   }
-  ((char *)query)[q_len]=0;    // End query with \0 (For safetly)
   DBUG_VOID_RETURN;
+}
+
+
+Query_compressed_log_event::Query_compressed_log_event(const char *buf, uint event_len,
+                                                       const Format_description_log_event
+                                                       *description_event,
+                                                       Log_event_type event_type)
+  :Query_log_event(buf, event_len, description_event, event_type),query_buf(NULL)
+{
+    if(query)
+    {
+        uint32 un_len=statement_get_uncompress_len(query);
+        query_buf = (Log_event::Byte*)my_malloc(un_len, MYF(MY_WME));
+        if(!query_buf || statement_uncompress(query, (char *)query_buf, q_len, &un_len))
+        {
+            query= 0;
+        }
+        else
+        {
+            query = (const char *)query_buf;
+            q_len = un_len;
+        }
+    }
+
 }
 
 
@@ -4212,6 +4181,17 @@ Format_description_log_event(uint8 binlog_ver, const char* server_ver)
                       post_header_len[DELETE_ROWS_EVENT-1]= 6;);
       post_header_len[INCIDENT_EVENT-1]= INCIDENT_HEADER_LEN;
       post_header_len[HEARTBEAT_LOG_EVENT-1]= 0;
+      post_header_len[IGNORABLE_LOG_EVENT-1]= IGNORABLE_HEADER_LEN;
+      post_header_len[ROWS_QUERY_LOG_EVENT-1]= IGNORABLE_HEADER_LEN;
+      post_header_len[WRITE_ROWS_EVENT_V2-1]=  ROWS_HEADER_LEN_V2;
+      post_header_len[UPDATE_ROWS_EVENT_V2-1]= ROWS_HEADER_LEN_V2;
+      post_header_len[DELETE_ROWS_EVENT_V2-1]= ROWS_HEADER_LEN_V2;
+      post_header_len[GTID_LOG_EVENT-1]=
+          post_header_len[ANONYMOUS_GTID_LOG_EVENT-1]= POST_HEADER_LENGTH;
+      post_header_len[PREVIOUS_GTIDS_LOG_EVENT-1]= IGNORABLE_HEADER_LEN;
+      for(int i=PREVIOUS_GTIDS_LOG_EVENT; i<QUERY_COMPRESSED_EVENT; i++)
+        post_header_len[i] = 0;
+      post_header_len[QUERY_COMPRESSED_EVENT-1]= QUERY_HEADER_LEN;
 
       // Sanity-check that all post header lengths are initialized.
       int i;
@@ -4384,7 +4364,7 @@ Format_description_log_event(const char* buf,
       post_header_len= NULL;
       DBUG_VOID_RETURN;
     }
-    static const uint8 perm[23]=
+    static const uint8 perm[]=
       {
         UNKNOWN_EVENT, START_EVENT_V3, QUERY_EVENT, STOP_EVENT, ROTATE_EVENT,
         INTVAR_EVENT, LOAD_EVENT, SLAVE_EVENT, CREATE_FILE_EVENT,
@@ -4399,6 +4379,7 @@ Format_description_log_event(const char* buf,
         XID_EVENT,
         BEGIN_LOAD_QUERY_EVENT,
         EXECUTE_LOAD_QUERY_EVENT,
+        QUERY_COMPRESSED_EVENT,
       };
     event_type_permutation= perm;
     /*

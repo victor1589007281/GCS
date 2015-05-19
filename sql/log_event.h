@@ -257,6 +257,11 @@ struct sql_ex_info
 #define EXECUTE_LOAD_QUERY_HEADER_LEN  (QUERY_HEADER_LEN + EXECUTE_LOAD_QUERY_EXTRA_HEADER_LEN)
 #define INCIDENT_HEADER_LEN    2
 #define HEARTBEAT_HEADER_LEN   0
+#define IGNORABLE_HEADER_LEN   0
+#define ROWS_HEADER_LEN_V2     10
+#define TRANSACTION_CONTEXT_HEADER_LEN 18
+#define VIEW_CHANGE_HEADER_LEN 53
+#define POST_HEADER_LENGTH     1
 /* 
   Max number of possible extra bytes in a replication event compared to a
   packet (i.e. a query) sent from client to master;
@@ -498,14 +503,6 @@ struct sql_ex_info
 #define LOG_EVENT_RELAY_LOG_F 0x40
 
 /**
-   @def LOG_EVENT_COMPRESSED_F
-
-   This flag indicate that the binlog has been compressed. It is only
-   meaningful in Query log temporarily.
-*/
-#define LOG_EVENT_COMPRESSED_F 0x8000
-
-/**
   @def OPTIONS_WRITTEN_TO_BIN_LOG
 
   OPTIONS_WRITTEN_TO_BIN_LOG are the bits of thd->options which must
@@ -603,6 +600,33 @@ enum Log_event_type
   */
   HEARTBEAT_LOG_EVENT= 27,
   
+   /**
+    In some situations, it is necessary to send over ignorable
+    data to the slave: data that a slave can handle in case there
+    is code for handling it, but which can be ignored if it is not
+    recognized.
+  */
+  IGNORABLE_LOG_EVENT= 28,
+  ROWS_QUERY_LOG_EVENT= 29,
+
+  /** Version 2 of the Row events */
+  WRITE_ROWS_EVENT_V2 = 30,
+  UPDATE_ROWS_EVENT_V2 = 31,
+  DELETE_ROWS_EVENT_V2 = 32,
+
+  GTID_LOG_EVENT= 33,
+  ANONYMOUS_GTID_LOG_EVENT= 34,
+
+  PREVIOUS_GTIDS_LOG_EVENT= 35,
+
+  TRANSACTION_CONTEXT_EVENT= 36,
+
+  VIEW_CHANGE_EVENT= 37,
+
+  /* Prepared XA transaction terminal event similar to Xid */
+  XA_PREPARE_LOG_EVENT= 38,
+
+  QUERY_COMPRESSED_EVENT = 50,
   /*
     Add new events here - right above this comment!
     Existing events (except ENUM_END_EVENT) should never change their numbers
@@ -1718,8 +1742,6 @@ public:
 
   Query_log_event(THD* thd_arg, const char* query_arg, ulong query_length,
                   bool using_trans, bool direct, bool suppress_use, int error);
-  uint compress_flags;
-  bool should_compress() { return opt_bin_log_compress && compress_flags && q_len>= 256; }
   const char* get_db() { return db; }
 #ifdef HAVE_REPLICATION
   void pack_info(Protocol* protocol);
@@ -1740,8 +1762,9 @@ public:
   }
   Log_event_type get_type_code() { return QUERY_EVENT; }
 #ifdef MYSQL_SERVER
-  bool write(IO_CACHE* file);
+  virtual bool write(IO_CACHE* file);
   virtual bool write_post_header_for_derived(IO_CACHE* file) { return FALSE; }
+  bool write_real(IO_CACHE *file, const char* query_log, uint32 q_log_len);
 #endif
   bool is_valid() const { return query != 0; }
 
@@ -1786,6 +1809,25 @@ public:        /* !!! Public in this patch to allow old usage */
   }
 };
 
+class Query_compressed_log_event:public Query_log_event{
+protected:
+  Log_event::Byte* query_buf;
+public:
+  Query_compressed_log_event(const char* buf, uint event_len,
+                             const Format_description_log_event *description_event,
+                             Log_event_type event_type);
+  ~Query_compressed_log_event()
+  {
+    if (query_buf)
+      my_free(query_buf);
+  }
+  Log_event_type get_type_code() { return QUERY_COMPRESSED_EVENT; }
+#ifdef MYSQL_SERVER
+  Query_compressed_log_event(THD* thd_arg, const char* query_arg, ulong query_length,
+                             bool using_trans, bool direct, bool suppress_use, int error);
+  virtual bool write(IO_CACHE* file);
+#endif
+};
 
 #ifdef HAVE_REPLICATION
 

@@ -2538,7 +2538,8 @@ static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
       */
       DBUG_EXECUTE_IF("incomplete_group_in_relay_log",
                       if ((ev->get_type_code() == XID_EVENT) ||
-                          ((ev->get_type_code() == QUERY_EVENT) &&
+                          (((ev->get_type_code() == QUERY_EVENT) ||
+                            (ev->get_type_code() == QUERY_COMPRESSED_EVENT)) &&
                            strcmp("COMMIT", ((Query_log_event *) ev)->query) == 0))
                       {
                         DBUG_ASSERT(thd->transaction.all.modified_non_trans_table);
@@ -4033,21 +4034,18 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   }
   break;
   
-  case QUERY_EVENT:
+  case QUERY_COMPRESSED_EVENT:
     inc_pos= event_len;
-	if (uint2korr(buf + FLAGS_OFFSET) & LOG_EVENT_COMPRESSED_F)
+	if (query_event_uncompress(mi->rli.relay_log.description_event_for_queue, buf, (char **)&buf, event_len, &event_len))
 	{
-      char *tmpbuf;
-	  if (!query_event_uncompress(mi->rli.relay_log.description_event_for_queue, buf, &tmpbuf, event_len, &event_len))
-	  {
-        buf = tmpbuf;
-	    compressed_event = true;
-	  }
-      else
-      {
-        event_len = inc_pos;
-      }
+      char  llbuf[22];
+      error = ER_BINLOG_UNCOMPRESS_ERROR;
+      error_msg.append(STRING_WITH_LEN("master log_pos: "));
+      llstr(mi->master_log_pos, llbuf);
+      error_msg.append(llbuf, strlen(llbuf));
+      goto err;
 	}
+	compressed_event = true;
 	break; 
   default:
     inc_pos= event_len;

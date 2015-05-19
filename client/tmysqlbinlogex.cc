@@ -806,6 +806,7 @@ Exit_status process_event(Worker_vm* vm, Log_event *ev,
 
     switch (ev_type) {
     case QUERY_EVENT:
+    case QUERY_COMPRESSED_EVENT:
       if (!((Query_log_event*)ev)->is_trans_keyword() &&
           shall_skip_database(((Query_log_event*)ev)->db))
         goto end;
@@ -4178,6 +4179,7 @@ binlogex_task_entry_event_new(
     switch (ev->get_type_code())
     {
     case QUERY_EVENT:
+    case QUERY_COMPRESSED_EVENT:
         entry->rate = strlen(((Query_log_event*)ev)->query);
         break;
 
@@ -5452,6 +5454,7 @@ Exit_status binlogex_process_event(Log_event *ev,
 
         break;
     case QUERY_EVENT:
+    case QUERY_COMPRESSED_EVENT:
     {
         Query_log_event* query_ev = (Query_log_event*)ev;
 

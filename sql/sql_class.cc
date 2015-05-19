@@ -5127,15 +5127,25 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
       flush the pending rows event if necessary.
     */
     {
-      Query_log_event qinfo(this, query_arg, query_len, is_trans, direct,
-                            suppress_use, errcode);
+      int error= 0;
+      if(opt_bin_log_compress && binlog_compress_flags && query_len >= 256){
+        Query_compressed_log_event qinfo(this, query_arg, query_len, is_trans, direct,
+                                         suppress_use, errcode);
+        error= mysql_bin_log.write(&qinfo);
+      }
+      else
+      {
+        Query_log_event qinfo(this, query_arg, query_len, is_trans, direct,
+                              suppress_use, errcode);
+        error= mysql_bin_log.write(&qinfo);
+
+      }
       /*
         Binlog table maps will be irrelevant after a Query_log_event
         (they are just removed on the slave side) so after the query
         log event is written to the binary log, we pretend that no
         table maps were written.
        */
-      int error= mysql_bin_log.write(&qinfo);
       binlog_table_maps= 0;
       DBUG_RETURN(error);
     }
