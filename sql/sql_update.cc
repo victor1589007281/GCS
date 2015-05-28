@@ -667,6 +667,8 @@ int mysql_update(THD *thd,
         (thd->variables.sql_mode &
         (MODE_STRICT_TRANS_TABLES |
         MODE_STRICT_ALL_TABLES)));
+
+	setup_binlog_compress_flags(thd, table);
     if (do_direct_update)
     {
         uint update_rows = 0;
@@ -953,7 +955,6 @@ int mysql_update(THD *thd,
             else
                 errcode= query_error_code(thd, killed_status == THD::NOT_KILLED);
 
-			setup_binlog_compress_flags(thd, table);
             if (thd->binlog_query(THD::ROW_QUERY_TYPE,
                 thd->query(), thd->query_length(),
                 transactional_table, FALSE, FALSE, errcode))

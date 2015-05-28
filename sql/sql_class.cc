@@ -4669,6 +4669,11 @@ THD::binlog_prepare_pending_rows_event(TABLE*, uint32, MY_BITMAP const*,
 
 template Rows_log_event*
 THD::binlog_prepare_pending_rows_event(TABLE*, uint32, MY_BITMAP const*,
+				       size_t, size_t, bool,
+				       Write_rows_compressed_log_event*);
+
+template Rows_log_event*
+THD::binlog_prepare_pending_rows_event(TABLE*, uint32, MY_BITMAP const*,
 				       size_t colcnt, size_t, bool,
 				       Delete_rows_log_event *);
 
@@ -4676,6 +4681,11 @@ template Rows_log_event*
 THD::binlog_prepare_pending_rows_event(TABLE*, uint32, MY_BITMAP const*,
 				       size_t colcnt, size_t, bool,
 				       Update_rows_log_event *);
+
+template Rows_log_event* 
+THD::binlog_prepare_pending_rows_event(TABLE*, uint32, MY_BITMAP const*,
+				       size_t colcnt, size_t, bool,
+				       Update_rows_compressed_log_event *);
 #endif
 
 /* Declare in unnamed namespace. */
@@ -4820,10 +4830,20 @@ int THD::binlog_write_row(TABLE* table, bool is_trans,
 
   size_t const len= pack_row(table, cols, row_data, record);
 
-  Rows_log_event* const ev=
-    binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
+  Rows_log_event* ev;
+  if(opt_bin_log_compress && binlog_compress_flags && query_length() > 256)
+  {
+    ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
+                                      len, is_trans,
+                                      static_cast<Write_rows_compressed_log_event*>(0));
+  }
+  else
+  {
+    ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
                                       len, is_trans,
                                       static_cast<Write_rows_log_event*>(0));
+
+  }
 
   if (unlikely(ev == 0))
     return HA_ERR_OUT_OF_MEM;
@@ -4864,10 +4884,19 @@ int THD::binlog_update_row(TABLE* table, bool is_trans,
   DBUG_DUMP("after_row",     after_row, after_size);
 #endif
 
-  Rows_log_event* const ev=
-    binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
+  Rows_log_event* ev;
+  if(opt_bin_log_compress && binlog_compress_flags && query_length() > 256)
+  {
+    ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
+				      before_size + after_size, is_trans,
+				      static_cast<Update_rows_compressed_log_event*>(0));
+  }
+  else
+  {
+    ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
 				      before_size + after_size, is_trans,
 				      static_cast<Update_rows_log_event*>(0));
+  }
 
   if (unlikely(ev == 0))
     return HA_ERR_OUT_OF_MEM;
@@ -5127,15 +5156,26 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
       flush the pending rows event if necessary.
     */
     {
-      Query_log_event qinfo(this, query_arg, query_len, is_trans, direct,
-                            suppress_use, errcode);
+      int error= 0;
+      if(opt_bin_log_compress && binlog_compress_flags && query_len >= 256)
+      {
+        Query_compressed_log_event qinfo(this, query_arg, query_len, is_trans, direct,
+                                         suppress_use, errcode);
+        error= mysql_bin_log.write(&qinfo);
+      }
+      else
+      {
+        Query_log_event qinfo(this, query_arg, query_len, is_trans, direct,
+                              suppress_use, errcode);
+        error= mysql_bin_log.write(&qinfo);
+
+      }
       /*
         Binlog table maps will be irrelevant after a Query_log_event
         (they are just removed on the slave side) so after the query
         log event is written to the binary log, we pretend that no
         table maps were written.
        */
-      int error= mysql_bin_log.write(&qinfo);
       binlog_table_maps= 0;
       DBUG_RETURN(error);
     }
