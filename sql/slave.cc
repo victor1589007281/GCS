@@ -4036,7 +4036,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   
   case QUERY_COMPRESSED_EVENT:
     inc_pos= event_len;
-	if (query_event_uncompress(mi->rli.relay_log.description_event_for_queue, buf, (char **)&buf, event_len, &event_len))
+	if (query_event_uncompress(mi->rli.relay_log.description_event_for_queue, buf, (char **)&buf, &event_len))
 	{
       char  llbuf[22];
       error = ER_BINLOG_UNCOMPRESS_ERROR;
@@ -4046,7 +4046,24 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
       goto err;
 	}
 	compressed_event = true;
-	break; 
+	break;
+  case WRITE_ROWS_COMPRESSED_EVENT:
+  case UPDATE_ROWS_COMPRESSED_EVENT:
+    inc_pos = event_len;
+    {
+      Log_event_type newtype = (Log_event_type)(buf[EVENT_TYPE_OFFSET] + WRITE_ROWS_EVENT - WRITE_ROWS_COMPRESSED_EVENT);
+      if (Row_log_event_uncompress(mi->rli.relay_log.description_event_for_queue, newtype, buf, (char **)&buf, &event_len))
+      {
+        char  llbuf[22];
+        error = ER_BINLOG_UNCOMPRESS_ERROR;
+        error_msg.append(STRING_WITH_LEN("master log_pos: "));
+        llstr(mi->master_log_pos, llbuf);
+        error_msg.append(llbuf, strlen(llbuf));
+        goto err;
+      }
+    }
+    compressed_event = true;
+    break;
   default:
     inc_pos= event_len;
     break;

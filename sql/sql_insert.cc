@@ -849,6 +849,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
       table_list->prepare_check_option(thd))
     error= 1;
 
+  setup_binlog_compress_flags(thd, table);
   while ((values= its++))
   {
     if (fields.elements || !value_count)
@@ -1019,7 +1020,6 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
 	    such case the flag is ignored for constructing binlog event.
 	    */
 	    DBUG_ASSERT(thd->killed != THD::KILL_BAD_DATA || error > 0);
-        setup_binlog_compress_flags(thd, table);
         if (was_insert_delayed && table_list->lock_type ==  TL_WRITE)
         {
           /* Binlog INSERT DELAYED as INSERT without DELAYED. */

@@ -973,6 +973,8 @@ Exit_status process_event(Worker_vm* vm, Log_event *ev,
     case PRE_GA_WRITE_ROWS_EVENT:
     case PRE_GA_DELETE_ROWS_EVENT:
     case PRE_GA_UPDATE_ROWS_EVENT:
+    case WRITE_ROWS_COMPRESSED_EVENT:
+    case UPDATE_ROWS_COMPRESSED_EVENT:
     {
       if (ev_type != TABLE_MAP_EVENT)
       {
@@ -4208,6 +4210,8 @@ binlogex_task_entry_event_new(
     case WRITE_ROWS_EVENT:
     case DELETE_ROWS_EVENT:
     case UPDATE_ROWS_EVENT:
+    case WRITE_ROWS_COMPRESSED_EVENT:
+    case UPDATE_ROWS_COMPRESSED_EVENT:
         entry->rate = ((Rows_log_event*)ev)->get_data_size();
         break;
 
@@ -5920,6 +5924,8 @@ Exit_status binlogex_process_event(Log_event *ev,
     case PRE_GA_WRITE_ROWS_EVENT:
     case PRE_GA_DELETE_ROWS_EVENT:
     case PRE_GA_UPDATE_ROWS_EVENT:
+    case WRITE_ROWS_COMPRESSED_EVENT:
+    case UPDATE_ROWS_COMPRESSED_EVENT:
     {
         Rows_log_event *e= (Rows_log_event*) ev;
         Table_map_log_event *ignored_map= 

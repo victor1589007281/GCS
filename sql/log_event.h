@@ -627,6 +627,8 @@ enum Log_event_type
   XA_PREPARE_LOG_EVENT= 38,
 
   QUERY_COMPRESSED_EVENT = 50,
+  WRITE_ROWS_COMPRESSED_EVENT = 51,
+  UPDATE_ROWS_COMPRESSED_EVENT = 52,
   /*
     Add new events here - right above this comment!
     Existing events (except ENUM_END_EVENT) should never change their numbers
@@ -1764,7 +1766,6 @@ public:
 #ifdef MYSQL_SERVER
   virtual bool write(IO_CACHE* file);
   virtual bool write_post_header_for_derived(IO_CACHE* file) { return FALSE; }
-  bool write_real(IO_CACHE *file, const char* query_log, uint32 q_log_len);
 #endif
   bool is_valid() const { return query != 0; }
 
@@ -3646,6 +3647,7 @@ public:
 #ifdef MYSQL_SERVER
   virtual bool write_data_header(IO_CACHE *file);
   virtual bool write_data_body(IO_CACHE *file);
+  virtual bool write_compressed(IO_CACHE *file);
   virtual const char *get_db() { return m_table->s->db.str; }
 #endif
   /*
@@ -3673,6 +3675,7 @@ protected:
   Rows_log_event(const char *row_data, uint event_len, 
 		 Log_event_type event_type,
 		 const Format_description_log_event *description_event);
+  void uncompress_buf();
 
 #ifdef MYSQL_CLIENT
   void print_helper(FILE *, PRINT_EVENT_INFO *, char const *const name);
@@ -3850,6 +3853,31 @@ private:
 #endif
 };
 
+class Write_rows_compressed_log_event : public Write_rows_log_event
+{
+public:
+  enum 
+  {
+    /* Support interface to THD::binlog_prepare_pending_rows_event */
+    TYPE_CODE = WRITE_ROWS_COMPRESSED_EVENT
+  };
+
+#if defined(MYSQL_SERVER)
+  Write_rows_compressed_log_event(THD*, TABLE*, ulong table_id, 
+		       MY_BITMAP const *cols, bool is_transactional);
+  virtual bool write(IO_CACHE* file);
+#endif
+#ifdef HAVE_REPLICATION
+  Write_rows_compressed_log_event(const char *buf, uint event_len, 
+                       const Format_description_log_event *description_event);
+#endif
+private:
+  virtual Log_event_type get_type_code() { return (Log_event_type)TYPE_CODE; }
+#ifdef MYSQL_CLIENT
+  void print(FILE *file, PRINT_EVENT_INFO *print_event_info);
+#endif
+
+};
 
 /**
   @class Update_rows_log_event
@@ -3922,6 +3950,32 @@ protected:
   virtual int do_after_row_operations(const Slave_reporting_capability *const,int);
   virtual int do_exec_row(const Relay_log_info *const);
 #endif /* defined(MYSQL_SERVER) && defined(HAVE_REPLICATION) */
+};
+
+class Update_rows_compressed_log_event : public Update_rows_log_event
+{
+public:
+  enum 
+  {
+    /* Support interface to THD::binlog_prepare_pending_rows_event */
+    TYPE_CODE = UPDATE_ROWS_COMPRESSED_EVENT
+  };
+
+#if defined(MYSQL_SERVER)
+  Update_rows_compressed_log_event(THD*, TABLE*, ulong table_id, 
+		       MY_BITMAP const *cols, bool is_transactional);
+  virtual bool write(IO_CACHE* file);
+#endif
+#ifdef HAVE_REPLICATION
+  Update_rows_compressed_log_event(const char *buf, uint event_len, 
+                       const Format_description_log_event *description_event);
+#endif
+private:
+  virtual Log_event_type get_type_code() { return (Log_event_type)TYPE_CODE; }
+#ifdef MYSQL_CLIENT
+  void print(FILE *file, PRINT_EVENT_INFO *print_event_info);
+#endif
+
 };
 
 /**
@@ -4138,13 +4192,16 @@ int append_query_string(THD *thd, CHARSET_INFO *csinfo,
                         String const *from, String *to);
 
 
-int statement_compress(const char *src, char *dst, uint32 len, uint32 *comlen);
-int statement_uncompress(const char *src, char *dst, uint32 len, uint32 *newlen);
-uint32 statement_get_compress_len(uint32 len);
-uint32 statement_get_uncompress_len(const char *buf);
+int binlog_buf_compress(const char *src, char *dst, uint32 len, uint32 *comlen);
+int binlog_buf_uncompress(const char *src, char *dst, uint32 len, uint32 *newlen);
+uint32 binlog_get_compress_len(uint32 len);
+uint32 binlog_get_uncompress_len(const char *buf);
 
 int query_event_uncompress(const Format_description_log_event *description_event,
-						   const char *src, char **dst, ulong len, ulong *newlen);
+						   const char *src, char **dst, ulong *newlen);
+
+int Row_log_event_uncompress(const Format_description_log_event *description_event,
+                             Log_event_type type, const char *src, char **dst, ulong *newlen);
 
 /**
   @} (end of group Replication)
