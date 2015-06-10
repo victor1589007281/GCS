@@ -1645,6 +1645,8 @@ public:
     return current_stmt_binlog_format == BINLOG_FORMAT_ROW;
   }
 
+  /* this flags should be 1 if the binlog can be compressed */
+  uint32 binlog_compress_flags;
 private:
   /**
     Indicates the format in which the current statement will be

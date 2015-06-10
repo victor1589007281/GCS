@@ -257,6 +257,11 @@ struct sql_ex_info
 #define EXECUTE_LOAD_QUERY_HEADER_LEN  (QUERY_HEADER_LEN + EXECUTE_LOAD_QUERY_EXTRA_HEADER_LEN)
 #define INCIDENT_HEADER_LEN    2
 #define HEARTBEAT_HEADER_LEN   0
+#define IGNORABLE_HEADER_LEN   0
+#define ROWS_HEADER_LEN_V2     10
+#define TRANSACTION_CONTEXT_HEADER_LEN 18
+#define VIEW_CHANGE_HEADER_LEN 53
+#define POST_HEADER_LENGTH     1
 /* 
   Max number of possible extra bytes in a replication event compared to a
   packet (i.e. a query) sent from client to master;
@@ -595,6 +600,35 @@ enum Log_event_type
   */
   HEARTBEAT_LOG_EVENT= 27,
   
+   /**
+    In some situations, it is necessary to send over ignorable
+    data to the slave: data that a slave can handle in case there
+    is code for handling it, but which can be ignored if it is not
+    recognized.
+  */
+  IGNORABLE_LOG_EVENT= 28,
+  ROWS_QUERY_LOG_EVENT= 29,
+
+  /** Version 2 of the Row events */
+  WRITE_ROWS_EVENT_V2 = 30,
+  UPDATE_ROWS_EVENT_V2 = 31,
+  DELETE_ROWS_EVENT_V2 = 32,
+
+  GTID_LOG_EVENT= 33,
+  ANONYMOUS_GTID_LOG_EVENT= 34,
+
+  PREVIOUS_GTIDS_LOG_EVENT= 35,
+
+  TRANSACTION_CONTEXT_EVENT= 36,
+
+  VIEW_CHANGE_EVENT= 37,
+
+  /* Prepared XA transaction terminal event similar to Xid */
+  XA_PREPARE_LOG_EVENT= 38,
+
+  QUERY_COMPRESSED_EVENT = 50,
+  WRITE_ROWS_COMPRESSED_EVENT = 51,
+  UPDATE_ROWS_COMPRESSED_EVENT = 52,
   /*
     Add new events here - right above this comment!
     Existing events (except ENUM_END_EVENT) should never change their numbers
@@ -1730,7 +1764,7 @@ public:
   }
   Log_event_type get_type_code() { return QUERY_EVENT; }
 #ifdef MYSQL_SERVER
-  bool write(IO_CACHE* file);
+  virtual bool write(IO_CACHE* file);
   virtual bool write_post_header_for_derived(IO_CACHE* file) { return FALSE; }
 #endif
   bool is_valid() const { return query != 0; }
@@ -1776,6 +1810,25 @@ public:        /* !!! Public in this patch to allow old usage */
   }
 };
 
+class Query_compressed_log_event:public Query_log_event{
+protected:
+  Log_event::Byte* query_buf;
+public:
+  Query_compressed_log_event(const char* buf, uint event_len,
+                             const Format_description_log_event *description_event,
+                             Log_event_type event_type);
+  ~Query_compressed_log_event()
+  {
+    if (query_buf)
+      my_free(query_buf);
+  }
+  Log_event_type get_type_code() { return QUERY_COMPRESSED_EVENT; }
+#ifdef MYSQL_SERVER
+  Query_compressed_log_event(THD* thd_arg, const char* query_arg, ulong query_length,
+                             bool using_trans, bool direct, bool suppress_use, int error);
+  virtual bool write(IO_CACHE* file);
+#endif
+};
 
 #ifdef HAVE_REPLICATION
 
@@ -3594,6 +3647,7 @@ public:
 #ifdef MYSQL_SERVER
   virtual bool write_data_header(IO_CACHE *file);
   virtual bool write_data_body(IO_CACHE *file);
+  virtual bool write_compressed(IO_CACHE *file);
   virtual const char *get_db() { return m_table->s->db.str; }
 #endif
   /*
@@ -3621,6 +3675,7 @@ protected:
   Rows_log_event(const char *row_data, uint event_len, 
 		 Log_event_type event_type,
 		 const Format_description_log_event *description_event);
+  void uncompress_buf();
 
 #ifdef MYSQL_CLIENT
   void print_helper(FILE *, PRINT_EVENT_INFO *, char const *const name);
@@ -3798,6 +3853,31 @@ private:
 #endif
 };
 
+class Write_rows_compressed_log_event : public Write_rows_log_event
+{
+public:
+  enum 
+  {
+    /* Support interface to THD::binlog_prepare_pending_rows_event */
+    TYPE_CODE = WRITE_ROWS_COMPRESSED_EVENT
+  };
+
+#if defined(MYSQL_SERVER)
+  Write_rows_compressed_log_event(THD*, TABLE*, ulong table_id, 
+		       MY_BITMAP const *cols, bool is_transactional);
+  virtual bool write(IO_CACHE* file);
+#endif
+#ifdef HAVE_REPLICATION
+  Write_rows_compressed_log_event(const char *buf, uint event_len, 
+                       const Format_description_log_event *description_event);
+#endif
+private:
+  virtual Log_event_type get_type_code() { return (Log_event_type)TYPE_CODE; }
+#ifdef MYSQL_CLIENT
+  void print(FILE *file, PRINT_EVENT_INFO *print_event_info);
+#endif
+
+};
 
 /**
   @class Update_rows_log_event
@@ -3870,6 +3950,32 @@ protected:
   virtual int do_after_row_operations(const Slave_reporting_capability *const,int);
   virtual int do_exec_row(const Relay_log_info *const);
 #endif /* defined(MYSQL_SERVER) && defined(HAVE_REPLICATION) */
+};
+
+class Update_rows_compressed_log_event : public Update_rows_log_event
+{
+public:
+  enum 
+  {
+    /* Support interface to THD::binlog_prepare_pending_rows_event */
+    TYPE_CODE = UPDATE_ROWS_COMPRESSED_EVENT
+  };
+
+#if defined(MYSQL_SERVER)
+  Update_rows_compressed_log_event(THD*, TABLE*, ulong table_id, 
+		       MY_BITMAP const *cols, bool is_transactional);
+  virtual bool write(IO_CACHE* file);
+#endif
+#ifdef HAVE_REPLICATION
+  Update_rows_compressed_log_event(const char *buf, uint event_len, 
+                       const Format_description_log_event *description_event);
+#endif
+private:
+  virtual Log_event_type get_type_code() { return (Log_event_type)TYPE_CODE; }
+#ifdef MYSQL_CLIENT
+  void print(FILE *file, PRINT_EVENT_INFO *print_event_info);
+#endif
+
 };
 
 /**
@@ -4084,6 +4190,18 @@ private:
 
 int append_query_string(THD *thd, CHARSET_INFO *csinfo,
                         String const *from, String *to);
+
+
+int binlog_buf_compress(const char *src, char *dst, uint32 len, uint32 *comlen);
+int binlog_buf_uncompress(const char *src, char *dst, uint32 len, uint32 *newlen);
+uint32 binlog_get_compress_len(uint32 len);
+uint32 binlog_get_uncompress_len(const char *buf);
+
+int query_event_uncompress(const Format_description_log_event *description_event,
+						   const char *src, char **dst, ulong *newlen);
+
+int Row_log_event_uncompress(const Format_description_log_event *description_event,
+                             Log_event_type type, const char *src, char **dst, ulong *newlen);
 
 /**
   @} (end of group Replication)

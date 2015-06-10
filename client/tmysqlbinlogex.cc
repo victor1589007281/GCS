@@ -806,6 +806,7 @@ Exit_status process_event(Worker_vm* vm, Log_event *ev,
 
     switch (ev_type) {
     case QUERY_EVENT:
+    case QUERY_COMPRESSED_EVENT:
       if (!((Query_log_event*)ev)->is_trans_keyword() &&
           shall_skip_database(((Query_log_event*)ev)->db))
         goto end;
@@ -972,6 +973,8 @@ Exit_status process_event(Worker_vm* vm, Log_event *ev,
     case PRE_GA_WRITE_ROWS_EVENT:
     case PRE_GA_DELETE_ROWS_EVENT:
     case PRE_GA_UPDATE_ROWS_EVENT:
+    case WRITE_ROWS_COMPRESSED_EVENT:
+    case UPDATE_ROWS_COMPRESSED_EVENT:
     {
       if (ev_type != TABLE_MAP_EVENT)
       {
@@ -4178,6 +4181,7 @@ binlogex_task_entry_event_new(
     switch (ev->get_type_code())
     {
     case QUERY_EVENT:
+    case QUERY_COMPRESSED_EVENT:
         entry->rate = strlen(((Query_log_event*)ev)->query);
         break;
 
@@ -4206,6 +4210,8 @@ binlogex_task_entry_event_new(
     case WRITE_ROWS_EVENT:
     case DELETE_ROWS_EVENT:
     case UPDATE_ROWS_EVENT:
+    case WRITE_ROWS_COMPRESSED_EVENT:
+    case UPDATE_ROWS_COMPRESSED_EVENT:
         entry->rate = ((Rows_log_event*)ev)->get_data_size();
         break;
 
@@ -5452,6 +5458,7 @@ Exit_status binlogex_process_event(Log_event *ev,
 
         break;
     case QUERY_EVENT:
+    case QUERY_COMPRESSED_EVENT:
     {
         Query_log_event* query_ev = (Query_log_event*)ev;
 
@@ -5917,6 +5924,8 @@ Exit_status binlogex_process_event(Log_event *ev,
     case PRE_GA_WRITE_ROWS_EVENT:
     case PRE_GA_DELETE_ROWS_EVENT:
     case PRE_GA_UPDATE_ROWS_EVENT:
+    case WRITE_ROWS_COMPRESSED_EVENT:
+    case UPDATE_ROWS_COMPRESSED_EVENT:
     {
         Rows_log_event *e= (Rows_log_event*) ev;
         Table_map_log_event *ignored_map= 

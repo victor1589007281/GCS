@@ -365,6 +365,16 @@ inline bool setup_fields_with_no_wrap(THD *thd, Item **ref_pointer_array,
   return res;
 }
 
+inline uint setup_binlog_compress_flags(THD *thd, TABLE *table) {
+  MY_BITMAP *write_set = table->write_set;
+  for(uint i = 0;i < write_set->n_bits;i++)
+  {
+    if(bitmap_is_set(table->write_set,i) &&
+		table->field[i]->unireg_check == Field::COMPRESSED_BLOB_FIELD)
+      return thd->binlog_compress_flags = 1;
+  }
+  return thd->binlog_compress_flags = 0;
+}
 /**
   An abstract class for a strategy specifying how the prelocking
   algorithm should extend the prelocking set while processing

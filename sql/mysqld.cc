@@ -357,6 +357,7 @@ static mysql_cond_t COND_thread_cache, COND_flush_thread_cache;
 /* Global variables */
 
 bool opt_bin_log, opt_ignore_builtin_innodb= 0;
+my_bool opt_bin_log_compress;
 my_bool opt_log, opt_slow_log;
 my_bool opt_alter_log;
 ulonglong log_output_options;

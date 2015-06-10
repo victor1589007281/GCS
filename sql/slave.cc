@@ -2538,7 +2538,8 @@ static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
       */
       DBUG_EXECUTE_IF("incomplete_group_in_relay_log",
                       if ((ev->get_type_code() == XID_EVENT) ||
-                          ((ev->get_type_code() == QUERY_EVENT) &&
+                          (((ev->get_type_code() == QUERY_EVENT) ||
+                            (ev->get_type_code() == QUERY_COMPRESSED_EVENT)) &&
                            strcmp("COMMIT", ((Query_log_event *) ev)->query) == 0))
                       {
                         DBUG_ASSERT(thd->transaction.all.modified_non_trans_table);
@@ -3907,6 +3908,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   Relay_log_info *rli= &mi->rli;
   mysql_mutex_t *log_lock= rli->relay_log.get_log_lock();
   ulong s_id;
+  bool compressed_event = false;
   DBUG_ENTER("queue_event");
 
   LINT_INIT(inc_pos);
@@ -4033,7 +4035,37 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
     goto skip_relay_logging;
   }
   break;
-
+  
+  case QUERY_COMPRESSED_EVENT:
+    inc_pos= event_len;
+	if (query_event_uncompress(mi->rli.relay_log.description_event_for_queue, buf, (char **)&buf, &event_len))
+	{
+      char  llbuf[22];
+      error = ER_BINLOG_UNCOMPRESS_ERROR;
+      error_msg.append(STRING_WITH_LEN("master log_pos: "));
+      llstr(mi->master_log_pos, llbuf);
+      error_msg.append(llbuf, strlen(llbuf));
+      goto err;
+	}
+	compressed_event = true;
+	break;
+  case WRITE_ROWS_COMPRESSED_EVENT:
+  case UPDATE_ROWS_COMPRESSED_EVENT:
+    inc_pos = event_len;
+    {
+      Log_event_type newtype = (Log_event_type)(buf[EVENT_TYPE_OFFSET] + WRITE_ROWS_EVENT - WRITE_ROWS_COMPRESSED_EVENT);
+      if (Row_log_event_uncompress(mi->rli.relay_log.description_event_for_queue, newtype, buf, (char **)&buf, &event_len))
+      {
+        char  llbuf[22];
+        error = ER_BINLOG_UNCOMPRESS_ERROR;
+        error_msg.append(STRING_WITH_LEN("master log_pos: "));
+        llstr(mi->master_log_pos, llbuf);
+        error_msg.append(llbuf, strlen(llbuf));
+        goto err;
+      }
+    }
+    compressed_event = true;
+    break;
   default:
     inc_pos= event_len;
     break;
@@ -4119,6 +4151,10 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
 skip_relay_logging:
   
 err:
+  if(compressed_event)
+  {
+	  my_free((void *)buf);
+  }
   mysql_mutex_unlock(&mi->data_lock);
   DBUG_PRINT("info", ("error: %d", error));
   if (error)

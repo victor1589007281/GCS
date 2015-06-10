@@ -849,6 +849,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
       table_list->prepare_check_option(thd))
     error= 1;
 
+  setup_binlog_compress_flags(thd, table);
   while ((values= its++))
   {
     if (fields.elements || !value_count)
