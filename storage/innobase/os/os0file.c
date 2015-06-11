@@ -1144,6 +1144,7 @@ try_again:
 	os_file_t	file;
 	int		create_flag;
 	ibool		retry;
+  const char* mode_str = NULL;
 
 try_again:
 	ut_a(name);
@@ -1154,8 +1155,10 @@ try_again:
 		} else {
 			create_flag = O_RDWR;
 		}
+    mode_str = "OPEN";
 	} else if (create_mode == OS_FILE_CREATE) {
 		create_flag = O_RDWR | O_CREAT | O_EXCL;
+    mode_str = "CREATE";
 	} else if (create_mode == OS_FILE_CREATE_PATH) {
 		/* create subdirs along the path if needed  */
 		*success = os_file_create_subdirs_if_needed(name);
@@ -1164,6 +1167,7 @@ try_again:
 		}
 		create_flag = O_RDWR | O_CREAT | O_EXCL;
 		create_mode = OS_FILE_CREATE;
+    mode_str = "CREATE";
 	} else {
 		create_flag = 0;
 		ut_error;
@@ -1175,6 +1179,13 @@ try_again:
 	} else {
 		file = open(name, create_flag);
 	}
+
+  /* We disable OS caching (O_DIRECT) only on data files */
+  if (file != -1 &&
+    srv_unix_file_flush_method == SRV_UNIX_O_DIRECT) {
+
+    os_file_set_nocache(file, name, mode_str);
+  }
 
 	if (file == -1) {
 		*success = FALSE;
@@ -1274,6 +1285,7 @@ os_file_create_simple_no_error_handling_func(
 #else /* __WIN__ */
 	os_file_t	file;
 	int		create_flag;
+  const char*	mode_str	= NULL;
 
 	ut_a(name);
 
@@ -1283,8 +1295,10 @@ os_file_create_simple_no_error_handling_func(
 		} else {
 			create_flag = O_RDWR;
 		}
+    mode_str = "OPEN";
 	} else if (create_mode == OS_FILE_CREATE) {
 		create_flag = O_RDWR | O_CREAT | O_EXCL;
+    mode_str = "CREATE";
 	} else {
 		create_flag = 0;
 		ut_error;
@@ -1296,6 +1310,13 @@ os_file_create_simple_no_error_handling_func(
 	} else {
 		file = open(name, create_flag);
 	}
+
+  /* We disable OS caching (O_DIRECT) only on data files */
+  if (file != -1 
+    && srv_unix_file_flush_method == SRV_UNIX_O_DIRECT) {
+
+      os_file_set_nocache(file, name, mode_str);
+  }
 
 	if (file == -1) {
 		*success = FALSE;
