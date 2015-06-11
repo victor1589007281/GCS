@@ -44,6 +44,8 @@
 
 #define CLIENT_CAPABILITIES	(CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_LOCAL_FILES)
 
+#define MAX_DB_NUM 256
+
 char server_version[SERVER_VERSION_LENGTH];
 ulong server_id = 0;
 
@@ -63,7 +65,7 @@ static const char *load_default_groups[]= { "mysqlbinlog","client",0 };
 static void error(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
 static void warning(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
 
-static bool one_database=0, to_last_remote_log= 0, disable_log_bin= 0;
+static bool one_database=0, multi_databases=0, to_last_remote_log= 0, disable_log_bin= 0;
 static bool opt_hexdump= 0;
 const char *base64_output_mode_names[]=
 {"NEVER", "AUTO", "ALWAYS", "UNSPEC", "DECODE-ROWS", NullS};
@@ -73,6 +75,9 @@ TYPELIB base64_output_mode_typelib=
 static enum_base64_output_mode opt_base64_output_mode= BASE64_OUTPUT_UNSPEC;
 static char *opt_base64_output_mode_str= NullS;
 static char* database= 0;
+static char	*databases= 0;
+static char	const *database_array[MAX_DB_NUM];
+static int db_num = 0;
 static my_bool force_opt= 0, short_form= 0, remote_opt= 0;
 static my_bool debug_info_flag, debug_check_flag;
 static my_bool force_if_open_opt= 1;
@@ -129,6 +134,7 @@ static Exit_status dump_remote_log_entries(PRINT_EVENT_INFO *print_event_info,
                                            const char* logname);
 static Exit_status dump_log_entries(const char* logname);
 static Exit_status safe_connect();
+static Exit_status split_string(const char **argv, int *argc, char *str, const char *delim);
 
 
 class Load_log_processor
@@ -612,10 +618,25 @@ static void convert_path_to_forward_slashes(char *fname)
   }
 }
 
+static Exit_status split_string(const char **argv, int *argc, char *str, const char *delim)
+{
+	char *arg;
+	for (; ;str = NULL){
+		arg = strtok(str, delim);
+		if (arg == NULL)
+			break;
+		if (*argc >= MAX_DB_NUM){
+			error("Exceed the max allowed database num:%d", MAX_DB_NUM);
+			return ERROR_STOP;
+		}
+		argv[(*argc)++] = arg;
+	}
+	return OK_CONTINUE;
+}
 
 /**
   Indicates whether the given database should be filtered out,
-  according to the --database=X option.
+  according to the --database=X or --databases='X,X,X'option.
 
   @param log_dbname Name of database.
 
@@ -624,9 +645,23 @@ static void convert_path_to_forward_slashes(char *fname)
 */
 static bool shall_skip_database(const char *log_dbname)
 {
-  return one_database &&
-         (log_dbname != NULL) &&
-         strcmp(log_dbname, database);
+	if (log_dbname == NULL){
+		return false;
+	}
+
+	if (one_database)
+		return strcmp(log_dbname, database);
+	else if (multi_databases){
+		for (int i = 0; i < db_num; i++){
+			int flag = strcmp(log_dbname, database_array[i]);
+			if (flag == 0){
+				return false;
+			}
+		}
+		return true;
+	}
+	else
+		return false;
 }
 
 
@@ -1045,6 +1080,9 @@ static struct my_option my_long_options[] =
   {"database", 'd', "List entries for just this database (local log only).",
    &database, &database, 0, GET_STR_ALLOC, REQUIRED_ARG,
    0, 0, 0, 0, 0, 0},
+  {"databases", 'L', "List entries for several databases (local log only).",
+   &databases, &databases, 0, GET_STR_ALLOC, REQUIRED_ARG,
+   0, 0, 0, 0, 0, 0},
 #ifndef DBUG_OFF
   {"debug", '#', "Output debug log.", &default_dbug_option,
    &default_dbug_option, 0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
@@ -1245,6 +1283,7 @@ static void cleanup()
 {
   my_free(pass);
   my_free(database);
+  my_free(databases);
   my_free(host);
   my_free(user);
   my_free(dirname_for_local_load);
@@ -1311,6 +1350,14 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
   case 'd':
     one_database = 1;
     break;
+  case 'L':
+	  {
+		  Exit_status retval = split_string(database_array, &db_num, databases, ",");
+		  if (retval != OK_CONTINUE)
+			  exit(1);
+		  multi_databases = 1;
+		  break;
+	  }
   case 'p':
     if (argument == disabled_my_option)
       argument= (char*) "";                     // Don't require password
@@ -1368,6 +1415,11 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
   if (tty_password)
     pass= get_tty_password(NullS);
 
+  if (one_database && multi_databases)
+  {
+	  error("options -d/--database and -L/--databases cannot be used together");
+	  exit(1);
+  }
   return 0;
 }
 
