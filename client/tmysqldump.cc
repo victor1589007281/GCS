@@ -38,7 +38,7 @@
 ** 10 Jun 2003: SET NAMES and --no-set-names by Alexander Barkov
 */
 
-#define DUMP_VERSION "10.13"
+#define DUMP_VERSION "10.14"
 
 #include <my_global.h>
 #include <my_sys.h>
@@ -265,7 +265,7 @@ static void z_write_footer(ZFILE sql_file);
 static void z_print_comment(ZFILE sql_file, my_bool is_error, const char *format, ...);
 static int z_add_stop_slave(void);
 static int z_do_show_slave_status(MYSQL *mysql_con);
-static int z_do_show_master_status(MYSQL *mysql_con);
+static int z_do_show_master_status(MYSQL *mysql_con, bool is_slave);
 static int z_add_slave_statements(void);
 static uint z_dump_events_for_db(char *db);
 static ZFILE open_sql_zip_file_for_table(const char* db, const char* table, const char* type);
@@ -5867,7 +5867,7 @@ static int dump_selected_tables(char *db, char **table_names, int tables)
 } /* dump_selected_tables */
 
 
-static int do_show_master_status(MYSQL *mysql_con)
+static int do_show_master_status(MYSQL *mysql_con, bool is_slave)
 {
   MYSQL_ROW row;
   MYSQL_RES *master;
@@ -5886,9 +5886,19 @@ static int do_show_master_status(MYSQL *mysql_con)
       print_comment(md_result_file, 0,
                     "\n--\n-- Position to start replication or point-in-time "
                     "recovery from\n--\n\n");
-      fprintf(md_result_file,
+      if(is_slave)
+      {
+        fprintf(md_result_file,
+              "%sCHANGE SLAVE TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
+              comment_prefix, row[0], row[1]);
+      }
+      else 
+      {
+        fprintf(md_result_file,
               "%sCHANGE MASTER TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
               comment_prefix, row[0], row[1]);
+      }
+     
       check_io(md_result_file);
     }
     else if (!ignore_errors)
@@ -6365,8 +6375,9 @@ char check_if_ignore_table(const char *db, const char *table_name, char *table_t
     if (!opt_no_data &&
         (!my_strcasecmp(&my_charset_latin1, table_type, "MRG_MyISAM") ||
          !strcmp(table_type,"MRG_ISAM") ||
-         !strcmp(table_type,"FEDERATED") ||
-	 !my_strcasecmp(&my_charset_latin1, table_type, "SPIDER")))
+         !strcmp(table_type,"FEDERATED") 
+         // || !my_strcasecmp(&my_charset_latin1, table_type, "SPIDER"))
+         ))
       result= IGNORE_DATA;
   }
   mysql_free_result(res);
@@ -6942,12 +6953,12 @@ int main(int argc, char **argv)
   {
     if(gzpath)
     {
-      if(z_do_show_master_status(mysql))
+      if(z_do_show_master_status(mysql, false))
         goto err;
     }
     else
     {
-      if(do_show_master_status(mysql))
+      if(do_show_master_status(mysql, false))
         goto err;
     }
   }
@@ -6957,10 +6968,16 @@ int main(int argc, char **argv)
     {
       if(z_do_show_slave_status(mysql))
         goto err;
+
+      if(z_do_show_master_status(mysql, true))
+        goto err;
     }
     else
     {
       if(do_show_slave_status(mysql))
+        goto err;
+
+      if(do_show_master_status(mysql, true))
         goto err;
     }
   }
@@ -7279,7 +7296,7 @@ static int z_add_stop_slave(void)/*{{{*/
   ZPRINTF(dump_begin_file, "STOP SLAVE;\n");
   DBUG_RETURN(0);
 }/*}}}*/
-static int z_do_show_master_status(MYSQL *mysql_con)/*{{{*/
+static int z_do_show_master_status(MYSQL *mysql_con, bool is_slave)/*{{{*/
 {
   MYSQL_ROW row;
   MYSQL_RES *master;
@@ -7299,9 +7316,18 @@ static int z_do_show_master_status(MYSQL *mysql_con)/*{{{*/
       z_print_comment(dump_begin_file, 0,
                     "\n--\n-- Position to start replication or point-in-time "
                     "recovery from\n--\n\n");
-      ZPRINTF(dump_begin_file,
+      if (is_slave)
+      {
+        ZPRINTF(dump_begin_file,
+              "%sCHANGE SLAVE TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
+              comment_prefix, row[0], row[1]);
+      }
+      else 
+      {
+        ZPRINTF(dump_begin_file,
               "%sCHANGE MASTER TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
               comment_prefix, row[0], row[1]);
+      }
       check_io(dump_begin_file);
     }
     else if (!ignore_errors)
