@@ -5872,7 +5872,7 @@ static int do_show_master_status(MYSQL *mysql_con, bool is_slave)
   MYSQL_ROW row;
   MYSQL_RES *master;
   const char *comment_prefix=
-    (opt_master_data == MYSQL_OPT_MASTER_DATA_COMMENTED_SQL) ? "-- " : "";
+    (opt_master_data == MYSQL_OPT_MASTER_DATA_COMMENTED_SQL || is_slave) ? "-- " : "";
   if (mysql_query_with_error_report(mysql_con, &master, "SHOW MASTER STATUS"))
   {
     return 1;
@@ -7301,7 +7301,7 @@ static int z_do_show_master_status(MYSQL *mysql_con, bool is_slave)/*{{{*/
   MYSQL_ROW row;
   MYSQL_RES *master;
   const char *comment_prefix=
-    (opt_master_data == MYSQL_OPT_MASTER_DATA_COMMENTED_SQL) ? "-- " : "";
+    (opt_master_data == MYSQL_OPT_MASTER_DATA_COMMENTED_SQL || is_slave) ? "-- " : "";
   DBUG_ENTER("z_do_show_master_status");
   if (mysql_query_with_error_report(mysql_con, &master, "SHOW MASTER STATUS"))
   {
