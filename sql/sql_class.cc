@@ -4656,6 +4656,11 @@ THD::binlog_prepare_pending_rows_event(TABLE*, uint32, MY_BITMAP const*,
 template Rows_log_event* 
 THD::binlog_prepare_pending_rows_event(TABLE*, uint32, MY_BITMAP const*,
 				       size_t colcnt, size_t, bool,
+				       Delete_rows_compressed_log_event *);
+
+template Rows_log_event* 
+THD::binlog_prepare_pending_rows_event(TABLE*, uint32, MY_BITMAP const*,
+				       size_t colcnt, size_t, bool,
 				       Update_rows_log_event *);
 
 template Rows_log_event* 

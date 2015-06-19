@@ -4051,6 +4051,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
 	break;
   case WRITE_ROWS_COMPRESSED_EVENT:
   case UPDATE_ROWS_COMPRESSED_EVENT:
+  case DELETE_ROWS_COMPRESSED_EVENT:
     inc_pos = event_len;
     {
       Log_event_type newtype = (Log_event_type)(buf[EVENT_TYPE_OFFSET] + WRITE_ROWS_EVENT - WRITE_ROWS_COMPRESSED_EVENT);

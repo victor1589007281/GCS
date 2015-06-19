@@ -629,6 +629,7 @@ enum Log_event_type
   QUERY_COMPRESSED_EVENT = 50,
   WRITE_ROWS_COMPRESSED_EVENT = 51,
   UPDATE_ROWS_COMPRESSED_EVENT = 52,
+  DELETE_ROWS_COMPRESSED_EVENT = 53,
   /*
     Add new events here - right above this comment!
     Existing events (except ENUM_END_EVENT) should never change their numbers
@@ -4043,6 +4044,31 @@ protected:
 #endif
 };
 
+
+class Delete_rows_compressed_log_event : public Delete_rows_log_event
+{
+public:
+  enum 
+  {
+    /* Support interface to THD::binlog_prepare_pending_rows_event */
+    TYPE_CODE = DELETE_ROWS_COMPRESSED_EVENT
+  };
+
+#if defined(MYSQL_SERVER)
+  Delete_rows_compressed_log_event(THD*, TABLE*, ulong table_id, 
+		       MY_BITMAP const *cols, bool is_transactional);
+  virtual bool write(IO_CACHE* file);
+#endif
+#ifdef HAVE_REPLICATION
+  Delete_rows_compressed_log_event(const char *buf, uint event_len, 
+                       const Format_description_log_event *description_event);
+#endif
+private:
+  virtual Log_event_type get_type_code() { return (Log_event_type)TYPE_CODE; }
+#ifdef MYSQL_CLIENT
+  void print(FILE *file, PRINT_EVENT_INFO *print_event_info);
+#endif
+};
 
 #include "log_event_old.h"
 

@@ -900,6 +900,7 @@ const char* Log_event::get_type_str(Log_event_type type)
   case QUERY_COMPRESSED_EVENT: return "Query_compressed";
   case WRITE_ROWS_COMPRESSED_EVENT: return "Write_rows_compressed";
   case UPDATE_ROWS_COMPRESSED_EVENT: return "Update_rows_compressed";
+  case DELETE_ROWS_COMPRESSED_EVENT: return "Delete_rows_compressed";
   default: return "Unknown";				/* impossible */
   }
 }
@@ -1548,6 +1549,8 @@ Log_event* Log_event::read_log_event(const char* buf, uint event_len,
     case UPDATE_ROWS_COMPRESSED_EVENT:
       ev = new Update_rows_compressed_log_event(buf, event_len, description_event);
       break;
+    case DELETE_ROWS_COMPRESSED_EVENT:
+      ev = new Delete_rows_compressed_log_event(buf, event_len, description_event);
 #endif
     case BEGIN_LOAD_QUERY_EVENT:
       ev = new Begin_load_query_log_event(buf, event_len, description_event);
@@ -2199,6 +2202,7 @@ void Rows_log_event::print_verbose(IO_CACHE *file,
     sql_clause2= NULL;
     break;
   case DELETE_ROWS_EVENT:
+  case DELETE_ROWS_COMPRESSED_EVENT:
     sql_command= "DELETE FROM";
     sql_clause1= "### WHERE\n";
     sql_clause2= NULL;
@@ -2322,6 +2326,11 @@ void Log_event::print_base64(IO_CACHE* file,
     else if (ptr[4] == UPDATE_ROWS_COMPRESSED_EVENT)
     {
       ev= new Update_rows_compressed_log_event((const char*) ptr, size,
+                                    glob_description_event);
+    }
+    else if (ptr[4] == DELETE_ROWS_COMPRESSED_EVENT)
+    {
+      ev= new Delete_rows_compressed_log_event((const char*) ptr, size,
                                     glob_description_event);
     }
     if (ev)
@@ -4215,6 +4224,7 @@ Format_description_log_event(uint8 binlog_ver, const char* server_ver)
       post_header_len[QUERY_COMPRESSED_EVENT-1]= QUERY_HEADER_LEN;
       post_header_len[WRITE_ROWS_COMPRESSED_EVENT-1]=   ROWS_HEADER_LEN;
       post_header_len[UPDATE_ROWS_COMPRESSED_EVENT-1]=  ROWS_HEADER_LEN;
+      post_header_len[DELETE_ROWS_COMPRESSED_EVENT-1]=  ROWS_HEADER_LEN;
 
       // Sanity-check that all post header lengths are initialized.
       int i;
@@ -9714,7 +9724,7 @@ void issue_long_find_row_warning(Log_event_type type,
     if (delta > LONG_FIND_ROW_THRESHOLD)
     {
       const_cast<Relay_log_info*>(rli)->set_long_find_row_note_printed();
-      const char* evt_type= type == DELETE_ROWS_EVENT ? " DELETE" : "n UPDATE";
+      const char* evt_type= (type == DELETE_ROWS_EVENT || type == DELETE_ROWS_COMPRESSED_EVENT) ? " DELETE" : "n UPDATE";
       const char* scan_type= is_index_scan ? "scanning an index" : "scanning the table";
 
       sql_print_information("The slave is applying a ROW event on behalf of a%s statement "
@@ -10070,6 +10080,19 @@ Delete_rows_log_event::Delete_rows_log_event(THD *thd_arg, TABLE *tbl_arg,
   : Rows_log_event(thd_arg, tbl_arg, tid, cols, is_transactional)
 {
 }
+
+Delete_rows_compressed_log_event::Delete_rows_compressed_log_event(THD *thd_arg, TABLE *tbl_arg,
+                                           ulong tid_arg,
+                                           MY_BITMAP const *cols,
+                                           bool is_transactional)
+  : Delete_rows_log_event(thd_arg, tbl_arg, tid_arg, cols, is_transactional)
+{
+}
+
+bool Delete_rows_compressed_log_event::write(IO_CACHE *file)
+{
+    return Rows_log_event::write_compressed(file);    
+}
 #endif /* #if !defined(MYSQL_CLIENT) */
 
 /*
@@ -10081,6 +10104,14 @@ Delete_rows_log_event::Delete_rows_log_event(const char *buf, uint event_len,
                                              *description_event)
   : Rows_log_event(buf, event_len, DELETE_ROWS_EVENT, description_event)
 {
+}
+
+Delete_rows_compressed_log_event::Delete_rows_compressed_log_event(const char *buf, uint event_len,
+                                           const Format_description_log_event
+                                           *description_event)
+: Delete_rows_log_event(buf, event_len, description_event)
+{
+  uncompress_buf();
 }
 #endif
 
@@ -10148,6 +10179,23 @@ void Delete_rows_log_event::print(FILE *file,
                                   PRINT_EVENT_INFO* print_event_info)
 {
   Rows_log_event::print_helper(file, print_event_info, "Delete_rows");
+}
+
+void Delete_rows_compressed_log_event::print(FILE *file,
+                                             PRINT_EVENT_INFO* print_event_info)
+{
+  char *new_buf;
+  ulong len;
+  if(!Row_log_event_uncompress(glob_description_event, DELETE_ROWS_EVENT, temp_buf, &new_buf, &len))
+  {
+      my_free(temp_buf);
+      temp_buf = new_buf;
+      Rows_log_event::print_helper(file, print_event_info, "Delete_compressed_rows");
+  }
+  else
+  {
+      my_b_printf(&print_event_info->head_cache, "ERROR: uncompress delete_compressed_rows failed\n");
+  }
 }
 #endif
 
