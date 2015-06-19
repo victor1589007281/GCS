@@ -4812,7 +4812,7 @@ int THD::binlog_write_row(TABLE* table, bool is_trans,
   size_t const len= pack_row(table, cols, row_data, record);
 
   Rows_log_event* ev;
-  if(opt_bin_log_compress && binlog_compress_flags && query_length() > 256)
+  if(binlog_should_compress(query_length()))
   {
     ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
                                       len, is_trans,
@@ -4866,7 +4866,7 @@ int THD::binlog_update_row(TABLE* table, bool is_trans,
 #endif
 
   Rows_log_event* ev;
-  if(opt_bin_log_compress && binlog_compress_flags && query_length() > 256)
+  if(binlog_should_compress(query_length()))
   {
     ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
 				      before_size + after_size, is_trans,
@@ -4905,10 +4905,19 @@ int THD::binlog_delete_row(TABLE* table, bool is_trans,
 
   size_t const len= pack_row(table, cols, row_data, record);
 
-  Rows_log_event* const ev=
-    binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
+  Rows_log_event* ev;
+  if(binlog_should_compress(query_length()))
+  {
+    ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
+				      len, is_trans,
+				      static_cast<Delete_rows_compressed_log_event*>(0));
+  }
+  else
+  {
+    ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
 				      len, is_trans,
 				      static_cast<Delete_rows_log_event*>(0));
+  }
 
   if (unlikely(ev == 0))
     return HA_ERR_OUT_OF_MEM;
@@ -5138,7 +5147,7 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
     */
     {
       int error= 0;
-      if(opt_bin_log_compress && binlog_compress_flags && query_len >= 256)
+      if(binlog_should_compress(query_len))
       {
         Query_compressed_log_event qinfo(this, query_arg, query_len, is_trans, direct,
                                          suppress_use, errcode);

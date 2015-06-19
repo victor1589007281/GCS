@@ -997,6 +997,18 @@ static Sys_var_mybool Sys_log_bin_compress(
        "log_bin_compress", "Whether the binary log can be compressed",
        GLOBAL_VAR(opt_bin_log_compress), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_log_bin_compress_ignore_type(
+       "log_bin_compress_ignore_type", "If set to TRUE, it will ignore the type "
+       "of filed when judge where this event should be compressed",
+       GLOBAL_VAR(opt_bin_log_compress_ignore_type), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+static Sys_var_uint Sys_log_bin_compress_min_len(
+       "log_bin_compress_min_len",
+       "Minimum length of sql statement(in statement mode) or record(in row mode)"
+       "that can be compressed.",
+       READ_ONLY GLOBAL_VAR(opt_bin_log_compress_min_len),
+       CMD_LINE(OPT_ARG), VALID_RANGE(10, 1024), DEFAULT(256), BLOCK_SIZE(1));
+
 static Sys_var_mybool Sys_trust_function_creators(
        "log_bin_trust_function_creators",
        "If set to FALSE (the default), then when --log-bin is used, creation "

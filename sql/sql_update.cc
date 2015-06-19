@@ -641,7 +641,7 @@ int mysql_update(THD *thd,
   if (table->file->ha_table_flags() & HA_PARTIAL_COLUMN_READ)
     table->prepare_for_position();
 
-  setup_binlog_compress_flags(thd, table);
+  thd->setup_binlog_compress_flags(table);
   while (!(error=info.read_record(&info)) && !thd->killed)
   {
     thd->examined_row_count++;

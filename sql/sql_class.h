@@ -1644,9 +1644,21 @@ public:
                 current_stmt_binlog_format == BINLOG_FORMAT_ROW);
     return current_stmt_binlog_format == BINLOG_FORMAT_ROW;
   }
-
-  /* this flags should be 1 if the binlog can be compressed */
-  uint32 binlog_compress_flags;
+  uint setup_binlog_compress_flags(TABLE *table) {
+      MY_BITMAP *write_set = table->write_set;
+      for(uint i = 0;i < write_set->n_bits;i++)
+      {
+          if(bitmap_is_set(table->write_set,i) &&
+          table->field[i]->unireg_check == Field::COMPRESSED_BLOB_FIELD)
+          return binlog_compress_flags = 1;
+      }
+      return binlog_compress_flags = 0;
+  }
+  bool binlog_should_compress(ulong len) {
+      return opt_bin_log_compress 
+             && (binlog_compress_flags || opt_bin_log_compress_ignore_type) 
+             && len >= opt_bin_log_compress_min_len;
+  }
 private:
   /**
     Indicates the format in which the current statement will be
@@ -1673,6 +1685,8 @@ private:
     transaction cache.
   */
   uint binlog_table_maps;
+  /* this flags should be 1 if the binlog can be compressed */
+  uint32 binlog_compress_flags;
 public:
   void issue_unsafe_warnings();
 

@@ -293,6 +293,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
 
 
   table->mark_columns_needed_for_delete();
+  thd->setup_binlog_compress_flags(table);
 
   while (!(error=info.read_record(&info)) && !thd->killed &&
 	 ! thd->is_error())
