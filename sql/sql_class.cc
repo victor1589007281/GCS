@@ -4812,7 +4812,7 @@ int THD::binlog_write_row(TABLE* table, bool is_trans,
   size_t const len= pack_row(table, cols, row_data, record);
 
   Rows_log_event* ev;
-  if(binlog_should_compress(query_length()))
+  if(binlog_should_compress(len))
   {
     ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
                                       len, is_trans,
@@ -4866,7 +4866,7 @@ int THD::binlog_update_row(TABLE* table, bool is_trans,
 #endif
 
   Rows_log_event* ev;
-  if(binlog_should_compress(query_length()))
+  if(binlog_should_compress(before_size + after_size))
   {
     ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
 				      before_size + after_size, is_trans,
@@ -4906,7 +4906,7 @@ int THD::binlog_delete_row(TABLE* table, bool is_trans,
   size_t const len= pack_row(table, cols, row_data, record);
 
   Rows_log_event* ev;
-  if(binlog_should_compress(query_length()))
+  if(binlog_should_compress(len))
   {
     ev = binlog_prepare_pending_rows_event(table, server_id, cols, colcnt,
 				      len, is_trans,
