@@ -3248,9 +3248,10 @@ Query_compressed_log_event::Query_compressed_log_event(const char *buf, uint eve
     if(query)
     {
         uint32 un_len=binlog_get_uncompress_len(query);
-        query_buf = (Log_event::Byte*)my_malloc(un_len, MYF(MY_WME));
+        query_buf = (Log_event::Byte*)my_malloc(un_len + 1, MYF(MY_WME)); //reserve one byte for '\0'
         if(query_buf && !binlog_buf_uncompress(query, (char *)query_buf, q_len, &un_len))
         {
+            query_buf[un_len] = 0;
             query = (const char *)query_buf;
             q_len = un_len;
         }
