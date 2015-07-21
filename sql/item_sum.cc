@@ -2565,11 +2565,13 @@ void Item_sum_avg::update_field()
 
 void Item_sum_hybrid::update_field()
 {
-  Item *tmp_item;
+  Item *tmp_item, *tmp_item2;
   if (direct_added)
   {
     tmp_item= value->get_item();
     value->store(direct_item);
+	tmp_item2 = args[0];
+	args[0] = direct_item;
   }
   switch (hybrid_type) {
   case STRING_RESULT:
@@ -2587,6 +2589,7 @@ void Item_sum_hybrid::update_field()
   if (direct_added)
   {
     value->store(tmp_item);
+	args[0] = tmp_item2;
     direct_added= FALSE;
   }
 }

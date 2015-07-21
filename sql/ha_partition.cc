@@ -5299,9 +5299,9 @@ int ha_partition::common_first_last(uchar *buf)
       if (m_pre_calling || error)
         return error;
     }
-    return handle_unordered_scan_next_partition(buf);
+    return handle_unordered_scan_next_partition(buf);  //spider中带 group by走这个
   }
-  return handle_ordered_index_scan(buf, FALSE);
+  return handle_ordered_index_scan(buf, FALSE);   // spider 中不带 group by
 }
 
 
