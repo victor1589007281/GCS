@@ -1,11 +1,7 @@
-stop slave;
-drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
-reset master;
-reset slave;
-drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
-start slave;
+include/master-slave.inc
+[connection master]
 # Second_behind reports 0
-Seconds_Behind_Master	0
+Seconds_Behind_Master = '0'
 drop table if exists t1;
 Warnings:
 Note	1051	Unknown table 't1'
@@ -14,12 +10,13 @@ flush logs /* contaminate rli->last_master_timestamp */;
 lock table t1 write;
 insert into t1 values (1);
 # bug emulated: reports slave threads starting time about 3*3 not 3 secs
-Seconds_Behind_Master	9
+Seconds_Behind_Master = '6'
 unlock tables;
 flush logs /* this time rli->last_master_timestamp is not affected */;
 lock table t1 write;
 insert into t1 values (2);
 # reports the correct diff with master query time about 3+3 secs
-Seconds_Behind_Master	7
+Seconds_Behind_Master = '6'
 unlock tables;
 drop table t1;
+include/rpl_end.inc

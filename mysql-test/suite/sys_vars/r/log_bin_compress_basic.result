@@ -1,21 +1,29 @@
-#
-# only global
-#
 select @@global.log_bin_compress;
---error ER_INCORRECT_GLOBAL_LOCAL_VAR
+@@global.log_bin_compress
+0
 select @@session.log_bin_compress;
+ERROR HY000: Variable 'log_bin_compress' is a GLOBAL variable
 show global variables like 'log_bin_compress';
+Variable_name	Value
+log_bin_compress	OFF
 show session variables like 'log_bin_compress';
+Variable_name	Value
+log_bin_compress	OFF
 select * from information_schema.global_variables where variable_name='log_bin_compress';
+VARIABLE_NAME	VARIABLE_VALUE
+LOG_BIN_COMPRESS	OFF
 select * from information_schema.session_variables where variable_name='log_bin_compress';
-
+VARIABLE_NAME	VARIABLE_VALUE
+LOG_BIN_COMPRESS	OFF
 set global log_bin_compress=1;
---echo 1 Expected
+1 Expected
 select @@global.log_bin_compress;
-
---error ER_GLOBAL_VARIABLE
+@@global.log_bin_compress
+1
 set session log_bin_compress=0;
-
+ERROR HY000: Variable 'log_bin_compress' is a GLOBAL variable and should be set with SET GLOBAL
 set global log_bin_compress=0;
---echo 0 Expected
+0 Expected
 select @@global.log_bin_compress;
+@@global.log_bin_compress
+0

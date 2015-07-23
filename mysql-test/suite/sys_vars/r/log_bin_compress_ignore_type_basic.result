@@ -1,0 +1,29 @@
+select @@global.log_bin_compress_ignore_type;
+@@global.log_bin_compress_ignore_type
+1
+select @@session.log_bin_compress_ignore_type;
+ERROR HY000: Variable 'log_bin_compress_ignore_type' is a GLOBAL variable
+show global variables like 'log_bin_compress_ignore_type';
+Variable_name	Value
+log_bin_compress_ignore_type	ON
+show session variables like 'log_bin_compress_ignore_type';
+Variable_name	Value
+log_bin_compress_ignore_type	ON
+select * from information_schema.global_variables where variable_name='log_bin_compress_ignore_type';
+VARIABLE_NAME	VARIABLE_VALUE
+LOG_BIN_COMPRESS_IGNORE_TYPE	ON
+select * from information_schema.session_variables where variable_name='log_bin_compress_ignore_type';
+VARIABLE_NAME	VARIABLE_VALUE
+LOG_BIN_COMPRESS_IGNORE_TYPE	ON
+set global log_bin_compress_ignore_type=0;
+0 Expected
+select @@global.log_bin_compress_ignore_type;
+@@global.log_bin_compress_ignore_type
+0
+set session log_bin_compress_ignore_type=0;
+ERROR HY000: Variable 'log_bin_compress_ignore_type' is a GLOBAL variable and should be set with SET GLOBAL
+set global log_bin_compress_ignore_type=1;
+1 Expected
+select @@global.log_bin_compress_ignore_type;
+@@global.log_bin_compress_ignore_type
+1

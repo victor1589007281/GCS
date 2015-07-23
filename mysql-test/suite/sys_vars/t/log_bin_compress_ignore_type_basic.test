@@ -1,0 +1,21 @@
+#
+# only global
+#
+select @@global.log_bin_compress_ignore_type;
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+select @@session.log_bin_compress_ignore_type;
+show global variables like 'log_bin_compress_ignore_type';
+show session variables like 'log_bin_compress_ignore_type';
+select * from information_schema.global_variables where variable_name='log_bin_compress_ignore_type';
+select * from information_schema.session_variables where variable_name='log_bin_compress_ignore_type';
+
+set global log_bin_compress_ignore_type=0;
+--echo 0 Expected
+select @@global.log_bin_compress_ignore_type;
+
+--error ER_GLOBAL_VARIABLE
+set session log_bin_compress_ignore_type=0;
+
+set global log_bin_compress_ignore_type=1;
+--echo 1 Expected
+select @@global.log_bin_compress_ignore_type;
