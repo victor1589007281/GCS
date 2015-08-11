@@ -3194,12 +3194,6 @@ ha_innobase::get_row_type() const
 	if (prebuilt && prebuilt->table) {
 		const ulint	flags = prebuilt->table->flags;
 
-        /* check if GCS type*/      
-        if(dict_table_is_gcs(prebuilt->table)){
-            return (ROW_TYPE_GCS);
-        }
-
-
 		if (UNIV_UNLIKELY(!flags)) {
 			return(ROW_TYPE_REDUNDANT);
 		}
@@ -3208,12 +3202,18 @@ ha_innobase::get_row_type() const
 
 		switch (flags & DICT_TF_FORMAT_MASK) {
 		case DICT_TF_FORMAT_51 << DICT_TF_FORMAT_SHIFT:
-			return(ROW_TYPE_COMPACT);
+      if (dict_table_is_gcs(prebuilt->table))
+        return (ROW_TYPE_GCS);
+      else
+			  return(ROW_TYPE_COMPACT);
 		case DICT_TF_FORMAT_ZIP << DICT_TF_FORMAT_SHIFT:
 			if (flags & DICT_TF_ZSSIZE_MASK) {
 				return(ROW_TYPE_COMPRESSED);
 			} else {
-				return(ROW_TYPE_DYNAMIC);
+        if (dict_table_is_gcs(prebuilt->table))
+          return(ROW_TYPE_GCS_DYNAMIC);
+        else
+				  return(ROW_TYPE_DYNAMIC);
 			}
 #if DICT_TF_FORMAT_ZIP != DICT_TF_FORMAT_MAX
 # error "DICT_TF_FORMAT_ZIP != DICT_TF_FORMAT_MAX"
@@ -6974,8 +6974,10 @@ get_row_format_name(
 		return("DEFAULT");
 	case ROW_TYPE_FIXED:
 		return("FIXED");
-    case ROW_TYPE_GCS:
-        return("GCS");
+  case ROW_TYPE_GCS:
+    return("GCS");
+  case ROW_TYPE_GCS_DYNAMIC:
+    return("GCS_DYNAMIC");
 	case ROW_TYPE_PAGE:
 	case ROW_TYPE_NOT_USED:
 		break;
@@ -7084,6 +7086,7 @@ create_options_are_valid(
 		CHECK_ERROR_ROW_TYPE_NEEDS_GT_ANTELOPE;
 		break;
 	case ROW_TYPE_DYNAMIC:
+  case ROW_TYPE_GCS_DYNAMIC:
 		CHECK_ERROR_ROW_TYPE_NEEDS_FILE_PER_TABLE;
 		CHECK_ERROR_ROW_TYPE_NEEDS_GT_ANTELOPE;
 		/* fall through since dynamic also shuns KBS */
@@ -7327,6 +7330,8 @@ ha_innobase::create(
 	switch (row_format) {
 	case ROW_TYPE_REDUNDANT:
 		break;
+  case ROW_TYPE_GCS_DYNAMIC:
+    is_gcs = TRUE;
 	case ROW_TYPE_COMPRESSED:
 	case ROW_TYPE_DYNAMIC:
 		if (!srv_file_per_table) {

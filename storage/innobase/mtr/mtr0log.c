@@ -588,7 +588,6 @@ mlog_parse_index(
         if (is_gcs)
         {
             n_fields_before_alter = mach_read_from_2(ptr);
-            ut_ad(n_fields_before_alter < n && n_fields_before_alter > 0);
             ptr += 2;
 
             /* 确保地址有效！*/

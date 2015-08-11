@@ -1870,7 +1870,7 @@ err_len:
 
         if (n_cols & 0x40000000UL)      /* 次高位表示GCS */
         {
-            ut_ad(flags == 0);          /* 参考dict_sys_tables_get_flags */
+            ut_ad(flags == 0 || flags == 0x21);          /* 参考dict_sys_tables_get_flags */
             is_gcs = TRUE;
         }
 

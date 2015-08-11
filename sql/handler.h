@@ -367,7 +367,7 @@ enum row_type { ROW_TYPE_NOT_USED=-1, ROW_TYPE_DEFAULT, ROW_TYPE_FIXED,
 		ROW_TYPE_DYNAMIC, ROW_TYPE_COMPRESSED,
 		ROW_TYPE_REDUNDANT, ROW_TYPE_COMPACT,
         /** add a kind row type of GCS for  fast online DML  **/
-        ROW_TYPE_GCS,
+        ROW_TYPE_GCS, ROW_TYPE_GCS_DYNAMIC,
         /** Unused. Reserved for future versions. */
         ROW_TYPE_PAGE 
 		};

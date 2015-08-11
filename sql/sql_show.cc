@@ -1568,7 +1568,20 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
 
         packet->append(ha_row_type[(uint) create_info.row_type]);
         packet->append(STRING_WITH_LEN(" */ "));
-      }else{
+      } 
+      else if(create_info.row_type == ROW_TYPE_GCS_DYNAMIC ){
+        /* TMySQL: TMYSQL_VERSION_FLAG version is used for TMYSQL ONLY for compatable with official version */
+        char tversion[12];        
+        sprintf(tversion,"%u", 99106);
+
+        packet->append(STRING_WITH_LEN(" /*!")); /* ! cannot add any space after the '!'  */
+        packet->append(tversion ,5);
+        packet->append(STRING_WITH_LEN(" ROW_FORMAT="));
+
+        packet->append(ha_row_type[(uint) create_info.row_type]);
+        packet->append(STRING_WITH_LEN(" */ "));
+      }
+      else{
         packet->append(STRING_WITH_LEN(" ROW_FORMAT="));
         packet->append(ha_row_type[(uint) create_info.row_type]);
       }
@@ -4439,6 +4452,9 @@ static int get_schema_tables_record(THD *thd, TABLE_LIST *tables,
         break;
       case ROW_TYPE_DYNAMIC:
         tmp_buff= "Dynamic";
+        break;
+      case ROW_TYPE_GCS_DYNAMIC:
+        tmp_buff= "GCS_Dynamic";
         break;
       case ROW_TYPE_COMPRESSED:
         tmp_buff= "Compressed";

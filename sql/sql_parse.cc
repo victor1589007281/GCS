@@ -7137,7 +7137,7 @@ check_engine_n_row_format(THD *thd,HA_CREATE_INFO *create_info)
     row_type = create_info->row_type;
     
     /* if the enine is not InnoDB and row_type is gcs, return error. */
-    if(my_db_type != DB_TYPE_INNODB &&  row_type == ROW_TYPE_GCS)
+    if(my_db_type != DB_TYPE_INNODB && (row_type == ROW_TYPE_GCS || row_type == ROW_TYPE_GCS_DYNAMIC))
     {
         
         t_error = TRUE;

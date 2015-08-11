@@ -3957,7 +3957,7 @@ bool mysql_create_table_no_lock(THD *thd,
   set_table_default_charset(thd, create_info, (char*) db);
 
   db_options= create_info->table_options;
-  if (create_info->row_type == ROW_TYPE_DYNAMIC)
+  if (create_info->row_type == ROW_TYPE_DYNAMIC || create_info->row_type == ROW_TYPE_GCS_DYNAMIC)
     db_options|=HA_OPTION_PACK_RECORD;
   alias= table_case_name(create_info, table_name);
   if (!(file= get_new_handler((TABLE_SHARE*) 0, thd->mem_root,
@@ -5022,7 +5022,7 @@ mysql_compare_tables(TABLE *table,
     }
 
     /* Don't pack rows in old tables if the user has requested this. */
-    if (create_info->row_type == ROW_TYPE_DYNAMIC ||
+    if (create_info->row_type == ROW_TYPE_DYNAMIC || create_info->row_type == ROW_TYPE_GCS_DYNAMIC ||
 	(tmp_new_field->flags & BLOB_FLAG) ||
 	(tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
 	create_info->row_type != ROW_TYPE_FIXED))

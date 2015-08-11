@@ -890,6 +890,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  COMPLETION_SYM
 %token  COMPRESSED_SYM
 %token  GCS_SYM
+%token  GCS_DYNAMIC_SYM
 %token  CONCURRENT
 %token  CONDITION_SYM                 /* SQL-2003-R, SQL-2008-R */
 %token  CONNECTION_SYM
@@ -5286,6 +5287,7 @@ row_types:
         | REDUNDANT_SYM  { $$= ROW_TYPE_REDUNDANT; }
         | COMPACT_SYM    { $$= ROW_TYPE_COMPACT; }
         | GCS_SYM    { $$= ROW_TYPE_GCS; }		/* add gcs row format*/
+        | GCS_DYNAMIC_SYM{ $$= ROW_TYPE_GCS_DYNAMIC; }		/* add gcs row format*/
         ;
 
 merge_insert_types:
@@ -12635,6 +12637,7 @@ keyword_sp:
         | COMPLETION_SYM           {}
         | COMPRESSED_SYM           {}
         | GCS_SYM                  {}
+        | GCS_DYNAMIC_SYM          {}
         | CONCURRENT               {}
         | CONNECTION_SYM           {}
         | CONSISTENT_SYM           {}

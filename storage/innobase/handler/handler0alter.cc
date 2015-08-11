@@ -2565,8 +2565,8 @@ innobase_alter_row_format_simple(
     ut_ad(new_table->s->fields == dict_table->n_cols - DATA_N_SYS_COLS);
 
     //set the row format flag
-    if(change_flag == INNODB_ROW_FORMAT_COMACT_TO_GCS){
-	    //compact -> gcs
+    if(change_flag == INNODB_ROW_FORMAT_CHANGE_TO_GCS){
+	    //compact -> gcs or dynamic -> gcs_dynamic
         pars_info_add_int4_literal(info,"n_col",new_table->s->fields | (1<<31)|(1<<30));
         real_gcs = srv_create_use_gcs_real_format;
 
@@ -2635,7 +2635,7 @@ innobase_alter_row_format_simple(
 
     //todo: modify the memory for fast alter row format
 
-     if(change_flag == INNODB_ROW_FORMAT_COMACT_TO_GCS){
+     if(change_flag == INNODB_ROW_FORMAT_CHANGE_TO_GCS){
          ut_ad(!dict_table->is_gcs);
          dict_table->is_gcs = TRUE;
          
@@ -3049,7 +3049,7 @@ ha_innobase::check_if_supported_inplace_alter(
         /* 
             如果行格式不是GCS,或者创建的行格式与底层的行格式不一样,则不能直接快速alter 
         */
-        if( ROW_TYPE_GCS != tb_innodb_row_type || 
+        if( (ROW_TYPE_GCS != tb_innodb_row_type && ROW_TYPE_GCS_DYNAMIC != tb_innodb_row_type) || 
             ( (create_info->used_fields & HA_CREATE_USED_ROW_FORMAT) &&
             create_info->row_type != tb_innodb_row_type )){
                 DBUG_RETURN(false);
@@ -3065,7 +3065,7 @@ ha_innobase::check_if_supported_inplace_alter(
         /* 
             如果行格式不是GCS,或者创建的行格式与底层的行格式不一样,则不能直接快速alter 
         */
-		if( ROW_TYPE_GCS != tb_innodb_row_type || 
+		if( (ROW_TYPE_GCS != tb_innodb_row_type && ROW_TYPE_GCS_DYNAMIC != tb_innodb_row_type) || 
 			( (create_info->used_fields & HA_CREATE_USED_ROW_FORMAT) &&
 			create_info->row_type != tb_innodb_row_type )){
 				DBUG_RETURN(false);
@@ -3135,8 +3135,9 @@ ha_innobase::is_support_fast_rowformat_change(
  enum row_type		  old_type){
 
      DBUG_ENTER("ha_innobase::is_support_fast_rowformat_change");
-     if(new_type == ROW_TYPE_GCS && old_type == ROW_TYPE_COMPACT)
-         DBUG_RETURN(INNODB_ROW_FORMAT_COMACT_TO_GCS);
+     if(new_type == ROW_TYPE_GCS && old_type == ROW_TYPE_COMPACT || 
+        new_type == ROW_TYPE_GCS_DYNAMIC && old_type == ROW_TYPE_DYNAMIC)
+         DBUG_RETURN(INNODB_ROW_FORMAT_CHANGE_TO_GCS);
 
      if(new_type == ROW_TYPE_COMPACT && old_type == ROW_TYPE_GCS){
          /*

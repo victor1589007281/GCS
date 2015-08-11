@@ -91,7 +91,7 @@ check_trx_exists(
 enum innodb_row_format_change {
     INNODB_ROW_FORMAT_CHANGE_NO,
     INNODB_ROW_FORMAT_GCS_TO_COMPACT,
-    INNODB_ROW_FORMAT_COMACT_TO_GCS
+    INNODB_ROW_FORMAT_CHANGE_TO_GCS
 };
 
 /** InnoDB B-tree index */

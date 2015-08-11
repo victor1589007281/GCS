@@ -79,7 +79,7 @@ static const LEX_STRING sys_table_aliases[]=
 };
 
 const char *ha_row_type[] = {
-  "", "FIXED", "DYNAMIC", "COMPRESSED", "REDUNDANT", "COMPACT","GCS",
+  "", "FIXED", "DYNAMIC", "COMPRESSED", "REDUNDANT", "COMPACT","GCS", "GCS_DYNAMIC",
   /* Reserved to be "PAGE" in future versions */ "?",
   "?","?","?"
 };
@@ -5598,6 +5598,9 @@ const char* handler::get_row_type_str() const
           break;
       case ROW_TYPE_DYNAMIC:
           tmp_buff= "Dynamic";
+          break;
+      case ROW_TYPE_GCS_DYNAMIC:
+          tmp_buff= "GCS_Dynamic";
           break;
       case ROW_TYPE_COMPRESSED:
           tmp_buff= "Compressed";
