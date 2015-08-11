@@ -6999,6 +6999,7 @@ int ha_partition::info(uint flag)
     stats.check_time= 0;
     stats.delete_length= 0;
     file_array= m_file;
+	thd->variables.sql_use_partition_count = 0; // 初始状态为0
 	thd->variables.spider_sql_use_partition_count = 0; // 初始状态为0
     do
     {
@@ -7007,6 +7008,10 @@ int ha_partition::info(uint flag)
         file= *file_array;
          file->info(HA_STATUS_VARIABLE | no_lock_flag | extra_var_flag);
 		// 在open table的时候，no_locak_flag extra_var_flag都为0
+	    if(no_lock_flag || extra_var_flag)
+		{// 记录所有跨分区行为， 不区分是否是spider,  这两个选项用来区分是否是open table行为
+			thd->variables.sql_use_partition_count++;
+		}
 		if(file->support_more_partiton_log() && log_sql_use_mutil_partition && (no_lock_flag || extra_var_flag))
 		{// 存储引擎须支持跨分区行为记录到slow log， spider支持
 		 // 统计query涉及的分区数，不考虑open table时读取了多个分区的情况

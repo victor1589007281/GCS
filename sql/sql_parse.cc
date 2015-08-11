@@ -1469,7 +1469,7 @@ void log_slow_statement(THD *thd)
   if (opt_query_response_time_stats)
   {
     if (thd->utime_after_lock > 0)
-      query_response_time_collect(thd->current_utime() - thd->utime_after_lock);
+      query_response_time_collect(thd, thd->current_utime() - thd->utime_after_lock);
   }
 #endif
 
@@ -5412,6 +5412,7 @@ void THD::reset_for_next_command()
   thd->binlog_unsafe_warning_flags= 0;
   thd->binlog_compress_flags = 0;
   thd->variables.spider_sql_use_partition_count = 0;
+  thd->variables.sql_use_partition_count = 0;
 
   //for spider 
   thd->select_limit = -1;

@@ -8149,6 +8149,8 @@ ST_FIELD_INFO query_response_time_fields_info[] =
     {"TIME",  QRT_TIME_STRING_LENGTH,      MYSQL_TYPE_STRING,  0, 0,            "Time", SKIP_OPEN_TABLE },
     {"COUNT", MY_INT32_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONG, 0, MY_I_S_UNSIGNED, "Count", SKIP_OPEN_TABLE },
     {"TOTAL",  QRT_TOTAL_STRING_LENGTH,     MYSQL_TYPE_STRING,  0, 0,            "Total", SKIP_OPEN_TABLE },
+	{"P_COUNT", MY_INT32_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONG, 0, MY_I_S_UNSIGNED, "P_Count", SKIP_OPEN_TABLE },
+	{"P_TOTAL",  QRT_TOTAL_STRING_LENGTH,     MYSQL_TYPE_STRING,  0, 0,            "P_Total", SKIP_OPEN_TABLE },
     {0,       0,                           MYSQL_TYPE_STRING,  0, 0,             0, SKIP_OPEN_TABLE }
 };
 

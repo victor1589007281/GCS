@@ -8,6 +8,7 @@
 #include "sql_show.h"
 #include "query_response_time.h"
 #include "log.h"
+#include "sql_class.h"
 
 #define TIME_STRING_POSITIVE_POWER_LENGTH QRT_TIME_STRING_POSITIVE_POWER_LENGTH
 #define TIME_STRING_NEGATIVE_POWER_LENGTH 6
@@ -193,15 +194,31 @@ public:
     my_atomic_rwlock_rdunlock(&time_collector_lock);
     return result;
   }
+  uint32 p_count(uint index) 
+  {
+	  my_atomic_rwlock_rdlock(&time_collector_lock);
+	  uint32 result= my_atomic_load32((int32*)&m_pcount[index]);
+	  my_atomic_rwlock_rdunlock(&time_collector_lock);
+	  return result;
+  }
+  uint64 p_total(uint index) 
+  {
+	  my_atomic_rwlock_rdlock(&time_collector_lock);
+	  uint64 result= my_atomic_load64((int64*)&m_ptotal[index]);
+	  my_atomic_rwlock_rdunlock(&time_collector_lock);
+	  return result;
+  }
 public:
   void flush()
   {
     my_atomic_rwlock_wrlock(&time_collector_lock);
     memset((void*)&m_count,0,sizeof(m_count));
     memset((void*)&m_total,0,sizeof(m_total));
+	memset((void*)&m_pcount,0,sizeof(m_pcount));
+	memset((void*)&m_ptotal,0,sizeof(m_ptotal));
     my_atomic_rwlock_wrunlock(&time_collector_lock);
   }
-  void collect(uint64 time)
+  void collect(THD* thd, uint64 time)
   {
     int i= 0;
     int start = m_utility->start_pos();
@@ -219,6 +236,13 @@ public:
         my_atomic_rwlock_wrlock(&time_collector_lock);
         my_atomic_add32((int32*)(&m_count[i]), 1);
         my_atomic_add64((int64*)(&m_total[i]), time);
+
+		// 分区表的跨分区性能视图
+		if(thd->variables.sql_use_partition_count >= 2)
+		{// 如果涉及到跨分区行为，则记录到分区性能视图中
+			my_atomic_add32((int32*)(&m_pcount[i]), 1);
+			my_atomic_add64((int64*)(&m_ptotal[i]), time);
+		}
         my_atomic_rwlock_wrunlock(&time_collector_lock);
         break;
       }
@@ -232,6 +256,9 @@ private:
   my_atomic_rwlock_t time_collector_lock;
   uint32   m_count[OVERALL_POWER_COUNT + 1];
   uint64   m_total[OVERALL_POWER_COUNT + 1];
+  /* m_pcount，m_ptotal用来统计跨分区操作的性能视图 */
+  uint32   m_pcount[OVERALL_POWER_COUNT + 1];
+  uint64   m_ptotal[OVERALL_POWER_COUNT + 1];
 };
 
 class collector
@@ -257,6 +284,7 @@ public:
     {
       char time[TIME_STRING_BUFFER_LENGTH];
       char total[100];
+	  char ptotal[100];
       assert(TIME_STRING_BUFFER_LENGTH < 100);
 
       if(i == bound_count())
@@ -265,6 +293,7 @@ public:
         assert(sizeof(TIME_OVERFLOW) <= TOTAL_STRING_BUFFER_LENGTH);
         memcpy(time,TIME_OVERFLOW,sizeof(TIME_OVERFLOW));
         print_timestamp(m_utility.start_time(), total, sizeof(total));
+		print_timestamp(m_utility.start_time(), ptotal, sizeof(ptotal));
         //snprintf(total, sizeof(total), "since 
         //memcpy(total,TIME_OVERFLOW,sizeof(TIME_OVERFLOW));
       }
@@ -272,10 +301,13 @@ public:
       {
         print_time(time, sizeof(time), TIME_STRING_FORMAT, this->bound(i));
         print_time(total, sizeof(total), TOTAL_STRING_FORMAT, this->total(i));
+		print_time(ptotal, sizeof(ptotal), TOTAL_STRING_FORMAT, this->ptotal(i));
       }
       fields[0]->store(time,strlen(time),system_charset_info);
       fields[1]->store(this->count(i));
       fields[2]->store(total,strlen(total),system_charset_info);
+	  fields[3]->store(this->pcount(i));
+	  fields[4]->store(ptotal,strlen(ptotal),system_charset_info);
       if (schema_table_store_record(thd, table))
       {
 	DBUG_RETURN(1);
@@ -283,9 +315,9 @@ public:
     }
     DBUG_RETURN(0);
   }
-  void collect(ulonglong time)
+  void collect(THD *thd, ulonglong time)
   {
-    m_time.collect(time);
+    m_time.collect(thd, time);
   }
   uint bound_count() const
   {
@@ -302,6 +334,14 @@ public:
   ulonglong total(uint index)
   {
     return m_time.total(index);
+  }
+  ulonglong pcount(uint index)
+  {
+	  return m_time.p_count(index);
+  }
+  ulonglong ptotal(uint index)
+  {
+	  return m_time.p_total(index);
   }
 private:
   utility          m_utility;
@@ -327,9 +367,9 @@ void query_response_time_flush()
   query_response_time::g_collector.flush();
   sql_print_information("Initializing QUERY_RESPONSE_TIME");
 }
-void query_response_time_collect(ulonglong query_time)
+void query_response_time_collect(THD* thd, ulonglong query_time)
 {
-  query_response_time::g_collector.collect(query_time);
+  query_response_time::g_collector.collect(thd, query_time);
 }
 
 int query_response_time_fill(THD* thd, TABLE_LIST *tables, COND *cond)
