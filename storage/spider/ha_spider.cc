@@ -7675,6 +7675,7 @@ int ha_spider::ft_read_internal(
         if ((error_num = spider_bg_conn_search(this, roop_count, roop_start,
           TRUE, FALSE, (roop_count != link_ok))))
         {
+
           if (
             error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
