@@ -6428,7 +6428,7 @@ make_join_select(JOIN *join,SQL_SELECT *select,COND *cond)
 		 OUTER_REF_TABLE_BIT | RAND_TABLE_BIT);
     for (uint i=join->const_tables ; i < join->tables ; i++)
     {
-      JOIN_TAB *tab=join->join_tab+i;
+      JOIN_TAB *tab=join->join_tab+i; // tab->quick->select,设置数据断点
       /*
         first_inner is the X in queries like:
         SELECT * FROM t1 LEFT OUTER JOIN (t2 JOIN t3) ON X

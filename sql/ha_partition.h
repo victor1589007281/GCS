@@ -315,6 +315,8 @@ public:
 
   //add by will. 用于在spider上限制列上指定字符类型
   bool is_support_column_charset();
+  // 用于限制spider存储引擎使用 quick_select中对group by的优化，  即 Using index for group-by
+  bool is_support_group_by_quick_select();
 
   // 用于限制在spider上使用auto_increment
   bool is_support_auto_increment();

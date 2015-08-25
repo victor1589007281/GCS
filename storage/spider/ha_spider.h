@@ -1075,6 +1075,11 @@ public:
 	  return false;
   }
 
+  bool is_support_group_by_quick_select()
+  {
+	  return false;
+  }
+
   // 限制使用自增列
   bool is_support_auto_increment()
   {

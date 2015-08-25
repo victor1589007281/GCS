@@ -2568,6 +2568,10 @@ public:
  {
 	 return true;
  }
+ virtual bool is_support_group_by_quick_select()
+ {
+	 return true;
+ }
  virtual bool is_support_auto_increment()
  {
 	 return true;

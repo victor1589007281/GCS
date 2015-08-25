@@ -9428,10 +9428,23 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
   Item_field *item_field;
   bool is_agg_distinct;
   List<Item_field> agg_distinct_flds;
+  handler *file_tmp;
 
   DBUG_ENTER("get_best_group_min_max");
 
   /* Perform few 'cheap' tests whether this access method is applicable. */
+
+  if(thd && thd->lex && thd->lex->query_tables && thd->lex->query_tables->table)
+  {
+	  file_tmp = thd->lex->query_tables->table->file;
+  }
+  if(file_tmp && !file_tmp->is_support_group_by_quick_select())
+  {// spider引擎不启用对group by 的quick select优化，即不走 Using index for group-by这个索引
+	DBUG_RETURN(NULL);
+  }
+
+
+
   if (!join)
     DBUG_RETURN(NULL);        /* This is not a select statement. */
   if ((join->tables != 1) ||  /* The query must reference one table. */

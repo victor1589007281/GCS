@@ -362,6 +362,8 @@ my_bool opt_log, opt_slow_log, log_sql_use_mutil_partition;
 my_bool spider_auto_increment_mode_switch; 
 uint spider_auto_increment_mode_value;
 uint spider_auto_increment_step;
+uint spider_max_connections;
+my_bool spider_connection_pool_switch;
 my_bool opt_alter_log;
 ulonglong log_output_options;
 my_bool opt_log_queries_not_using_indexes= 0;

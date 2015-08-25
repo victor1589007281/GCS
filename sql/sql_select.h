@@ -517,7 +517,7 @@ public:
     tmp_table_param.end_write_records= HA_POS_ERROR;
     rollup.state= ROLLUP::STATE_NONE;
 
-    no_const_tables= FALSE;
+    no_const_tables= FALSE;  // 有个成员 quick， 跟踪quick值
   }
 
   int prepare(Item ***rref_pointer_array, TABLE_LIST *tables, uint wind_num,

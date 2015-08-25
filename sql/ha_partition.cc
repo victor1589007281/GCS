@@ -9878,6 +9878,22 @@ bool ha_partition::is_support_column_charset()
 	DBUG_RETURN(is_support_column_charset);	
 }
 
+bool ha_partition::is_support_group_by_quick_select()
+{
+	DBUG_ENTER("ha_partition::is_support_group_by_quick_select");	
+	handler ** file;
+	bool   is_support_group_by_quick_select = TRUE;
+
+	for(file=m_file; *file; file++)
+	{
+		is_support_group_by_quick_select = (*file)->is_support_group_by_quick_select();
+		if(!is_support_group_by_quick_select) 
+			DBUG_RETURN(is_support_group_by_quick_select);
+	}	
+	DBUG_RETURN(is_support_group_by_quick_select);	
+}
+
+
 // will. spider存储引擎限制使用auto_increment
 bool ha_partition::is_support_auto_increment()
 {
