@@ -11636,6 +11636,7 @@ void ha_spider::check_pre_call(
     spider_get_select_limit(this, &select_lex, &select_limit, &offset_limit);
     if (
       select_lex &&
+      select_lex->sql_cache != SELECT_LEX::SQL_NO_CACHE && 
       (!select_lex->explicit_limit || !select_limit)
     ) {
       use_pre_call = TRUE;

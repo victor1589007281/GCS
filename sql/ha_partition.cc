@@ -5992,9 +5992,14 @@ bool ha_partition::check_parallel_search()
     while (table_list->parent_l)
       table_list = table_list->parent_l;
     st_select_lex *select_lex= table_list->select_lex;
+
+
     DBUG_PRINT("info",("partition select_lex=%p", select_lex));
     if (select_lex)
     {
+      if (select_lex->sql_cache == SELECT_LEX::SQL_NO_CACHE)
+        DBUG_RETURN(FALSE);
+
       if (!select_lex->explicit_limit)
       {
         DBUG_PRINT("info",("partition explicit_limit=FALSE"));
@@ -9217,13 +9222,19 @@ int ha_partition::direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
     DBUG_PRINT("info",("partition select_lex=%p", select_lex));
     if (select_lex && select_lex->explicit_limit)
     {
-      DBUG_PRINT("info",("partition explicit_limit=TRUE"));
-      DBUG_PRINT("info",("partition offset_limit=%p",
-        select_lex->offset_limit));
-      DBUG_PRINT("info",("partition select_limit=%p",
-        select_lex->select_limit));
-      DBUG_PRINT("info",("partition FALSE by select_lex"));
-      DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+      THD *thd = ha_thd();
+      if (!thd || select_lex->offset_limit && select_lex->offset_limit->val_int() > 0)
+      {
+        DBUG_PRINT("info",("partition explicit_limit=TRUE"));
+        DBUG_PRINT("info",("partition offset_limit=%p",
+          select_lex->offset_limit));
+        DBUG_PRINT("info",("partition select_limit=%p",
+          select_lex->select_limit));
+        DBUG_PRINT("info",("partition FALSE by select_lex"));
+        DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+      }
+
+      thd->direct_limit = select_lex->select_limit->val_int();
     }
   }
   DBUG_PRINT("info",("partition OK"));
@@ -9311,6 +9322,8 @@ int ha_partition::direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
   bool rnd_seq= FALSE;
   uint m_update_rows, i, m_found_rows;
   handler *file;
+  THD  *thd = ha_thd();
+  bool finish_flag = false;
   DBUG_ENTER("ha_partition::direct_update_rows");
 
   if (inited == RND && m_scan_value == 1)
@@ -9339,10 +9352,19 @@ int ha_partition::direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
         DBUG_RETURN(error);
       }
       *update_rows += m_update_rows;
-	  *found_rows += m_found_rows;
+      *found_rows += m_found_rows;
+      if (thd && thd->direct_limit > 0)
+      {
+        thd->direct_limit -= m_found_rows;
+        if (thd->direct_limit <= 0)
+          finish_flag = true;
+      }
     }
     if (rnd_seq && (error = file->ha_index_or_rnd_end()))
       DBUG_RETURN(error);
+
+    if (finish_flag)
+      break;
   }
   DBUG_RETURN(0);
 }
@@ -9471,6 +9493,8 @@ int ha_partition::direct_delete_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
   uint i, j;
   handler *file;
   TABLE_LIST *table_list= table->pos_in_table_list;
+  THD* thd = ha_thd();
+
   DBUG_ENTER("ha_partition::direct_delete_rows_init");
   if (ranges && ranges->start_key.key)
     get_partition_set(table, table->record[0], active_index,
@@ -9505,13 +9529,18 @@ int ha_partition::direct_delete_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
     DBUG_PRINT("info",("partition select_lex=%p", select_lex));
     if (select_lex && select_lex->explicit_limit)
     {
-      DBUG_PRINT("info",("partition explicit_limit=TRUE"));
-      DBUG_PRINT("info",("partition offset_limit=%p",
-        select_lex->offset_limit));
-      DBUG_PRINT("info",("partition select_limit=%p",
-        select_lex->select_limit));
-      DBUG_PRINT("info",("partition FALSE by select_lex"));
-      DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+      if (!thd || select_lex->offset_limit && select_lex->offset_limit->val_int() > 0)
+      {
+        DBUG_PRINT("info",("partition explicit_limit=TRUE"));
+        DBUG_PRINT("info",("partition offset_limit=%p",
+          select_lex->offset_limit));
+        DBUG_PRINT("info",("partition select_limit=%p",
+          select_lex->select_limit));
+        DBUG_PRINT("info",("partition FALSE by select_lex"));
+        DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+      }
+
+      thd->direct_limit = select_lex->select_limit->val_int();
     }
   }
   DBUG_PRINT("info",("partition OK"));
@@ -9585,6 +9614,8 @@ int ha_partition::direct_delete_rows(KEY_MULTI_RANGE *ranges, uint range_count,
   bool rnd_seq= FALSE;
   uint m_delete_rows, i;
   handler *file;
+  THD *thd = ha_thd();
+  bool finish_flag = false;
   DBUG_ENTER("ha_partition::direct_delete_rows");
 
   if (inited == RND && m_scan_value == 1)
@@ -9612,9 +9643,19 @@ int ha_partition::direct_delete_rows(KEY_MULTI_RANGE *ranges, uint range_count,
         DBUG_RETURN(error);
       }
       *delete_rows += m_delete_rows;
+      if (thd && thd->direct_limit > 0)
+      {
+        thd->direct_limit -= m_delete_rows;
+        if (thd->direct_limit <= 0)
+          finish_flag = true;
+      }
     }
     if (rnd_seq && (error = file->ha_index_or_rnd_end()))
       DBUG_RETURN(error);
+
+    if (finish_flag)
+      break;
+
   }
   DBUG_RETURN(0);
 }

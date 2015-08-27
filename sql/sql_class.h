@@ -1451,6 +1451,7 @@ public:
   //for spider
   longlong select_offset;
   longlong select_limit;
+  longlong direct_limit;          //for direct_update/direct_delete
   //end for spider
   MDL_context mdl_context;
   char* client_program_name;  /* name for client program name */

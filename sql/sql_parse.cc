@@ -5417,6 +5417,7 @@ void THD::reset_for_next_command()
   //for spider 
   thd->select_limit = -1;
   thd->select_offset = -1;
+  thd->direct_limit = -1;
 
   DBUG_PRINT("debug",
              ("is_current_stmt_binlog_format_row(): %d",
