@@ -9059,6 +9059,8 @@ int ha_spider::direct_update_rows_init(
     }
     if (select_lex->order_list.elements)
     {
+      DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+      /* 
       ORDER *order;
       for (order = (ORDER *) select_lex->order_list.first; order;
         order = order->next)
@@ -9070,10 +9072,11 @@ int ha_spider::direct_update_rows_init(
         }
       }
       result_list.direct_order_limit = TRUE;
+      */
     }
 
     trx->direct_update_count++;
-	thd->status_var.global_direct_update++;
+    thd->status_var.global_direct_update++;
     DBUG_PRINT("info",("spider OK"));
     DBUG_RETURN(0);
   }
@@ -9329,6 +9332,8 @@ int ha_spider::direct_delete_rows_init(
     }
     if (select_lex->order_list.elements)
     {
+      DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+      /*
       ORDER *order;
       for (order = (ORDER *) select_lex->order_list.first; order;
         order = order->next)
@@ -9340,6 +9345,7 @@ int ha_spider::direct_delete_rows_init(
         }
       }
       result_list.direct_order_limit = TRUE;
+      */
     }
 
     trx->direct_delete_count++;
