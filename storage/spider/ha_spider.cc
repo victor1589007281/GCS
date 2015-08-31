@@ -11633,6 +11633,12 @@ void ha_spider::check_pre_call(
 ) {
   DBUG_ENTER("ha_spider::check_pre_call");
   DBUG_PRINT("info",("spider this=%p", this));
+
+  if (!spider_param_use_pre_scan())
+  {
+    use_pre_call = FALSE;
+    DBUG_VOID_RETURN;
+  }
   use_pre_call = use_parallel;
   if (!use_pre_call)
   {

@@ -2946,6 +2946,24 @@ my_bool spider_param_with_sts_crd()
 	DBUG_RETURN(spider_with_sts_crd);
 }
 
+static my_bool spider_use_pre_scan;
+static MYSQL_SYSVAR_BOOL(
+	use_pre_scan,
+	spider_use_pre_scan,
+	PLUGIN_VAR_OPCMDARG,
+	"whether support pre scan",
+	NULL,
+	NULL,
+	TRUE
+);
+
+
+my_bool spider_param_use_pre_scan()
+{
+	DBUG_ENTER("spider_param_general_log");
+	DBUG_RETURN(spider_use_pre_scan);
+}
+
 
 // 变量用于控制spider中获取conn的值的方式，
 // 默认为true，即通过spider_get_conn_idx来操作过程中获取conn
@@ -3129,6 +3147,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(get_sts_or_crd),
   MYSQL_SYSVAR(with_sts_crd),
   MYSQL_SYSVAR(get_conn_from_idx),
+  MYSQL_SYSVAR(use_pre_scan),
   MYSQL_SYSVAR(log_result_errors),
   NULL
 };
