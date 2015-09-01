@@ -8918,6 +8918,8 @@ int ha_spider::update_row(
   uchar *new_data
 ) {
   int error_num;
+  uint update_rows = 0;
+  uint found_rows = 0;
   THD *thd = ha_thd();
   backup_error_status();
   DBUG_ENTER("ha_spider::update_row");
@@ -8960,7 +8962,7 @@ int ha_spider::update_row(
   if (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE)
     table->timestamp_field->set_time();
 #endif
-  if ((error_num = spider_db_update(this, table, old_data)))
+  if ((error_num = spider_db_update(this, table, old_data, &update_rows, &found_rows)))
     DBUG_RETURN(check_error_mode(error_num));
   if (table->found_next_number_field &&
     new_data == table->record[0] &&
@@ -8997,6 +8999,11 @@ int ha_spider::update_row(
     }
     pthread_mutex_unlock(&share->auto_increment_mutex);
   }
+  /*
+  if (update_rows == 0)
+    DBUG_RETURN(HA_ERR_RECORD_IS_THE_SAME);
+  */
+  
   DBUG_RETURN(0);
 }
 

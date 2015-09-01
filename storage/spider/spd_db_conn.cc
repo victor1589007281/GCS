@@ -6078,7 +6078,9 @@ int spider_db_bulk_update(
 int spider_db_update(
   ha_spider *spider,
   TABLE *table,
-  const uchar *old_data
+  const uchar *old_data,
+  uint *update_rows,
+  uint *found_rows
 ) {
   int error_num, roop_count;
   SPIDER_SHARE *share = spider->share;
@@ -6188,6 +6190,8 @@ int spider_db_update(
       }
       DBUG_RETURN(error_num);
     }
+    *update_rows = conn->db_conn->affected_rows();
+    *found_rows = conn->db_conn->matched_rows();
 
     if (
       !conn->db_conn->affected_rows() &&

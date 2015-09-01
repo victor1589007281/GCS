@@ -9344,27 +9344,28 @@ int ha_partition::direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
         if ((error = file->ha_rnd_init(TRUE)))
           DBUG_RETURN(error);
       }
-      if ((error= (file)->ha_direct_update_rows(ranges, range_count,
-        sorted, new_data, &m_update_rows, &m_found_rows)))
+      // 即使获取了前limit行，不能马上返回，需要执行file->ha_index_or_rnd_end()，否则close table出错
+      if (!finish_flag)
       {
-        if (rnd_seq)
-          file->ha_rnd_end();
-        DBUG_RETURN(error);
-      }
-      *update_rows += m_update_rows;
-      *found_rows += m_found_rows;
-      if (thd && thd->direct_limit > 0)
-      {
-        thd->direct_limit -= m_found_rows;
-        if (thd->direct_limit <= 0)
-          finish_flag = true;
+        if ((error= (file)->ha_direct_update_rows(ranges, range_count,
+          sorted, new_data, &m_update_rows, &m_found_rows)))
+        {
+          if (rnd_seq)
+            file->ha_rnd_end();
+          DBUG_RETURN(error);
+        }
+        *update_rows += m_update_rows;
+        *found_rows += m_found_rows;
+        if (thd && thd->direct_limit > 0)
+        {
+          thd->direct_limit -= m_found_rows;
+          if (thd->direct_limit <= 0)
+            finish_flag = true;
+        }
       }
     }
     if (rnd_seq && (error = file->ha_index_or_rnd_end()))
       DBUG_RETURN(error);
-
-    if (finish_flag)
-      break;
   }
   DBUG_RETURN(0);
 }
@@ -9635,26 +9636,27 @@ int ha_partition::direct_delete_rows(KEY_MULTI_RANGE *ranges, uint range_count,
         if ((error = file->ha_rnd_init(TRUE)))
           DBUG_RETURN(error);
       }
-      if ((error= file->ha_direct_delete_rows(ranges, range_count,
-        sorted, &m_delete_rows)))
+      // 即使获取了前limit行，不能马上返回，需要执行file->ha_index_or_rnd_end()，否则close table出错
+      if (!finish_flag)
       {
-        if (rnd_seq)
-          file->ha_rnd_end();
-        DBUG_RETURN(error);
-      }
-      *delete_rows += m_delete_rows;
-      if (thd && thd->direct_limit > 0)
-      {
-        thd->direct_limit -= m_delete_rows;
-        if (thd->direct_limit <= 0)
-          finish_flag = true;
+        if ((error= file->ha_direct_delete_rows(ranges, range_count,
+          sorted, &m_delete_rows)))
+        {
+          if (rnd_seq)
+            file->ha_rnd_end();
+          DBUG_RETURN(error);
+        }
+        *delete_rows += m_delete_rows;
+        if (thd && thd->direct_limit > 0)
+        {
+          thd->direct_limit -= m_delete_rows;
+          if (thd->direct_limit <= 0)
+            finish_flag = true;
+        }
       }
     }
     if (rnd_seq && (error = file->ha_index_or_rnd_end()))
       DBUG_RETURN(error);
-
-    if (finish_flag)
-      break;
 
   }
   DBUG_RETURN(0);
