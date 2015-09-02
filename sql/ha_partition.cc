@@ -7012,7 +7012,7 @@ int ha_partition::info(uint flag)
         file= *file_array;
          file->info(HA_STATUS_VARIABLE | no_lock_flag | extra_var_flag);
 		// 在open table的时候，no_locak_flag extra_var_flag都为0
-	    if(file->support_more_partiton_log() && no_lock_flag || extra_var_flag)
+	    if(file->support_more_partiton_log() && (no_lock_flag || extra_var_flag))
 		{// 记录所有跨分区行为， 不区分是否是spider,  这两个选项用来区分是否是open table行为
 			thd->sql_use_partition_count++;
 		}
