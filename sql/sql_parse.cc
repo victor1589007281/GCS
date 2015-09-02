@@ -1487,7 +1487,7 @@ void log_slow_statement(THD *thd)
            (SERVER_QUERY_NO_INDEX_USED | SERVER_QUERY_NO_GOOD_INDEX_USED)) &&
           opt_log_queries_not_using_indexes &&
            !(sql_command_flags[thd->lex->sql_command] & CF_STATUS_COMMAND)) ||
-		   (thd->variables.sql_use_partition_count >=2 && log_sql_use_mutil_partition)
+		   (thd->sql_use_partition_count >=2 && log_sql_use_mutil_partition)
 		   ) &&
         thd->examined_row_count >= thd->variables.min_examined_row_limit)
     {
