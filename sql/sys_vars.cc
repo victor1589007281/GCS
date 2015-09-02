@@ -3053,17 +3053,6 @@ static Sys_var_uint Sys_spider_auto_increment_mode_value(
 	READ_ONLY GLOBAL_VAR(spider_auto_increment_mode_value), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(0, 64), DEFAULT(1), BLOCK_SIZE(1));
 
-static Sys_var_mybool Sys_spider_connection_pool_switch(
-	"spider_connection_pool_switch", 
-	"the switch use to control if use connection limit between spider and remote ",
-	 GLOBAL_VAR(spider_connection_pool_switch), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
-
-static Sys_var_uint Sys_spider_max_connections(
-	"spider_max_connections", 
-	"the values, as the max conncetion from spider to remote",
-	GLOBAL_VAR(spider_max_connections), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(1, 100000), DEFAULT(99999), BLOCK_SIZE(1));
-
 static Sys_var_uint Sys_spider_auto_increment_step(
 	"spider_auto_increment_step", 
 	"the values set spider auto_increment add by spider_auto_increment_step",

@@ -92,7 +92,7 @@ extern bool opt_update_log, opt_bin_log, opt_error_log;
 extern my_bool opt_bin_log_compress;
 extern my_bool opt_log, opt_slow_log, log_sql_use_mutil_partition, spider_auto_increment_mode_switch, opt_alter_log;
 extern my_bool spider_connection_pool_switch;
-extern uint spider_auto_increment_mode_value, spider_auto_increment_step, spider_max_connections;
+extern uint spider_auto_increment_mode_value, spider_auto_increment_step;
 extern my_bool opt_backup_history_log;
 extern my_bool opt_backup_progress_log;
 extern ulonglong log_output_options;
