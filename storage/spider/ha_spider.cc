@@ -11638,10 +11638,12 @@ int ha_spider::check_error_mode_eof(
 void ha_spider::check_pre_call(
   bool use_parallel
 ) {
+  THD* thd = ha_thd();
   DBUG_ENTER("ha_spider::check_pre_call");
   DBUG_PRINT("info",("spider this=%p", this));
 
-  if (!spider_param_use_pre_scan())
+  if (!spider_param_use_pre_scan() || 
+        thd->lex && thd->lex->sql_command != SQLCOM_SELECT)  // Из insert .. select ..
   {
     use_pre_call = FALSE;
     DBUG_VOID_RETURN;
