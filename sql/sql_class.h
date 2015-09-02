@@ -484,8 +484,6 @@ typedef struct system_variables
   my_bool big_tables;
   my_bool blob_compressed;
   my_bool  log_slow_include_lock_time;
-  uint     spider_sql_use_partition_count;
-  uint     sql_use_partition_count;
 
   plugin_ref table_plugin;
 
@@ -1451,6 +1449,7 @@ public:
   //for spider
   longlong select_offset;
   longlong select_limit;
+  unsigned long sql_use_partition_count;
   longlong direct_limit;          //for direct_update/direct_delete
   //end for spider
   MDL_context mdl_context;

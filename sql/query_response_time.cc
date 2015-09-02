@@ -238,7 +238,7 @@ public:
         my_atomic_add64((int64*)(&m_total[i]), time);
 
 		// 分区表的跨分区性能视图
-		if(thd->variables.sql_use_partition_count >= 2)
+		if(thd->sql_use_partition_count >= 2)
 		{// 如果涉及到跨分区行为，则记录到分区性能视图中
 			my_atomic_add32((int32*)(&m_pcount[i]), 1);
 			my_atomic_add64((int64*)(&m_ptotal[i]), time);
