@@ -8918,6 +8918,8 @@ int ha_spider::update_row(
   uchar *new_data
 ) {
   int error_num;
+  uint update_rows = 0;
+  uint found_rows = 0;
   THD *thd = ha_thd();
   backup_error_status();
   DBUG_ENTER("ha_spider::update_row");
@@ -8960,7 +8962,7 @@ int ha_spider::update_row(
   if (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE)
     table->timestamp_field->set_time();
 #endif
-  if ((error_num = spider_db_update(this, table, old_data)))
+  if ((error_num = spider_db_update(this, table, old_data, &update_rows, &found_rows)))
     DBUG_RETURN(check_error_mode(error_num));
   if (table->found_next_number_field &&
     new_data == table->record[0] &&
@@ -8997,6 +8999,11 @@ int ha_spider::update_row(
     }
     pthread_mutex_unlock(&share->auto_increment_mutex);
   }
+  /*
+  if (update_rows == 0)
+    DBUG_RETURN(HA_ERR_RECORD_IS_THE_SAME);
+  */
+  
   DBUG_RETURN(0);
 }
 
@@ -9059,6 +9066,8 @@ int ha_spider::direct_update_rows_init(
     }
     if (select_lex->order_list.elements)
     {
+      DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+      /* 
       ORDER *order;
       for (order = (ORDER *) select_lex->order_list.first; order;
         order = order->next)
@@ -9070,10 +9079,11 @@ int ha_spider::direct_update_rows_init(
         }
       }
       result_list.direct_order_limit = TRUE;
+      */
     }
 
     trx->direct_update_count++;
-	thd->status_var.global_direct_update++;
+    thd->status_var.global_direct_update++;
     DBUG_PRINT("info",("spider OK"));
     DBUG_RETURN(0);
   }
@@ -9329,6 +9339,8 @@ int ha_spider::direct_delete_rows_init(
     }
     if (select_lex->order_list.elements)
     {
+      DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+      /*
       ORDER *order;
       for (order = (ORDER *) select_lex->order_list.first; order;
         order = order->next)
@@ -9340,6 +9352,7 @@ int ha_spider::direct_delete_rows_init(
         }
       }
       result_list.direct_order_limit = TRUE;
+      */
     }
 
     trx->direct_delete_count++;
@@ -11625,8 +11638,16 @@ int ha_spider::check_error_mode_eof(
 void ha_spider::check_pre_call(
   bool use_parallel
 ) {
+  THD* thd = ha_thd();
   DBUG_ENTER("ha_spider::check_pre_call");
   DBUG_PRINT("info",("spider this=%p", this));
+
+  if (!spider_param_use_pre_scan() || 
+        thd->lex && thd->lex->sql_command != SQLCOM_SELECT)  // Из insert .. select ..
+  {
+    use_pre_call = FALSE;
+    DBUG_VOID_RETURN;
+  }
   use_pre_call = use_parallel;
   if (!use_pre_call)
   {
@@ -11636,6 +11657,7 @@ void ha_spider::check_pre_call(
     spider_get_select_limit(this, &select_lex, &select_limit, &offset_limit);
     if (
       select_lex &&
+      select_lex->sql_cache != SELECT_LEX::SQL_NO_CACHE && 
       (!select_lex->explicit_limit || !select_limit)
     ) {
       use_pre_call = TRUE;
