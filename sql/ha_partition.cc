@@ -9223,7 +9223,7 @@ int ha_partition::direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
     if (select_lex && select_lex->explicit_limit)
     {
       THD *thd = ha_thd();
-      if (!thd || select_lex->offset_limit && select_lex->offset_limit->val_int() > 0)
+      if (!thd || (select_lex->offset_limit && select_lex->offset_limit->val_int() > 0))
       {
         DBUG_PRINT("info",("partition explicit_limit=TRUE"));
         DBUG_PRINT("info",("partition offset_limit=%p",
@@ -9530,7 +9530,7 @@ int ha_partition::direct_delete_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
     DBUG_PRINT("info",("partition select_lex=%p", select_lex));
     if (select_lex && select_lex->explicit_limit)
     {
-      if (!thd || select_lex->offset_limit && select_lex->offset_limit->val_int() > 0)
+      if (!thd || (select_lex->offset_limit && select_lex->offset_limit->val_int() > 0))
       {
         DBUG_PRINT("info",("partition explicit_limit=TRUE"));
         DBUG_PRINT("info",("partition offset_limit=%p",

@@ -1678,7 +1678,7 @@ bool check_part_func_fields(Field **ptr, bool ok_with_charsets)
     */
     if (field_is_partition_charset(field))
     {
-      CHARSET_INFO *cs= ((Field_str*)field)->charset();
+//      CHARSET_INFO *cs= ((Field_str*)field)->charset();
       if (!ok_with_charsets)
 //		  ||
 //          cs->mbmaxlen > 1 ||

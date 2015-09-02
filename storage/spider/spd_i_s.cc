@@ -177,7 +177,6 @@ static void my_record_and_fill_field(void *entry, void *pool, va_list args)
 {
     DBUG_ENTER("my_record_and_fill_field");
     SPIDER_CONN_META_INFO *meta = (SPIDER_CONN_META_INFO *)entry;
-    HASH *hash = (HASH *)pool;
     TABLE *table = va_arg(args, TABLE *);
     THD *thd = va_arg(args, THD *);
     DYNAMIC_STRING_ARRAY *invalid_meta_hash_value_arr = va_arg(args, DYNAMIC_STRING_ARRAY *);
@@ -186,6 +185,7 @@ static void my_record_and_fill_field(void *entry, void *pool, va_list args)
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
         append_dynamic_string_array(invalid_meta_hash_value_arr, (char *) &meta->key_hash_value, sizeof(meta->key_hash_value));
 #else
+        HASH *hash = (HASH *)pool;
         my_hash_value_type hash_value = my_calc_hash(hash, meta->key, meta->key_len);
         append_dynamic_string_array(invalid_meta_hash_value_arr, (char *) &hash_value, sizeof(hash_value));
 #endif

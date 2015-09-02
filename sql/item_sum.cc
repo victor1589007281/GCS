@@ -2070,7 +2070,7 @@ bool Item_sum_min::add()
 {
   DBUG_ENTER("Item_sum_min::add");
   DBUG_PRINT("info",("this = %p", this));
-  Item *tmp_item;
+  Item *tmp_item = NULL;
   // 使用direct_item与当前结果比较
   if (direct_added)
   {
@@ -2109,7 +2109,7 @@ bool Item_sum_max::add()
 {
   DBUG_ENTER("Item_sum_max::add");
   DBUG_PRINT("info",("this = %p", this));
-  Item *tmp_item;
+  Item *tmp_item = NULL;
   if (direct_added)
   {
     tmp_item= arg_cache->get_item();
@@ -2216,7 +2216,7 @@ void Item_sum_num::reset_field()
 // reset 并没有与value比较，而是使用args[0]进行覆盖，所以这个direct_item直接覆盖args[0]
 void Item_sum_hybrid::reset_field()
 {
-  Item *tmp_item;
+  Item *tmp_item = NULL;
   if (direct_added)
   {
     //tmp_item= value->get_item();
@@ -2565,13 +2565,13 @@ void Item_sum_avg::update_field()
 
 void Item_sum_hybrid::update_field()
 {
-  Item *tmp_item, *tmp_item2;
+  Item *tmp_item = NULL, *tmp_item2 = NULL;
   if (direct_added)
   {
     tmp_item= value->get_item();
     value->store(direct_item);
-	tmp_item2 = args[0];
-	args[0] = direct_item;
+    tmp_item2 = args[0];
+    args[0] = direct_item;
   }
   switch (hybrid_type) {
   case STRING_RESULT:
