@@ -1498,7 +1498,7 @@ bool LOGGER::slow_log_print(THD *thd, const char *query, uint query_length,
       return 0;
     }
 
-	if(thd->variables.spider_sql_use_partition_count >=2 && log_sql_use_mutil_partition)
+	if(thd->sql_use_partition_count >=2 && log_sql_use_mutil_partition)
 	{
 		/* fill in user_host value: the format is "%s[%s] @ %s [%s]" */
 		user_host_len= (strxnmov(user_host_buff, MAX_USER_HOST_SIZE,

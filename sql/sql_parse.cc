@@ -1487,7 +1487,7 @@ void log_slow_statement(THD *thd)
            (SERVER_QUERY_NO_INDEX_USED | SERVER_QUERY_NO_GOOD_INDEX_USED)) &&
           opt_log_queries_not_using_indexes &&
            !(sql_command_flags[thd->lex->sql_command] & CF_STATUS_COMMAND)) ||
-		   (thd->variables.spider_sql_use_partition_count >=2 && log_sql_use_mutil_partition)
+		   (thd->variables.sql_use_partition_count >=2 && log_sql_use_mutil_partition)
 		   ) &&
         thd->examined_row_count >= thd->variables.min_examined_row_limit)
     {
@@ -5411,12 +5411,11 @@ void THD::reset_for_next_command()
   thd->reset_current_stmt_binlog_format_row();
   thd->binlog_unsafe_warning_flags= 0;
   thd->binlog_compress_flags = 0;
-  thd->variables.spider_sql_use_partition_count = 0;
-  thd->variables.sql_use_partition_count = 0;
 
   //for spider 
   thd->select_limit = -1;
   thd->select_offset = -1;
+  thd->sql_use_partition_count = 0;
 
   DBUG_PRINT("debug",
              ("is_current_stmt_binlog_format_row(): %d",

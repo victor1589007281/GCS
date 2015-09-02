@@ -807,6 +807,7 @@ THD::THD()
   no_errors= 0;
   password= 0;
   client_program_name = NULL;
+  sql_use_partition_count = 0;
   query_start_used= 0;
   count_cuted_fields= CHECK_FIELD_IGNORE;
   killed= NOT_KILLED;

@@ -1451,6 +1451,7 @@ public:
   //for spider
   longlong select_offset;
   longlong select_limit;
+  unsigned long sql_use_partition_count;
   //end for spider
   MDL_context mdl_context;
   char* client_program_name;  /* name for client program name */
