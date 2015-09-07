@@ -4823,7 +4823,7 @@ int spider_db_seek_tmp(
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     pos->row->first();
   }
-  if (spider->sql_kind[spider->result_link_idx] == SPIDER_SQL_KIND_SQL)
+  if (pos->sql_kind == SPIDER_SQL_KIND_SQL)
   {
     if (!spider->select_column_mode)
     {
