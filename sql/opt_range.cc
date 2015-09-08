@@ -2148,14 +2148,14 @@ static int fill_used_fields_bitmap(PARAM *param)
 
 int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
 				  table_map prev_tables,
-				  ha_rows limit, bool force_quick_range)
+          ha_rows limit, bool force_quick_range)
 {
   uint idx;
   double scan_time;
   DBUG_ENTER("SQL_SELECT::test_quick_select");
   DBUG_PRINT("enter",("keys_to_use: %lu  prev_tables: %lu  const_tables: %lu",
-		      (ulong) keys_to_use.to_ulonglong(), (ulong) prev_tables,
-		      (ulong) const_tables));
+    (ulong) keys_to_use.to_ulonglong(), (ulong) prev_tables,
+    (ulong) const_tables));
   DBUG_PRINT("info", ("records: %lu", (ulong) head->file->stats.records));
   delete quick;
   quick=0;
@@ -2208,9 +2208,9 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     thd->no_errors=1;				// Don't warn about NULL
     init_sql_alloc(&alloc, thd->variables.range_alloc_block_size, 0);
     if (!(param.key_parts= (KEY_PART*) alloc_root(&alloc,
-                                                  sizeof(KEY_PART)*
-                                                  head->s->key_parts)) ||
-        fill_used_fields_bitmap(&param))
+      sizeof(KEY_PART)*
+      head->s->key_parts)) ||
+      fill_used_fields_bitmap(&param))
     {
       thd->no_errors=0;
       free_root(&alloc,MYF(0));			// Return memory & allocator
@@ -2220,29 +2220,29 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     thd->mem_root= &alloc;
 
     /*
-      Make an array with description of all key parts of all table keys.
-      This is used in get_mm_parts function.
+    Make an array with description of all key parts of all table keys.
+    This is used in get_mm_parts function.
     */
     key_info= head->key_info;
     for (idx=0 ; idx < head->s->keys ; idx++, key_info++)
     {
       KEY_PART_INFO *key_part_info;
       if (!keys_to_use.is_set(idx))
-	continue;
+        continue;
       if (key_info->flags & HA_FULLTEXT)
-	continue;    // ToDo: ft-keys in non-ft ranges, if possible   SerG
+        continue;    // ToDo: ft-keys in non-ft ranges, if possible   SerG
 
       param.key[param.keys]=key_parts;
       key_part_info= key_info->key_part;
       for (uint part=0 ; part < key_info->key_parts ;
-	   part++, key_parts++, key_part_info++)
+        part++, key_parts++, key_part_info++)
       {
-	key_parts->key=		 param.keys;
-	key_parts->part=	 part;
-	key_parts->length=       key_part_info->length;
-	key_parts->store_length= key_part_info->store_length;
-	key_parts->field=	 key_part_info->field;
-	key_parts->null_bit=	 key_part_info->null_bit;
+        key_parts->key=		 param.keys;
+        key_parts->part=	 part;
+        key_parts->length=       key_part_info->length;
+        key_parts->store_length= key_part_info->store_length;
+        key_parts->field=	 key_part_info->field;
+        key_parts->null_bit=	 key_part_info->null_bit;
         key_parts->image_type =
           (key_info->flags & HA_SPATIAL) ? Field::itMBR : Field::itRAW;
         /* Only HA_PART_KEY_SEG is used */
@@ -2258,10 +2258,10 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     {
       int key_for_use= find_shortest_key(head, &head->covering_keys);
       double key_read_time= (get_index_only_read_time(&param, records,
-                                                     key_for_use) +
-                             (double) records / TIME_FOR_COMPARE);
+        key_for_use) +
+        (double) records / TIME_FOR_COMPARE);
       DBUG_PRINT("info",  ("'all'+'using index' scan will be using key %d, "
-                           "read time %g", key_for_use, key_read_time));
+        "read time %g", key_for_use, key_read_time));
       if (key_read_time < read_time)
         read_time= key_read_time;
     }
@@ -2281,8 +2281,8 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
           goto free_mem;
         }
         /*
-          If the tree can't be used for range scans, proceed anyway, as we
-          can construct a group-min-max quick select
+        If the tree can't be used for range scans, proceed anyway, as we
+        can construct a group-min-max quick select
         */
         if (tree->type != SEL_TREE::KEY && tree->type != SEL_TREE::KEY_SMALLER)
           tree= NULL;
@@ -2290,14 +2290,14 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     }
 
     /*
-      Try to construct a QUICK_GROUP_MIN_MAX_SELECT.
-      Notice that it can be constructed no matter if there is a range tree.
+    Try to construct a QUICK_GROUP_MIN_MAX_SELECT.
+    Notice that it can be constructed no matter if there is a range tree.
     */
     group_trp= get_best_group_min_max(&param, tree, best_read_time);
     if (group_trp)
     {
       param.table->quick_condition_rows= min(group_trp->records,
-                                             head->file->stats.records);
+        head->file->stats.records);
       if (group_trp->read_cost < best_read_time)
       {
         best_trp= group_trp;
@@ -2308,8 +2308,8 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     if (tree)
     {
       /*
-        It is possible to use a range-based quick select (but it might be
-        slower than 'all' table scan).
+      It is possible to use a range-based quick select (but it might be
+      slower than 'all' table scan).
       */
       if (tree->merges.is_empty())
       {
@@ -2317,38 +2317,41 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
         TRP_ROR_INTERSECT *rori_trp;
         bool can_build_covering= FALSE;
 
-        /* Get best 'range' plan and prepare data for making other plans */
-        if ((range_trp= get_key_scans_params(&param, tree, FALSE, TRUE,
-                                             best_read_time)))
+        if (optimizer_flag(thd, OPTIMIZER_SWITCH_INDEX_RANGE))
         {
-          best_trp= range_trp;
-          best_read_time= best_trp->read_cost;
+          /* Get best 'range' plan and prepare data for making other plans */
+          if ((range_trp= get_key_scans_params(&param, tree, FALSE, TRUE,
+            best_read_time)))
+          {
+            best_trp= range_trp;
+            best_read_time= best_trp->read_cost;
+          }
         }
 
         /*
-          Simultaneous key scans and row deletes on several handler
-          objects are not allowed so don't use ROR-intersection for
-          table deletes.
+        Simultaneous key scans and row deletes on several handler
+        objects are not allowed so don't use ROR-intersection for
+        table deletes.
         */
         if ((thd->lex->sql_command != SQLCOM_DELETE) && 
-             optimizer_flag(thd, OPTIMIZER_SWITCH_INDEX_MERGE))
+          optimizer_flag(thd, OPTIMIZER_SWITCH_INDEX_MERGE))
         {
           /*
-            Get best non-covering ROR-intersection plan and prepare data for
-            building covering ROR-intersection.
+          Get best non-covering ROR-intersection plan and prepare data for
+          building covering ROR-intersection.
           */
           if ((rori_trp= get_best_ror_intersect(&param, tree, best_read_time,
-                                                &can_build_covering)))
+            &can_build_covering)))
           {
             best_trp= rori_trp;
             best_read_time= best_trp->read_cost;
             /*
-              Try constructing covering ROR-intersect only if it looks possible
-              and worth doing.
+            Try constructing covering ROR-intersect only if it looks possible
+            and worth doing.
             */
             if (!rori_trp->is_covering && can_build_covering &&
-                (rori_trp= get_best_covering_ror_intersect(&param, tree,
-                                                           best_read_time)))
+              (rori_trp= get_best_covering_ror_intersect(&param, tree,
+              best_read_time)))
               best_trp= rori_trp;
           }
         }
@@ -2362,16 +2365,16 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
           TABLE_READ_PLAN *best_conj_trp= NULL, *new_conj_trp;
           LINT_INIT(new_conj_trp); /* no empty index_merge lists possible */
           DBUG_PRINT("info",("No range reads possible,"
-                             " trying to construct index_merge"));
+            " trying to construct index_merge"));
           List_iterator_fast<SEL_IMERGE> it(tree->merges);
           while ((imerge= it++))
           {
             new_conj_trp= get_best_disjunct_quick(&param, imerge, best_read_time);
             if (new_conj_trp)
               set_if_smaller(param.table->quick_condition_rows, 
-                             new_conj_trp->records);
+              new_conj_trp->records);
             if (!best_conj_trp || (new_conj_trp && new_conj_trp->read_cost <
-                                   best_conj_trp->read_cost))
+              best_conj_trp->read_cost))
               best_conj_trp= new_conj_trp;
           }
           if (best_conj_trp)
@@ -2393,7 +2396,7 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
       }
     }
 
-  free_mem:
+free_mem:
     free_root(&alloc,MYF(0));			// Return memory & allocator
     thd->mem_root= param.old_root;
     thd->no_errors=0;
@@ -2402,8 +2405,8 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
   DBUG_EXECUTE("info", print_quick(quick, &needed_reg););
 
   /*
-    Assume that if the user is using 'limit' we will only need to scan
-    limit rows if we are using a key
+  Assume that if the user is using 'limit' we will only need to scan
+  limit rows if we are using a key
   */
   DBUG_RETURN(records ? test(quick) : -1);
 }
@@ -9428,7 +9431,7 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
   Item_field *item_field;
   bool is_agg_distinct;
   List<Item_field> agg_distinct_flds;
-  handler *file_tmp;
+  handler *file_tmp = NULL;
 
   DBUG_ENTER("get_best_group_min_max");
 
@@ -9440,10 +9443,8 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
   }
   if(file_tmp && !file_tmp->is_support_group_by_quick_select())
   {// spider引擎不启用对group by 的quick select优化，即不走 Using index for group-by这个索引
-	DBUG_RETURN(NULL);
+    DBUG_RETURN(NULL);
   }
-
-
 
   if (!join)
     DBUG_RETURN(NULL);        /* This is not a select statement. */

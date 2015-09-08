@@ -1517,7 +1517,7 @@ static Sys_var_ulong Sys_optimizer_search_depth(
 static const char *optimizer_switch_names[]=
 {
   "index_merge", "index_merge_union", "index_merge_sort_union",
-  "index_merge_intersection", "engine_condition_pushdown",
+  "index_merge_intersection", "engine_condition_pushdown", "index_range",
   "default", NullS
 };
 /** propagates changes to @@engine_condition_pushdown */
