@@ -741,7 +741,7 @@ int spider_db_errorno(
         struct tm lt;
         struct tm *l_time = localtime_r(&cur_time, &lt);
         THD*   thd = current_thd;
-        char*  db = thd->db ? thd->db : "NULL";
+        const char*  db = thd->db ? thd->db : "NULL";
         char*  query = thd->query();
         fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR SPIDER RESULT] "
           "to %ld: %d %s at query: %s, current db: %s\n",
