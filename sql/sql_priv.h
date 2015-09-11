@@ -160,7 +160,8 @@
 #define OPTIMIZER_SWITCH_INDEX_MERGE_SORT_UNION    (1ULL << 2)
 #define OPTIMIZER_SWITCH_INDEX_MERGE_INTERSECT     (1ULL << 3)
 #define OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN (1ULL << 4)
-#define OPTIMIZER_SWITCH_LAST                      (1ULL << 5)
+#define OPTIMIZER_SWITCH_INDEX_RANGE               (1ULL << 5)
+#define OPTIMIZER_SWITCH_LAST                      (1ULL << 6)
 
 /* The following must be kept in sync with optimizer_switch_str in mysqld.cc */
 #define OPTIMIZER_SWITCH_DEFAULT OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN
