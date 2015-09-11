@@ -125,6 +125,7 @@ my_hash_delegate(HASH * hash, my_hash_delegate_func func, void* func_arg)
         (*func)((data++)->data, func_arg);
 }
 
+
 void
 my_hash_delegate_2args(HASH * hash, my_hash_delegate_func_2args func, void* func_args1, void* func_args2)
 {
@@ -280,6 +281,18 @@ uchar* my_hash_first(const HASH *hash, const uchar *key, size_t length,
   else
     res= 0;
   return res;
+}
+
+ulong my_hash_count(const HASH *info, const uchar *key, size_t length)
+{
+	HASH_SEARCH_STATE state;
+	uchar *res;
+	ulong count=0;
+
+	DBUG_ENTER("my_hash_first_from_hash_value");
+	for (res= my_hash_first(info, key, length, &state); res; res= my_hash_next(info, key, length, &state))
+		count++;
+	DBUG_RETURN (count);
 }
 
 

@@ -1251,3 +1251,14 @@ typedef struct st_spider_conn_meta_info {
     time_t last_visit_tm;
     time_t free_tm;
 } SPIDER_CONN_META_INFO;
+
+typedef struct st_spider_ip_port_conn {
+    char *key;
+	size_t key_len;
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+	my_hash_value_type key_hash_value;
+#endif
+    char remote_ip_str[SPIDER_CONN_META_BUF_LEN];
+    long remote_port;
+	ulonglong conn_id; // 每个conn都有唯一的conn_id标识
+} SPIDER_IP_PORT_CONN;

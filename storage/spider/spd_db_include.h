@@ -1519,7 +1519,7 @@ typedef struct st_spider_dbton
 typedef struct st_spider_position
 {
   SPIDER_DB_ROW          *row;
-  uint                   pos_mode;
+  uint                   pos_mode;  // 取决于quick_mode 与 current_row及page_size
   bool                   use_position;
   bool                   mrr_with_cnt;
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE

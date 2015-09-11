@@ -2257,6 +2257,11 @@ public:
     *no_parts= 0;
     return 0;
   }
+	virtual uint get_total_parts()
+	{
+		DBUG_ENTER("ha_partition::get_total_parts");
+		DBUG_RETURN(0);
+	}
   virtual void set_part_info(partition_info *part_info) {return;}
   virtual void return_record_by_parent() {return;}
 

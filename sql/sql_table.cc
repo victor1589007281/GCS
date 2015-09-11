@@ -6486,7 +6486,7 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
             /*
             Then, we want check once again that target table does not exist.
             Actually the order of these two steps does not matter since
-            earlier we took exclusive metadata lock on the target table, so
+						earlier we took exclusive metadata lock on the target table, so
             we do them in this particular order only to be consistent with 5.0,
             in which we don't take this lock and where this order really matters.
             TODO: Investigate if we need this access() check at all.

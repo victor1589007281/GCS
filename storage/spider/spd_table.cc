@@ -308,6 +308,7 @@ static PSI_thread_info all_spider_threads[] = {
 #endif
 
 extern HASH spider_open_connections;
+extern HASH spider_ipport_conns;
 extern uint spider_open_connections_id;
 extern const char *spider_open_connections_func_name;
 extern const char *spider_open_connections_file_name;
@@ -6117,6 +6118,7 @@ int spider_db_done(
     spider_open_connections.array.max_element *
     spider_open_connections.array.size_of_element);
   my_hash_free(&spider_open_connections);
+  my_hash_free(&spider_ipport_conns);
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   spider_free_mem_calc(spider_current_trx,
     spider_open_pt_share_id,
@@ -6520,6 +6522,15 @@ int spider_db_init(
     goto error_conn_meta_hash_init;
   }
 
+  if(
+	  my_hash_init(&spider_ipport_conns, spd_charset_utf8_bin, 32, 0, 0,
+	  (my_hash_get_key) spider_ipport_conn_get_key, spider_free_ipport_conn, 0)
+	 ) {
+		  error_num = HA_ERR_OUT_OF_MEM;
+		  goto error_ipport_conn__hash_init;
+  }
+
+
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if(
     my_hash_init(&spider_hs_r_conn_hash, spd_charset_utf8_bin, 32, 0, 0,
@@ -6722,6 +6733,8 @@ error_hs_w_conn_hash_init:
   my_hash_free(&spider_hs_r_conn_hash);
 error_hs_r_conn_hash_init:
 #endif
+  my_hash_free(&spider_ipport_conns);
+error_ipport_conn__hash_init:
   my_hash_free(&spider_conn_meta_info);
 error_conn_meta_hash_init:
   spider_free_mem_calc(NULL,

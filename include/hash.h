@@ -119,6 +119,8 @@ typedef void (*my_hash_delegate_func_nargs)(void *, void*, va_list);
 void
 my_hash_delegate_nargs(HASH *hash, my_hash_delegate_func_nargs func, ...);
 
+ulong my_hash_count(const HASH *info, const uchar *key, size_t length);  // 用于计算当前hash中该key值存在的个数,非唯一hash
+
 #ifdef	__cplusplus
 }
 #endif

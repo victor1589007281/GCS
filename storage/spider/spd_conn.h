@@ -26,6 +26,11 @@
 #define  SPIDER_DISABLE_LINK 
 
 
+enum enum_ipport_conn_status {
+	CONN_IDLE,  /* able to do create conn */
+	CONN_FULL   /* unable to do create conn */
+};
+
 uchar *spider_conn_get_key(
   SPIDER_CONN *conn,
   size_t *length,
@@ -327,6 +332,7 @@ bool spider_conn_need_open_handler(
 );
 
 void spider_free_conn_meta(void *);
+void spider_free_ipport_conn(void *info);
 
 uchar *spider_conn_meta_get_key(
   SPIDER_CONN_META_INFO *meta,
@@ -334,12 +340,21 @@ uchar *spider_conn_meta_get_key(
   my_bool not_used __attribute__ ((unused))
   );
 
+uchar *spider_ipport_conn_get_key(
+								SPIDER_IP_PORT_CONN *ip_port,
+								size_t *length,
+								my_bool not_used __attribute__ ((unused))
+								);
+
+
 void spider_free_conn_recycle_thread(void);
 
 int spider_create_conn_recycle_thread(void);
 
 SPIDER_CONN_META_INFO *spider_create_conn_meta(SPIDER_CONN *);
+SPIDER_IP_PORT_CONN *spider_create_ipport_conn(SPIDER_CONN *conn) ;
 
 my_bool spider_add_conn_meta_info(SPIDER_CONN *);
 
 void spider_update_conn_meta_info(SPIDER_CONN *, uint); 
+SPIDER_CONN* spider_wait_idle_connection(SPIDER_SHARE *share, int link_idx, enum_ipport_conn_status *conn_status);

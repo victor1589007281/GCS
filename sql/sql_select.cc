@@ -979,68 +979,68 @@ JOIN::optimize()
      group_list). In this case, the result set shall only contain one
      row. 
   */
-  if (tables_list && implicit_grouping)
-  {
-    int res;
-    /*
-      opt_sum_query() returns HA_ERR_KEY_NOT_FOUND if no rows match
-      to the WHERE conditions,
-      or 1 if all items were resolved (optimized away),
-      or 0, or an error number HA_ERR_...
+	if (tables_list && implicit_grouping)
+	{
+		int res;
+		/*
+		opt_sum_query() returns HA_ERR_KEY_NOT_FOUND if no rows match
+		to the WHERE conditions,
+		or 1 if all items were resolved (optimized away),
+		or 0, or an error number HA_ERR_...
 
-      If all items were resolved by opt_sum_query, there is no need to
-      open any tables.
-    */
-    if ((res=opt_sum_query(thd, select_lex->leaf_tables, all_fields, conds)))
-    {
-      if (res == HA_ERR_KEY_NOT_FOUND)
-      {
-        DBUG_PRINT("info",("No matching min/max row"));
-	zero_result_cause= "No matching min/max row";
-        tables= 0;
-	error=0;
-	DBUG_RETURN(0);
-      }
-      if (res > 1)
-      {
-        error= res;
-        DBUG_PRINT("error",("Error from opt_sum_query"));
-        DBUG_RETURN(1);
-      }
-      if (res < 0)
-      {
-        DBUG_PRINT("info",("No matching min/max row"));
-        zero_result_cause= "No matching min/max row";
-        tables= 0;
-        error=0;
-        DBUG_RETURN(0);
-      }
-      DBUG_PRINT("info",("Select tables optimized away"));
-      zero_result_cause= "Select tables optimized away";
-      tables_list= 0;				// All tables resolved
-      const_tables= tables;
-      /*
-        Extract all table-independent conditions and replace the WHERE
-        clause with them. All other conditions were computed by opt_sum_query
-        and the MIN/MAX/COUNT function(s) have been replaced by constants,
-        so there is no need to compute the whole WHERE clause again.
-        Notice that make_cond_for_table() will always succeed to remove all
-        computed conditions, because opt_sum_query() is applicable only to
-        conjunctions.
-        Preserve conditions for EXPLAIN.
-      */
-      if (conds && !(thd->lex->describe & DESCRIBE_EXTENDED))
-      {
-        COND *table_independent_conds=
-          make_cond_for_table(conds, PSEUDO_TABLE_BITS, 0);
-        DBUG_EXECUTE("where",
-                     print_where(table_independent_conds,
-                                 "where after opt_sum_query()",
-                                 QT_ORDINARY););
-        conds= table_independent_conds;
-      }
-    }
-  }
+		If all items were resolved by opt_sum_query, there is no need to
+		open any tables.
+		*/
+		if ((res=opt_sum_query(thd, select_lex->leaf_tables, all_fields, conds)))
+		{
+			if (res == HA_ERR_KEY_NOT_FOUND)
+			{
+				DBUG_PRINT("info",("No matching min/max row"));
+				zero_result_cause= "No matching min/max row";
+				tables= 0;
+				error=0;
+				DBUG_RETURN(0);
+			}
+			if (res > 1)
+			{
+				error= res;
+				DBUG_PRINT("error",("Error from opt_sum_query"));
+				DBUG_RETURN(1);
+			}
+			if (res < 0)
+			{
+				DBUG_PRINT("info",("No matching min/max row"));
+				zero_result_cause= "No matching min/max row";
+				tables= 0;
+				error=0;
+				DBUG_RETURN(0);
+			}
+			DBUG_PRINT("info",("Select tables optimized away"));
+			zero_result_cause= "Select tables optimized away";
+			tables_list= 0;				// All tables resolved
+			const_tables= tables;
+			/*
+			Extract all table-independent conditions and replace the WHERE
+			clause with them. All other conditions were computed by opt_sum_query
+			and the MIN/MAX/COUNT function(s) have been replaced by constants,
+			so there is no need to compute the whole WHERE clause again.
+			Notice that make_cond_for_table() will always succeed to remove all
+			computed conditions, because opt_sum_query() is applicable only to
+			conjunctions.
+			Preserve conditions for EXPLAIN.
+			*/
+			if (conds && !(thd->lex->describe & DESCRIBE_EXTENDED))
+			{
+				COND *table_independent_conds=
+					make_cond_for_table(conds, PSEUDO_TABLE_BITS, 0);
+				DBUG_EXECUTE("where",
+					print_where(table_independent_conds,
+					"where after opt_sum_query()",
+					QT_ORDINARY););
+				conds= table_independent_conds;
+			}
+		}
+	}
   if (!tables_list)
   {
     DBUG_PRINT("info",("No tables"));

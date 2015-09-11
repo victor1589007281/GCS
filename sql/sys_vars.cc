@@ -3053,6 +3053,19 @@ static Sys_var_uint Sys_spider_auto_increment_mode_value(
 	READ_ONLY GLOBAL_VAR(spider_auto_increment_mode_value), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(0, 64), DEFAULT(1), BLOCK_SIZE(1));
 
+
+static Sys_var_uint Sys_spider_max_connections(
+	"opt_spider_max_connections", 
+	"the values, as the max conncetion from spider to remote",
+	GLOBAL_VAR(opt_spider_max_connections), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(0, 100000), DEFAULT(0), BLOCK_SIZE(1));
+
+static Sys_var_uint Sys_spider_conn_retry_times(
+	"opt_spider_conn_retry_times", 
+	"the values, as the max time retry to get a conn",
+	GLOBAL_VAR(opt_spider_conn_retry_times), CMD_LINE(REQUIRED_ARG),
+	VALID_RANGE(0, 100000), DEFAULT(200), BLOCK_SIZE(1));
+
 static Sys_var_uint Sys_spider_auto_increment_step(
 	"spider_auto_increment_step", 
 	"the values set spider auto_increment add by spider_auto_increment_step",

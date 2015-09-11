@@ -1327,6 +1327,11 @@ int spider_db_lock_tables(
   int error_num;
   SPIDER_CONN *conn = spider->spider_get_conn_by_idx(link_idx);
   DBUG_ENTER("spider_db_lock_tables");
+	if(!conn)
+	{
+		error_num = ER_SPIDER_CON_COUNT_ERROR;
+		DBUG_RETURN(error_num);
+	}
   error_num = spider->dbton_handler[conn->dbton_id]->lock_tables(link_idx);
   DBUG_RETURN(error_num);
 }
@@ -1338,6 +1343,11 @@ int spider_db_unlock_tables(
   int error_num;
   SPIDER_CONN *conn = spider->spider_get_conn_by_idx(link_idx);
   DBUG_ENTER("spider_db_unlock_tables");
+	if(!conn)
+	{
+		error_num = ER_SPIDER_CON_COUNT_ERROR;
+		DBUG_RETURN(error_num);
+	}
   error_num = spider->dbton_handler[conn->dbton_id]->unlock_tables(link_idx);
   DBUG_RETURN(error_num);
 }
@@ -3445,6 +3455,11 @@ int spider_db_store_result(
   {
 #endif
     conn = spider->spider_get_conn_by_idx(link_idx);
+		if(!conn)
+		{
+			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			DBUG_RETURN(error_num);
+		}
     DBUG_PRINT("info",("spider conn->connection_id=%llu",
       conn->connection_id));
     DBUG_PRINT("info",("spider spider->connection_ids[%d]=%llu",
@@ -4063,6 +4078,11 @@ int spider_db_seek_next(
   SPIDER_CONN *conn = spider->spider_get_conn_by_idx(link_idx);
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   DBUG_ENTER("spider_db_seek_next");
+	if(!conn)
+	{
+		error_num = ER_SPIDER_CON_COUNT_ERROR;
+		DBUG_RETURN(error_num);
+	}
   if (
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     spider->conn_kind[spider->result_link_idx] == SPIDER_CONN_KIND_MYSQL &&
@@ -4167,6 +4187,11 @@ int spider_db_seek_next(
           ) {
             ulong sql_type;
             conn = spider->spider_get_conn_by_idx(roop_count);
+						if(!conn)
+						{
+							error_num = ER_SPIDER_CON_COUNT_ERROR;
+							DBUG_RETURN(error_num);
+						}
             if (spider->sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
             {
               sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -4413,6 +4438,7 @@ int spider_db_seek_last(
         SPIDER_LINK_STATUS_RECOVERY)
     ) {
       ulong sql_type;
+			spider_db_handler *dbton_handler;
       if (spider->sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
       {
         sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -4420,7 +4446,12 @@ int spider_db_seek_last(
         sql_type = SPIDER_SQL_TYPE_HANDLER;
       }
       conn = spider->spider_get_conn_by_idx(roop_count);
-      spider_db_handler *dbton_handler = spider->dbton_handler[conn->dbton_id];
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
+      dbton_handler = spider->dbton_handler[conn->dbton_id];
       if (dbton_handler->need_lock_before_set_sql_for_exec(sql_type))
       {
         pthread_mutex_lock(&conn->mta_conn_mutex);
@@ -4610,6 +4641,7 @@ int spider_db_seek_last(
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
     ulong sql_type;
+		spider_db_handler *dbton_handler;
     if (spider->sql_kind[roop_count] == SPIDER_SQL_KIND_SQL)
     {
       sql_type = SPIDER_SQL_TYPE_SELECT_SQL;
@@ -4617,7 +4649,12 @@ int spider_db_seek_last(
       sql_type = SPIDER_SQL_TYPE_HANDLER;
     }
     conn = spider->spider_get_conn_by_idx(roop_count);
-    spider_db_handler *dbton_handler = spider->dbton_handler[conn->dbton_id];
+		if(!conn)
+		{
+			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			DBUG_RETURN(error_num);
+		}
+    dbton_handler = spider->dbton_handler[conn->dbton_id];
     if (dbton_handler->need_lock_before_set_sql_for_exec(sql_type))
     {
       pthread_mutex_lock(&conn->mta_conn_mutex);
@@ -5113,6 +5150,8 @@ int spider_db_show_table_status(
   uint flag
 ) {
   int error_num;
+	spider_db_handler *dbton_hdl = NULL;
+	SPIDER_CONN *conn = NULL;
   DBUG_ENTER("spider_db_show_table_status");
 
   // maybe the spider->trx is bad pointer
@@ -5122,8 +5161,13 @@ int spider_db_show_table_status(
     DBUG_RETURN(error_num);
   }
 
-  SPIDER_CONN *conn = spider->spider_get_conn_by_idx(link_idx);
-  spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
+  conn = spider->spider_get_conn_by_idx(link_idx);
+	if(!conn)
+	{
+		error_num = ER_SPIDER_CON_COUNT_ERROR;
+		DBUG_RETURN(error_num);
+	}
+  dbton_hdl = spider->dbton_handler[conn->dbton_id];
   DBUG_PRINT("info",("spider sts_mode=%d", sts_mode));
   sts_mode = dbton_hdl->sts_mode_exchange(sts_mode);
   error_num = dbton_hdl->show_table_status(
@@ -5141,6 +5185,11 @@ int spider_db_show_records(
   int error_num;
   SPIDER_CONN *conn = spider->spider_get_conn_by_idx(link_idx);
   DBUG_ENTER("spider_db_show_records");
+	if(!conn)
+	{
+		error_num = ER_SPIDER_CON_COUNT_ERROR;
+		DBUG_RETURN(error_num);
+	}
   error_num = spider->dbton_handler[conn->dbton_id]->show_records(
     link_idx
   );
@@ -5199,6 +5248,8 @@ int spider_db_show_index(
   int crd_mode
 ) {
   int error_num;
+	SPIDER_CONN *conn;
+	spider_db_handler *dbton_hdl;
   DBUG_ENTER("spider_db_show_index");
 
   // maybe the spider->trx is bad pointer
@@ -5208,9 +5259,13 @@ int spider_db_show_index(
       DBUG_RETURN(error_num);
   }
 
-  SPIDER_CONN *conn = spider->spider_get_conn_by_idx(link_idx);
-  spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
-
+  conn = spider->spider_get_conn_by_idx(link_idx);
+	if(!conn)
+	{
+		error_num = ER_SPIDER_CON_COUNT_ERROR;
+		DBUG_RETURN(error_num);
+	}
+  dbton_hdl = spider->dbton_handler[conn->dbton_id];
   crd_mode = dbton_hdl->crd_mode_exchange(crd_mode);
   error_num = spider->dbton_handler[conn->dbton_id]->show_index(
     link_idx,
@@ -5225,6 +5280,7 @@ ha_rows spider_db_explain_select(
   ha_spider *spider,
   int link_idx
 ) {
+	// conn 可能会为NULL， 但tspider中此处逻辑不走
   SPIDER_CONN *conn = spider->spider_get_conn_by_idx(link_idx);
   ha_rows rows;
   DBUG_ENTER("spider_db_explain_select");
@@ -5258,6 +5314,11 @@ int spider_db_bulk_insert_init(
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
 	spider->conns[roop_count] = spider->spider_get_conn_by_idx(roop_count);
+	if(!spider->conns[roop_count])
+	{
+		error_num = ER_SPIDER_CON_COUNT_ERROR;
+		DBUG_RETURN(error_num);
+	}
 	spider->conns[roop_count]->ignore_dup_key = spider->ignore_dup_key;;
 	
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -5387,6 +5448,11 @@ int spider_db_bulk_insert(
 #endif
           sql_type = SPIDER_SQL_TYPE_INSERT_SQL;
           conn = spider->spider_get_conn_by_idx(roop_count2);
+					if(!conn)
+					{
+						error_num = ER_SPIDER_CON_COUNT_ERROR;
+						DBUG_RETURN(error_num);
+					}
           dbton_handler = spider->dbton_handler[conn->dbton_id];
           mta_conn_mutex_lock_already_backup =
             conn->mta_conn_mutex_lock_already;
@@ -5783,6 +5849,10 @@ int spider_db_update_auto_increment(
     (auto_increment_mode == 3 && !table->auto_increment_field_not_null)
   ) {
 	  SPIDER_CONN *spider_conns = spider->spider_get_conn_by_idx(link_idx);
+		if(!spider_conns)
+		{
+			DBUG_RETURN(ER_SPIDER_CON_COUNT_ERROR);
+		}
     last_insert_id = spider_conns->db_conn->last_insert_id();
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_MYSQL)
@@ -5881,8 +5951,14 @@ int spider_db_bulk_update_size_limit(
         spider->conn_link_idx, roop_count, share->link_count,
         SPIDER_LINK_STATUS_RECOVERY)
     ) {
+			spider_db_handler *dbton_hdl;
       conn = spider->spider_get_conn_by_idx(roop_count);
-      spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
+      dbton_hdl = spider->dbton_handler[conn->dbton_id];
       if (dbton_hdl->need_lock_before_set_sql_for_exec(
         SPIDER_SQL_TYPE_BULK_UPDATE_SQL))
       {
@@ -5966,8 +6042,14 @@ int spider_db_bulk_update_end(
             spider->conn_link_idx, roop_count, share->link_count,
             SPIDER_LINK_STATUS_RECOVERY)
         ) {
+					spider_db_handler *dbton_hdl;
           conn = spider->spider_get_conn_by_idx(roop_count);
-          spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
+					if(!conn)
+					{
+						error_num = ER_SPIDER_CON_COUNT_ERROR;
+						DBUG_RETURN(error_num);
+					}
+          dbton_hdl = spider->dbton_handler[conn->dbton_id];
           if (dbton_hdl->need_lock_before_set_sql_for_exec(
             SPIDER_SQL_TYPE_BULK_UPDATE_SQL))
           {
@@ -6020,8 +6102,14 @@ int spider_db_bulk_update_end(
           spider->conn_link_idx, roop_count, share->link_count,
           SPIDER_LINK_STATUS_RECOVERY)
       ) {
+				spider_db_handler *dbton_hdl;
         conn = spider->spider_get_conn_by_idx(roop_count);
-        spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
+				if(!conn)
+				{
+					error_num = ER_SPIDER_CON_COUNT_ERROR;
+					DBUG_RETURN(error_num);
+				}
+        dbton_hdl = spider->dbton_handler[conn->dbton_id];
         if (dbton_hdl->need_lock_before_set_sql_for_exec(
           SPIDER_SQL_TYPE_BULK_UPDATE_SQL))
         {
@@ -6106,8 +6194,14 @@ int spider_db_update(
       spider->conn_link_idx, roop_count, share->link_count,
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
+		spider_db_handler *dbton_hdl;
     conn = spider->spider_get_conn_by_idx(roop_count);
-    spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
+		if(!conn)
+		{
+			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			DBUG_RETURN(error_num);
+		}
+    dbton_hdl = spider->dbton_handler[conn->dbton_id];
 #if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
     conn->ignore_dup_key = spider->ignore_dup_key;
 #endif
@@ -6436,6 +6530,11 @@ int spider_db_direct_update(
 #endif
       DBUG_PRINT("info", ("spider exec sql"));
       conn = spider->spider_get_conn_by_idx(roop_count);
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
       sql_type = SPIDER_SQL_TYPE_UPDATE_SQL;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     } else {
@@ -6538,15 +6637,20 @@ int spider_db_direct_update(
       if (!spider_bit_is_set(spider->do_hs_direct_update, roop_count))
       {
 #endif
-        if (!counted)
-        {
-			SPIDER_CONN *spider_conn = spider->spider_get_conn_by_idx(roop_count);
-          *update_rows = spider_conn->db_conn->affected_rows();
-		  *found_rows = spider_conn->db_conn->matched_rows();
-          DBUG_PRINT("info", ("spider update_rows = %u", *update_rows));
-		  DBUG_PRINT("info", ("spider found_rows = %u", *found_rows));
-          counted = TRUE;
-        }
+				if (!counted)
+				{
+					SPIDER_CONN *spider_conn = spider->spider_get_conn_by_idx(roop_count);
+					if(!conn)
+					{
+						error_num = ER_SPIDER_CON_COUNT_ERROR;
+						DBUG_RETURN(error_num);
+					}
+					*update_rows = spider_conn->db_conn->affected_rows();
+					*found_rows = spider_conn->db_conn->matched_rows();
+					DBUG_PRINT("info", ("spider update_rows = %u", *update_rows));
+					DBUG_PRINT("info", ("spider found_rows = %u", *found_rows));
+					counted = TRUE;
+				}
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       } else {
         SPIDER_DB_RESULT *result;
@@ -6742,8 +6846,14 @@ int spider_db_delete(
       spider->conn_link_idx, roop_count, share->link_count,
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
+		spider_db_handler *dbton_hdl;
     conn = spider->spider_get_conn_by_idx(roop_count);
-    spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
+		if(!conn)
+		{
+			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			DBUG_RETURN(error_num);
+		}
+    dbton_hdl = spider->dbton_handler[conn->dbton_id];
     if (dbton_hdl->need_lock_before_set_sql_for_exec(
       SPIDER_SQL_TYPE_DELETE_SQL))
     {
@@ -6874,7 +6984,12 @@ int spider_db_direct_delete(
     {
 #endif
       DBUG_PRINT("info", ("spider exec sql"));
-      conn = spider->spider_get_conn_by_idx(roop_count);
+			conn = spider->spider_get_conn_by_idx(roop_count);
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
       sql_type = SPIDER_SQL_TYPE_DELETE_SQL;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     } else {
@@ -6973,13 +7088,18 @@ int spider_db_direct_delete(
       if (!spider_bit_is_set(spider->do_hs_direct_update, roop_count))
       {
 #endif
-        if (!counted)
-        {
-		  SPIDER_CONN *spider_conn = spider->spider_get_conn_by_idx(roop_count);
-          *delete_rows = spider_conn->db_conn->affected_rows();
-          DBUG_PRINT("info", ("spider delete_rows = %u", *delete_rows));
-          counted = TRUE;
-        }
+				if (!counted)
+				{
+					SPIDER_CONN *spider_conn = spider->spider_get_conn_by_idx(roop_count);
+					if(!spider_conn)
+					{
+						error_num = ER_SPIDER_CON_COUNT_ERROR;
+						DBUG_RETURN(error_num);
+					}
+					*delete_rows = spider_conn->db_conn->affected_rows();
+					DBUG_PRINT("info", ("spider delete_rows = %u", *delete_rows));
+					counted = TRUE;
+				}
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
       } else {
         SPIDER_DB_RESULT *result;
@@ -7060,6 +7180,11 @@ int spider_db_delete_all_rows(
     uint dbton_id = share->use_sql_dbton_ids[roop_count];
     spider_db_handler *dbton_hdl = spider->dbton_handler[dbton_id];
     conn = spider->spider_get_conn_by_idx(roop_count);
+		if(!conn)
+		{
+			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			DBUG_RETURN(error_num);
+		}
     if (dbton_hdl->need_lock_before_set_sql_for_exec(
       SPIDER_SQL_TYPE_DELETE_SQL))
     {
@@ -7243,6 +7368,11 @@ int spider_db_disable_keys(
         SPIDER_LINK_STATUS_RECOVERY)
     ) {
       conn = spider->spider_get_conn_by_idx(roop_count);
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
       dbton_hdl = spider->dbton_handler[conn->dbton_id];
       if ((error_num = dbton_hdl->disable_keys(conn, roop_count)))
       {
@@ -7294,6 +7424,11 @@ int spider_db_enable_keys(
         SPIDER_LINK_STATUS_RECOVERY)
     ) {
       conn = spider->spider_get_conn_by_idx(roop_count);
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
       dbton_hdl = spider->dbton_handler[conn->dbton_id];
       if ((error_num = dbton_hdl->enable_keys(conn, roop_count)))
       {
@@ -7346,6 +7481,11 @@ int spider_db_check_table(
         SPIDER_LINK_STATUS_RECOVERY)
     ) {
       conn = spider->spider_get_conn_by_idx(roop_count);
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
       dbton_hdl = spider->dbton_handler[conn->dbton_id];
       if ((error_num = dbton_hdl->check_table(conn, roop_count, check_opt)))
       {
@@ -7398,6 +7538,11 @@ int spider_db_repair_table(
         SPIDER_LINK_STATUS_RECOVERY)
     ) {
       conn = spider->spider_get_conn_by_idx(roop_count);
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
       dbton_hdl = spider->dbton_handler[conn->dbton_id];
       if ((error_num = dbton_hdl->repair_table(conn, roop_count, check_opt)))
       {
@@ -7449,6 +7594,11 @@ int spider_db_analyze_table(
         SPIDER_LINK_STATUS_RECOVERY)
     ) {
       conn = spider->spider_get_conn_by_idx(roop_count);
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
       dbton_hdl = spider->dbton_handler[conn->dbton_id];
       if ((error_num = dbton_hdl->analyze_table(conn, roop_count)))
       {
@@ -7500,6 +7650,11 @@ int spider_db_optimize_table(
         SPIDER_LINK_STATUS_RECOVERY)
     ) {
       conn = spider->spider_get_conn_by_idx(roop_count);
+			if(!conn)
+			{
+				error_num = ER_SPIDER_CON_COUNT_ERROR;
+				DBUG_RETURN(error_num);
+			}
       dbton_hdl = spider->dbton_handler[conn->dbton_id];
       if ((error_num = dbton_hdl->optimize_table(conn, roop_count)))
       {
@@ -7548,6 +7703,11 @@ int spider_db_flush_tables(
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
     conn = spider->spider_get_conn_by_idx(roop_count);
+		if(!conn)
+		{
+			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			DBUG_RETURN(error_num);
+		}
     dbton_hdl = spider->dbton_handler[conn->dbton_id];
     if ((error_num = dbton_hdl->flush_tables(conn, roop_count, lock)))
     {
@@ -7594,6 +7754,11 @@ int spider_db_flush_logs(
       SPIDER_LINK_STATUS_RECOVERY)
   ) {
     conn = spider->spider_get_conn_by_idx(roop_count);
+		if(!conn)
+		{
+			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			DBUG_RETURN(error_num);
+		}
     dbton_hdl = spider->dbton_handler[conn->dbton_id];
     if ((error_num = dbton_hdl->flush_logs(conn, roop_count)))
     {

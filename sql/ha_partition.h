@@ -306,6 +306,11 @@ public:
     *num_parts= m_tot_parts;
     DBUG_RETURN(0);
   }
+	uint get_total_parts()
+	{
+		DBUG_ENTER("ha_partition::get_total_parts");
+		DBUG_RETURN(m_tot_parts);
+	}
   virtual void change_table_ptr(TABLE *table_arg, TABLE_SHARE *share);
   virtual bool check_if_incompatible_data(HA_CREATE_INFO *create_info, Alter_inplace_info* inplace_alter,
                                           uint table_changes);
@@ -321,6 +326,7 @@ public:
   // 用于限制在spider上使用auto_increment
   bool is_support_auto_increment();
   bool is_spider_storage_engine();
+	bool support_more_partiton_log();
   
 
   /* fast inplace alter partition table,we just support fast add column(s) yet */

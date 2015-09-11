@@ -36,6 +36,7 @@
 #include "spd_direct_sql.h"
 #include "spd_ping_table.h"
 #include "spd_malloc.h"
+#include "spd_err.h"
 
 extern ulong *spd_db_att_thread_id;
 
@@ -74,6 +75,7 @@ extern SPIDER_TRX *spider_global_trx;
 #endif
 
 HASH spider_open_connections;
+HASH spider_ipport_conns;
 uint spider_open_connections_id;
 const char *spider_open_connections_func_name;
 const char *spider_open_connections_file_name;
@@ -133,6 +135,17 @@ uchar *spider_conn_meta_get_key(
   spider_print_keys(meta->key, meta->key_len);
 #endif
   DBUG_RETURN((uchar*) meta->key);
+}
+
+uchar *spider_ipport_conn_get_key(
+								  SPIDER_IP_PORT_CONN *ip_port,
+								  size_t *length,
+								  my_bool not_used __attribute__ ((unused))
+								  )
+{
+	DBUG_ENTER("spider_ipport_conn_get_key");
+	*length = ip_port->key_len;
+	DBUG_RETURN((uchar*) ip_port->key);
 }
 
 int spider_reset_conn_setted_parameter(
@@ -442,6 +455,7 @@ SPIDER_CONN *spider_create_conn(
 ) {
   int *need_mon;
   SPIDER_CONN *conn;
+  SPIDER_IP_PORT_CONN *ip_port_conn;
   char *tmp_name, *tmp_host, *tmp_username, *tmp_password, *tmp_socket;
   char *tmp_wrapper, *tmp_ssl_ca, *tmp_ssl_capath, *tmp_ssl_cert;
   char *tmp_ssl_cipher, *tmp_ssl_key, *tmp_default_file, *tmp_default_group;
@@ -703,6 +717,17 @@ SPIDER_CONN *spider_create_conn(
   pthread_mutex_unlock(&spider_conn_id_mutex);
   /* harryczhang: */
   conn->last_visited = time(NULL);
+
+  /* willhan */
+  ip_port_conn = spider_create_ipport_conn(conn);
+  if (!ip_port_conn) {
+	  /* 失败亦不影响正常的create conn行为 */
+	  DBUG_RETURN(conn);
+  }
+  if (my_hash_insert(&spider_ipport_conns, (uchar *)ip_port_conn)) {
+	  /* insert failed, 不影响正常的create conn行为 */
+	  DBUG_RETURN(conn);
+  } 
   
   DBUG_RETURN(conn);
 
@@ -733,6 +758,7 @@ SPIDER_CONN *spider_get_conn(
 ) {
   SPIDER_CONN *conn = NULL;
   int base_link_idx = link_idx;
+  enum_ipport_conn_status conn_status;
   DBUG_ENTER("spider_get_conn");
   DBUG_PRINT("info",("spider conn_kind=%u", conn_kind));
 
@@ -852,6 +878,7 @@ SPIDER_CONN *spider_get_conn(
       {
 #endif
         pthread_mutex_lock(&spider_conn_mutex);
+
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
         if (!(conn = (SPIDER_CONN*) my_hash_search_using_hash_value(
           &spider_open_connections, share->conn_keys_hash_value[link_idx],
@@ -862,20 +889,65 @@ SPIDER_CONN *spider_get_conn(
           (uchar*) share->conn_keys[link_idx],
           share->conn_keys_lengths[link_idx])))
 #endif
-        {
-          pthread_mutex_unlock(&spider_conn_mutex);
-          DBUG_PRINT("info",("spider create new conn"));
-          if (!(conn = spider_create_conn(share, spider, link_idx,
-            base_link_idx, conn_kind, error_num)))                          /* 3.1 不存在可重用资源，则新建 */
-            goto error;
-          *conn->conn_key = *conn_key;
-          if (spider)
-          {
-            spider->conns[base_link_idx] = conn;
-            if (spider_bit_is_set(spider->conn_can_fo, base_link_idx))
-              conn->use_for_active_standby = TRUE;
-          }
-        } else {
+		{
+			pthread_mutex_unlock(&spider_conn_mutex);
+			if(opt_spider_max_connections)
+			{ /* opt_spider_max_connections为0表示不启用连接池， */
+				/* 只有 opt_spider_max_connections 大于0，opt_spider_max_connections表示单ip#port的最大连接上限 */
+				conn = spider_wait_idle_connection(share, link_idx, &conn_status);
+				if(conn_status == CONN_FULL && conn)
+				{ /* 如果达到连接池上限，但从空闲连接中找到可重用资源, 则将conn从空闲连接中删除掉 */
+#ifdef HASH_UPDATE_WITH_HASH_VALUE
+					my_hash_delete_with_hash_value(&spider_open_connections,
+						conn->conn_key_hash_value, (uchar*) conn);
+#else
+					my_hash_delete(&spider_open_connections, (uchar*) conn);  
+#endif
+					/* 通过spider_wait_idle_connection 分配了conn， 对spider_open_connections上锁，delete后释放*/
+					pthread_mutex_unlock(&spider_conn_mutex);
+					DBUG_PRINT("info",("spider get global conn"));
+					if (spider)
+					{
+						spider->conns[base_link_idx] = conn;
+						if (spider_bit_is_set(spider->conn_can_fo, base_link_idx))
+							conn->use_for_active_standby = TRUE;  
+					}
+				}
+				else if(conn_status == CONN_FULL && !conn)
+				{/* 连接池满了，但是没获得空闲conn，则 error  */
+					*error_num = ER_SPIDER_CON_COUNT_ERROR;
+					goto error;
+				}
+				else if(conn_status==CONN_IDLE)
+				{// 连接池未满，则create conn
+					DBUG_PRINT("info",("spider create new conn"));
+					if (!(conn = spider_create_conn(share, spider, link_idx,
+						base_link_idx, conn_kind, error_num)))                          /*  不存在可重用资源，则新建 */
+						goto error;
+					*conn->conn_key = *conn_key;
+					if (spider)
+					{
+						spider->conns[base_link_idx] = conn;
+						if (spider_bit_is_set(spider->conn_can_fo, base_link_idx))
+							conn->use_for_active_standby = TRUE;
+					}
+				}
+			}
+			else
+			{	/* 未启用连接限制，则create_conn */
+				DBUG_PRINT("info",("spider create new conn"));
+				if (!(conn = spider_create_conn(share, spider, link_idx,
+					base_link_idx, conn_kind, error_num)))                          /*  不存在可重用资源，则新建 */
+					goto error;
+				*conn->conn_key = *conn_key;
+				if (spider)
+				{
+					spider->conns[base_link_idx] = conn;
+					if (spider_bit_is_set(spider->conn_can_fo, base_link_idx))
+						conn->use_for_active_standby = TRUE;
+				}
+			}
+		} else {
 #ifdef HASH_UPDATE_WITH_HASH_VALUE
           my_hash_delete_with_hash_value(&spider_open_connections,
             conn->conn_key_hash_value, (uchar*) conn);
@@ -1568,6 +1640,10 @@ int spider_create_conn_thread(
 ) {
   int error_num;
   DBUG_ENTER("spider_create_conn_thread");
+	if(!conn)
+	{
+		DBUG_RETURN(ER_SPIDER_CON_COUNT_ERROR);
+	}
   if (conn && !conn->bg_init)
   {
 #if MYSQL_VERSION_ID < 50500
@@ -1907,9 +1983,17 @@ int spider_bg_conn_search(
   if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_MYSQL)
   {
 #endif
-    conn = spider->spider_get_conn_by_idx(link_idx);
+		if(!(conn = spider->spider_get_conn_by_idx(link_idx)))
+		{
+			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			DBUG_RETURN(error_num);
+		}
     with_lock = (spider_conn_lock_mode(spider) != SPIDER_LOCK_MODE_NO_LOCK);
-    first_conn = spider->spider_get_conn_by_idx(first_link_idx);
+		if(!(first_conn = spider->spider_get_conn_by_idx(first_link_idx)))
+		{
+			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			DBUG_RETURN(error_num);
+		}
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   } else if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_HS_READ)
     conn = spider->hs_r_conns[link_idx];
@@ -4172,6 +4256,17 @@ spider_free_conn_meta(void *meta)
     DBUG_VOID_RETURN;
 }
 
+void
+spider_free_ipport_conn(void *info)
+{
+	DBUG_ENTER("spider_free_ipport_conn");
+	if (info) {
+		SPIDER_IP_PORT_CONN *p = (SPIDER_IP_PORT_CONN *)info;
+		my_free(p->key, MYF(0));
+	}
+	DBUG_VOID_RETURN;
+}
+
 SPIDER_CONN_META_INFO *
 spider_create_conn_meta(SPIDER_CONN *conn) 
 {
@@ -4214,6 +4309,46 @@ err_return_direct:
     }
 
     DBUG_RETURN(NULL);
+}
+
+
+SPIDER_IP_PORT_CONN *
+spider_create_ipport_conn(SPIDER_CONN *conn) 
+{
+	DBUG_ENTER("spider_create_ipport_conn");
+	if (conn) {
+		SPIDER_IP_PORT_CONN *ret = (SPIDER_IP_PORT_CONN *) my_malloc(sizeof(*ret), MY_ZEROFILL | MY_WME);
+		if (!ret) {
+			goto err_return_direct;
+		}
+
+		ret->key_len = conn->conn_key_length;
+		if (ret->key_len <= 0) {
+			goto err_return_direct;
+		}
+
+		ret->key = (char *) my_malloc(ret->key_len, MY_ZEROFILL | MY_WME);
+		if (!ret->key) {
+			goto err_malloc_key;
+		}
+
+		memcpy(ret->key, conn->conn_key, ret->key_len);
+
+		strncpy(ret->remote_ip_str, conn->tgt_host, sizeof(ret->remote_ip_str));
+		ret->remote_port = conn->tgt_port;
+		ret->conn_id = conn->conn_id;
+
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+		ret->key_hash_value = conn->conn_key_hash_value;
+#endif
+		DBUG_RETURN(ret);    
+err_malloc_key:
+		my_free(ret, MYF(0));
+err_return_direct:
+		DBUG_RETURN(NULL);
+	}
+
+	DBUG_RETURN(NULL);
 }
 
 /*
@@ -4324,4 +4459,47 @@ spider_update_conn_meta_info(SPIDER_CONN *conn, uint new_status)
     }
 
     DBUG_VOID_RETURN;
+}
+
+SPIDER_CONN* spider_wait_idle_connection(
+	SPIDER_SHARE *share,
+	int link_idx,
+	enum_ipport_conn_status *conn_status
+
+)
+{
+	DBUG_ENTER("spider_wait_idle_connection");
+	uint retry_times = 0;
+	SPIDER_CONN *conn = NULL;
+	*conn_status = CONN_IDLE;
+	// opt_spider_max_connections为0时，不启用连接池限制
+	assert(opt_spider_max_connections > 0); // opt_spider_max_connections大于0才等空闲连接
+	unsigned long ip_port_count = my_hash_count(&spider_ipport_conns, (uchar*) share->conn_keys[link_idx], share->conn_keys_lengths[link_idx]); 
+	if(ip_port_count >= opt_spider_max_connections)
+	{ // 当前 spider_open_connections 无空闲连接，且当前连接的使用个数 大于 opt_spider_max_connections
+		*conn_status = CONN_FULL;
+		while(retry_times++ < opt_spider_conn_retry_times)
+		{
+			my_sleep(100); // wait 100ms
+
+			pthread_mutex_lock(&spider_conn_mutex);
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+			if ((conn = (SPIDER_CONN*) my_hash_search_using_hash_value(
+				&spider_open_connections, share->conn_keys_hash_value[link_idx],
+				(uchar*) share->conn_keys[link_idx],
+				share->conn_keys_lengths[link_idx])))
+#else
+			if (!(conn = (SPIDER_CONN*) my_hash_search(&spider_open_connections,
+				(uchar*) share->conn_keys[link_idx],
+				share->conn_keys_lengths[link_idx])))
+#endif
+			{// 如果空闲连接中存在conn， 否则继续while
+				DBUG_RETURN(conn);
+			}
+			pthread_mutex_unlock(&spider_conn_mutex);
+		}
+
+	}
+
+	DBUG_RETURN(conn);
 }

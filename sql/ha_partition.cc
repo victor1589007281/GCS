@@ -7005,27 +7005,27 @@ int ha_partition::info(uint flag)
     stats.delete_length= 0;
     file_array= m_file;
 
-    do
-    {
-      if (bitmap_is_set(&(m_part_info->used_partitions), (file_array - m_file)))
-      {
-        file= *file_array;
-         file->info(HA_STATUS_VARIABLE | no_lock_flag | extra_var_flag);
-		// 在open table的时候，no_locak_flag extra_var_flag都为0
-	    if(file->support_more_partiton_log() && (no_lock_flag || extra_var_flag))
-		{// 记录所有跨分区行为， 不区分是否是spider,  这两个选项用来区分是否是open table行为
-			thd->sql_use_partition_count++;
-		}
+		do
+		{
+			if (bitmap_is_set(&(m_part_info->used_partitions), (file_array - m_file)))
+			{
+				file= *file_array;
+				file->info(HA_STATUS_VARIABLE | no_lock_flag | extra_var_flag);
+				// 在open table的时候，no_locak_flag extra_var_flag都为0
+				if(file->support_more_partiton_log() && (no_lock_flag || extra_var_flag))
+				{// 记录所有跨分区行为， 不区分是否是spider,  这两个选项用来区分是否是open table行为
+					thd->sql_use_partition_count++;
+				}
 
-        stats.records+= file->stats.records;
-        stats.deleted+= file->stats.deleted;
-        stats.data_file_length+= file->stats.data_file_length;
-        stats.index_file_length+= file->stats.index_file_length;
-        stats.delete_length+= file->stats.delete_length;
-        if (file->stats.check_time > stats.check_time)
-          stats.check_time= file->stats.check_time;
-      }
-    } while (*(++file_array));
+				stats.records+= file->stats.records;
+				stats.deleted+= file->stats.deleted;
+				stats.data_file_length+= file->stats.data_file_length;
+				stats.index_file_length+= file->stats.index_file_length;
+				stats.delete_length+= file->stats.delete_length;
+				if (file->stats.check_time > stats.check_time)
+					stats.check_time= file->stats.check_time;
+			}
+		} while (*(++file_array));
 /*
 	if(partiton_used_num >= 2)
 	{// SQL语句涉及的分区数至少为2个
@@ -9946,6 +9946,22 @@ bool ha_partition::is_support_auto_increment()
 			DBUG_RETURN(is_support_auto_increment);
 	}	
 	DBUG_RETURN(is_support_auto_increment);	
+}
+
+
+bool ha_partition::support_more_partiton_log()
+{// spider存储引擎记录跨分区的行为，query记录到slow log
+	DBUG_ENTER("ha_partition::support_more_partiton_log");	
+	handler ** file;
+	bool is_support_more_partition_log = FALSE;
+
+	for(file=m_file; *file; file++)
+	{
+		is_support_more_partition_log = (*file)->support_more_partiton_log();
+		if(is_support_more_partition_log) 
+			DBUG_RETURN(is_support_more_partition_log);
+	}
+	DBUG_RETURN(is_support_more_partition_log);
 }
 
 bool ha_partition::is_spider_storage_engine()

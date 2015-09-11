@@ -123,7 +123,7 @@ public:
 */
   ulonglong          external_lock_cnt;
 #endif
-  bool               is_clone;
+  bool               is_clone;  //  Used to make a clone of this object for ALTER/CREATE TABLE,  ²Å»áÎªtrue
   bool               clone_bitmap_init;
   ha_spider          *pt_clone_source_handler;
   ha_spider          *pt_clone_last_searcher;

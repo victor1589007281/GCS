@@ -319,7 +319,7 @@ extern struct st_my_file_info *my_file_info;
 
 typedef struct st_dynamic_array
 {
-  uchar *buffer;
+  uchar *buffer; // HASH 中实际会转换为一个 HASH_LINK数据
   uint elements,max_element;
   uint alloc_increment;
   uint size_of_element;
