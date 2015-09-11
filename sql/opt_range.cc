@@ -2620,6 +2620,12 @@ bool prune_partitions(THD *thd, TABLE *table, Item *pprune_cond)
   if (!pprune_cond)
   {
     mark_all_partitions_as_used(part_info);
+		if(part_info && table->file && table->file->support_more_partiton_log())
+		{/************** 记录所有跨分区行为, 
+		count(*) min/max等不带where条件的聚集函数，会走此逻辑  
+		*********************/
+			thd->sql_use_partition_count = table->file->get_total_parts();
+		}
     DBUG_RETURN(FALSE);
   }
   
@@ -9429,20 +9435,28 @@ get_best_group_min_max(PARAM *param, SEL_TREE *tree, double read_time)
   bool is_agg_distinct;
   List<Item_field> agg_distinct_flds;
   handler *file_tmp;
+  TABLE_LIST *all_tables;
+  TABLE_LIST *tbl;
 
   DBUG_ENTER("get_best_group_min_max");
 
   /* Perform few 'cheap' tests whether this access method is applicable. */
 
-  if(thd && thd->lex && thd->lex->query_tables && thd->lex->query_tables->table)
+  if(thd && thd->lex && thd->lex->query_tables)
   {
-	  file_tmp = thd->lex->query_tables->table->file;
+	  all_tables = thd->lex->query_tables;
+	  for (tbl= all_tables; tbl; tbl= tbl->next_global)
+	  {
+		  if(tbl && tbl->table)
+		  {
+			  file_tmp = tbl->table->file;
+			  if(file_tmp && !file_tmp->is_support_group_by_quick_select())
+			  {// spider引擎不启用对group by 的quick select优化，即不走 Using index for group-by这个索引
+				  DBUG_RETURN(NULL);
+			  }
+		  }
+	  }
   }
-  if(file_tmp && !file_tmp->is_support_group_by_quick_select())
-  {// spider引擎不启用对group by 的quick select优化，即不走 Using index for group-by这个索引
-	DBUG_RETURN(NULL);
-  }
-
 
 
   if (!join)

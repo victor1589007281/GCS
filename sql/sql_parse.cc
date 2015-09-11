@@ -928,6 +928,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     beginning of each command.
   */
   thd->server_status&= ~SERVER_STATUS_CLEAR_SET;
+	thd->sql_use_partition_count = 0;
   switch (command) {
   case COM_INIT_DB:
   {
