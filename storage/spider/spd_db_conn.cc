@@ -8034,38 +8034,51 @@ int spider_db_open_item_string(
   DBUG_ENTER("spider_db_open_item_string");
   if (str)
   {
-    /* char tmp_buf[MAX_FIELD_WIDTH];
-    spider_string tmp_str(tmp_buf, MAX_FIELD_WIDTH, str->charset());
-    String *tmp_str2;
-    tmp_str.init_calc_mem(126);
-    if (
-      !(tmp_str2 = item->val_str(tmp_str.get_str())) ||
-      str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN * 2 + tmp_str2->length() * 2)
-    )
-      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    tmp_str.mem_calc(); */
-    //str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
-    /*if (
-      //append_escaped(str->get_str(), tmp_str2) ||
-      str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN)
-    )
-      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    */
-    //str->mem_calc();
-    //str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
-
     assert(!field_charset || my_charset_same(field_charset, str->charset()) || my_charset_same(field_charset, &my_charset_bin));
+    switch (item->type())
+    {
+    case Item::FUNC_ITEM:
+    case Item::CACHE_ITEM:
+      {
+        // 这两种类型需要计算最终值，尤其是时间类型（now等）
+        char tmp_buf[MAX_FIELD_WIDTH];
+        spider_string tmp_str(tmp_buf, MAX_FIELD_WIDTH, str->charset());
+        String *tmp_str2;
+        tmp_str.init_calc_mem(126);
+        if (
+          !(tmp_str2 = item->val_str(tmp_str.get_str())) ||
+          str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN * 2 + tmp_str2->length() * 2)
+          )
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        tmp_str.mem_calc(); 
+        str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+        if (
+          append_escaped(str->get_str(), tmp_str2) ||
+          str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN)
+          )
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 
-    // 对于blob等二进制内容，字符串中的内容不需转换为表字符集
-    if (field_charset && my_charset_same(field_charset, &my_charset_bin))
-    {
+        str->mem_calc();
+        str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+        break;
+
+      }
+    //case Item::STRING_ITEM:
+    default:
+      // 字符类型需要考虑字符集问题
+      // 对于blob等二进制内容，字符串中的内容不需转换为表字符集
+      if (field_charset && my_charset_same(field_charset, &my_charset_bin))
+      {
         item->print(str->get_str(), (enum_query_type)QT_ORDINARY);
-    }
-    else
-    {
+      }
+      else
+      {
         item->print(str->get_str(), (enum_query_type)QT_TO_SPECIFIED_CHARSET);
+      }
+      str->mem_calc();
+      break;
     }
-    str->mem_calc();
+
   }
   DBUG_RETURN(0);
 }
