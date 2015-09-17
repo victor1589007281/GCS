@@ -1719,7 +1719,7 @@ int spider_create_conn_thread(
       error_num = HA_ERR_OUT_OF_MEM;
       goto error_cond_init;
     }
-    pthread_mutex_lock(&conn->bg_conn_mutex);
+    pthread_mutex_lock(&conn->bg_conn_mutex); // 控制创建线程。 线程创建完（成功或者失败）后unlock
 #if MYSQL_VERSION_ID < 50500
     if (pthread_create(&conn->bg_thread, &spider_pt_attr,
       spider_bg_conn_action, (void *) conn)
@@ -1734,9 +1734,9 @@ int spider_create_conn_thread(
       error_num = HA_ERR_OUT_OF_MEM;
       goto error_thread_create;
     }
-    pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+    pthread_mutex_lock(&conn->bg_conn_sync_mutex); // 同步线程状态。
     pthread_mutex_unlock(&conn->bg_conn_mutex);
-    pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
+    pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 等线程启动成功
     pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
     if (!conn->bg_init)
     {
@@ -2005,32 +2005,32 @@ int spider_bg_conn_search(
     if (spider->use_pre_call)
     {
       DBUG_PRINT("info",("spider skip bg first search"));
-    } else {
-      DBUG_PRINT("info",("spider bg first search"));
-      pthread_mutex_lock(&conn->bg_conn_mutex);
-      result_list->bgs_working = TRUE;
-      conn->bg_search = TRUE;
-      conn->bg_caller_wait = TRUE;
-      conn->bg_target = spider;
-      conn->link_idx = link_idx;
-      conn->bg_discard_result = discard_result;
-      pthread_mutex_lock(&conn->bg_conn_sync_mutex);
-      pthread_cond_signal(&conn->bg_conn_cond);
-      pthread_mutex_unlock(&conn->bg_conn_mutex);
-      pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
-      pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
-      conn->bg_caller_wait = FALSE;
-      if (result_list->bgs_error)
-      {
-        if (result_list->bgs_error_with_message)
-          my_message(result_list->bgs_error,
-            result_list->bgs_error_msg, MYF(0));
-        DBUG_RETURN(result_list->bgs_error);
-      }
-    }
+		} else {
+			DBUG_PRINT("info",("spider bg first search"));
+			pthread_mutex_lock(&conn->bg_conn_mutex);
+			result_list->bgs_working = TRUE;
+			conn->bg_search = TRUE;
+			conn->bg_caller_wait = TRUE;
+			conn->bg_target = spider;
+			conn->link_idx = link_idx;
+			conn->bg_discard_result = discard_result;
+			pthread_mutex_lock(&conn->bg_conn_sync_mutex); // 必须保证sinal前，后台线程是wait状态
+			pthread_cond_signal(&conn->bg_conn_cond);
+			pthread_mutex_unlock(&conn->bg_conn_mutex);
+			pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
+			pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+			conn->bg_caller_wait = FALSE;
+			if (result_list->bgs_error)
+			{
+				if (result_list->bgs_error_with_message)
+					my_message(result_list->bgs_error,
+					result_list->bgs_error_msg, MYF(0));
+				DBUG_RETURN(result_list->bgs_error);
+			}
+		}
     if (!result_list->finish_flg)
     {
-      pthread_mutex_lock(&conn->bg_conn_mutex);
+      pthread_mutex_lock(&conn->bg_conn_mutex); // 
       if (!result_list->finish_flg)
       {
         DBUG_PRINT("info",("spider bg second search"));
@@ -2100,16 +2100,16 @@ int spider_bg_conn_search(
         }
         result_list->bgs_working = TRUE;
         conn->bg_search = TRUE;
-        if (with_lock)
+        if (with_lock) // 通常为0
           conn->bg_conn_chain_mutex_ptr = &first_conn->bg_conn_chain_mutex;
         conn->bg_caller_sync_wait = TRUE;
         conn->bg_target = spider;
         conn->link_idx = link_idx;
         conn->bg_discard_result = discard_result;
         pthread_mutex_lock(&conn->bg_conn_sync_mutex);
-        pthread_cond_signal(&conn->bg_conn_cond);
+        pthread_cond_signal(&conn->bg_conn_cond); // 发信号，后台线程执行sql
         pthread_mutex_unlock(&conn->bg_conn_mutex);
-        pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
+        pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 确定后台线程已执行sql
         pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
         conn->bg_caller_sync_wait = FALSE;
       } else {
@@ -2207,7 +2207,7 @@ int spider_bg_conn_search(
         conn->bg_discard_result = discard_result;
         result_list->bgs_working = TRUE;
         conn->bg_search = TRUE;
-        if (with_lock)
+        if (with_lock) // 通常为0
           conn->bg_conn_chain_mutex_ptr = &first_conn->bg_conn_chain_mutex;
         conn->bg_caller_sync_wait = TRUE;
         pthread_mutex_lock(&conn->bg_conn_sync_mutex);
@@ -2225,7 +2225,7 @@ int spider_bg_conn_search(
 void spider_bg_conn_simple_action(
   SPIDER_CONN *conn,
   uint simple_action
-) {
+) { // oracle下走
   DBUG_ENTER("spider_bg_conn_simple_action");
   pthread_mutex_lock(&conn->bg_conn_mutex);
   conn->bg_caller_wait = TRUE;
@@ -2286,7 +2286,7 @@ void *spider_bg_conn_action(
   conn->bg_thd = thd;
   pthread_mutex_lock(&conn->bg_conn_mutex);
   pthread_mutex_lock(&conn->bg_conn_sync_mutex);
-  pthread_cond_signal(&conn->bg_conn_sync_cond);
+  pthread_cond_signal(&conn->bg_conn_sync_cond); // 线程创建成功
   conn->bg_init = TRUE;
   pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
   /* init end */
@@ -2299,17 +2299,17 @@ void *spider_bg_conn_action(
       conn->bg_conn_chain_mutex_ptr = NULL;
     }
     thd->clear_error();
-    pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex);
+    pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex); // 等待主线程query语句。 或者query执行完了，等主线和处理结果
     DBUG_PRINT("info",("spider bg roop start"));
     if (conn->bg_caller_sync_wait)
-    {
+    { // bg_serch发过signal信号后
       pthread_mutex_lock(&conn->bg_conn_sync_mutex);
       if (conn->bg_direct_sql)
         conn->bg_get_job_stack_off = TRUE;
-      pthread_cond_signal(&conn->bg_conn_sync_cond);
+      pthread_cond_signal(&conn->bg_conn_sync_cond); // 发出线程已响应query的信号
       pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
       if (conn->bg_conn_chain_mutex_ptr)
-      {
+      { // 通常为0. 另外，tspider中，同一分片只有一个conn
         pthread_mutex_lock(conn->bg_conn_chain_mutex_ptr);
         if ((&conn->bg_conn_chain_mutex) != conn->bg_conn_chain_mutex_ptr)
         {
@@ -2319,7 +2319,7 @@ void *spider_bg_conn_action(
       }
     }
     if (conn->bg_kill)
-    {
+    { // 释放conn时条件为真
       DBUG_PRINT("info",("spider bg kill start"));
       if (conn->bg_conn_chain_mutex_ptr)
       {
@@ -2343,7 +2343,7 @@ void *spider_bg_conn_action(
       DBUG_RETURN(NULL);
     }
     if (conn->bg_get_job_stack)
-    {
+    {// udf才走的逻辑
       conn->bg_get_job_stack = FALSE;
       if (!spider_bg_conn_get_job(conn))
       {
@@ -2383,7 +2383,7 @@ void *spider_bg_conn_action(
         }
 #endif
         if (dbton_handler->need_lock_before_set_sql_for_exec(sql_type))
-        {
+        {// false, 不走
           pthread_mutex_lock(&conn->mta_conn_mutex);
           SPIDER_SET_FILE_POS(&conn->mta_conn_mutex_file_pos);
         }
@@ -2513,10 +2513,10 @@ void *spider_bg_conn_action(
         pthread_cond_signal(&conn->bg_conn_sync_cond);
         pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
       }
-      continue;
+      continue; // 后面的逻辑都不会走呀
     }
     if (conn->bg_direct_sql)
-    {
+    { // udf，不走
       bool is_error = FALSE;
       DBUG_PRINT("info",("spider bg direct sql start"));
       do {
@@ -2556,7 +2556,7 @@ void *spider_bg_conn_action(
       continue;
     }
     if (conn->bg_exec_sql)
-    {
+    { // udf，不走
       DBUG_PRINT("info",("spider bg exec sql start"));
       spider = (ha_spider*) conn->bg_target;
       *conn->bg_error_num = spider_db_query_with_set_names(
@@ -2569,7 +2569,7 @@ void *spider_bg_conn_action(
       continue;
     }
     if (conn->bg_simple_action)
-    {
+    {// oracle下走
       switch (conn->bg_simple_action)
       {
         case SPIDER_BG_SIMPLE_CONNECT:
@@ -3800,10 +3800,10 @@ int spider_conn_lock_mode(
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   DBUG_ENTER("spider_conn_lock_mode");
   if (result_list->lock_type == F_WRLCK || spider->lock_mode == 2)
-    DBUG_RETURN(SPIDER_LOCK_MODE_EXCLUSIVE);
-  else if (spider->lock_mode == 1)
+    DBUG_RETURN(SPIDER_LOCK_MODE_EXCLUSIVE); // lock_mode不会为2
+  else if (spider->lock_mode == 1) // select * from t1 lock in share mode时 lock_mode才为1
     DBUG_RETURN(SPIDER_LOCK_MODE_SHARED);
-  DBUG_RETURN(SPIDER_LOCK_MODE_NO_LOCK);
+  DBUG_RETURN(SPIDER_LOCK_MODE_NO_LOCK); // 应用场景下走此逻辑
 }
 
 bool spider_conn_check_recovery_link(

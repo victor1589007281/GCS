@@ -2624,7 +2624,8 @@ bool prune_partitions(THD *thd, TABLE *table, Item *pprune_cond)
 		{/************** 记录所有跨分区行为, 
 		count(*) min/max等不带where条件的聚集函数，会走此逻辑  
 		*********************/
-			thd->sql_use_partition_count = table->file->get_total_parts();
+			if(table->file->get_total_parts() > 1) // 只有一个分片的，则不考虑跨分区行为
+				thd->sql_use_partition_count = table->file->get_total_parts();
 		}
     DBUG_RETURN(FALSE);
   }

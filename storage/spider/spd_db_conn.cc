@@ -3615,7 +3615,7 @@ int spider_db_store_result(
           DBUG_PRINT("info",("spider set finish_flg point 1"));
           DBUG_PRINT("info",("spider current->finish_flg = TRUE"));
           DBUG_PRINT("info",("spider result_list->finish_flg = TRUE"));
-          current->finish_flg = TRUE;
+          current->finish_flg = TRUE; // store result出错
           result_list->finish_flg = TRUE;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
           if (result_list->bgs_phase <= 1)
@@ -3656,7 +3656,7 @@ int spider_db_store_result(
           DBUG_PRINT("info",("spider set finish_flg point 2"));
           DBUG_PRINT("info",("spider current->finish_flg = TRUE"));
           DBUG_PRINT("info",("spider result_list->finish_flg = TRUE"));
-          current->finish_flg = TRUE;
+          current->finish_flg = TRUE; // limit N < 获取到的record_num; 或者 当前读取到的结果少于split_read(获取完了)
           result_list->finish_flg = TRUE;
         }
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -3722,7 +3722,7 @@ int spider_db_store_result(
         DBUG_PRINT("info",("spider set finish_flg point 3"));
         DBUG_PRINT("info",("spider current->finish_flg = TRUE"));
         DBUG_PRINT("info",("spider result_list->finish_flg = TRUE"));
-        current->finish_flg = TRUE;
+        current->finish_flg = TRUE; // quick_mode = 1, 无结果时
         result_list->finish_flg = TRUE;
         current->result->free_result();
         delete current->result;
@@ -3815,12 +3815,12 @@ int spider_db_store_result(
       if (
         result_list->internal_limit <= result_list->record_num ||
         page_size > roop_count
-      ) {
+      ) {// page_size即一次读取最大的结果， roop_count为当前实际读取的结果
         DBUG_PRINT("info",("spider set finish_flg point 4"));
         DBUG_PRINT("info",("spider current->finish_flg = TRUE"));
         DBUG_PRINT("info",("spider result_list->finish_flg = TRUE"));
         current->finish_flg = TRUE;
-        result_list->finish_flg = TRUE;
+        result_list->finish_flg = TRUE; // 读取到所有需要的结果
         current->result->free_result();
         if (!current->result_tmp_tbl)
         {

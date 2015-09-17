@@ -2022,7 +2022,7 @@ int ha_spider::index_read_map_internal(
   ) {
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     if (result_list.bgs_phase > 0)
-    {
+    {// 通过后端线程来执行
       if ((error_num = spider_bg_conn_search(this, roop_count, roop_start,
         TRUE, FALSE, (roop_count != link_ok))))
       {
