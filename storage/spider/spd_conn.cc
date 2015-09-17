@@ -2017,7 +2017,7 @@ int spider_bg_conn_search(
 			pthread_mutex_lock(&conn->bg_conn_sync_mutex); // 必须保证sinal前，后台线程是wait状态
 			pthread_cond_signal(&conn->bg_conn_cond);
 			pthread_mutex_unlock(&conn->bg_conn_mutex);
-			pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
+			pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 如果不wait，也没影响 ？  相当于一次握手 ？
 			pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
 			conn->bg_caller_wait = FALSE;
 			if (result_list->bgs_error)
@@ -2302,7 +2302,7 @@ void *spider_bg_conn_action(
     pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex); // 等待主线程query语句。 或者query执行完了，等主线和处理结果
     DBUG_PRINT("info",("spider bg roop start"));
     if (conn->bg_caller_sync_wait)
-    { // bg_serch发过signal信号后
+    { // bg_serch发过signal信号后，相当于一次握手 ?
       pthread_mutex_lock(&conn->bg_conn_sync_mutex);
       if (conn->bg_direct_sql)
         conn->bg_get_job_stack_off = TRUE;

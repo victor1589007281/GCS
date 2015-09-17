@@ -8199,38 +8199,51 @@ int spider_db_open_item_string(
   DBUG_ENTER("spider_db_open_item_string");
   if (str)
   {
-    /* char tmp_buf[MAX_FIELD_WIDTH];
-    spider_string tmp_str(tmp_buf, MAX_FIELD_WIDTH, str->charset());
-    String *tmp_str2;
-    tmp_str.init_calc_mem(126);
-    if (
-      !(tmp_str2 = item->val_str(tmp_str.get_str())) ||
-      str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN * 2 + tmp_str2->length() * 2)
-    )
-      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    tmp_str.mem_calc(); */
-    //str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
-    /*if (
-      //append_escaped(str->get_str(), tmp_str2) ||
-      str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN)
-    )
-      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    */
-    //str->mem_calc();
-    //str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
-
     assert(!field_charset || my_charset_same(field_charset, str->charset()) || my_charset_same(field_charset, &my_charset_bin));
+    switch (item->type())
+    {
+    case Item::FUNC_ITEM:
+    case Item::CACHE_ITEM:
+      {
+        // 这两种类型需要计算最终值，尤其是时间类型（now等）
+        char tmp_buf[MAX_FIELD_WIDTH];
+        spider_string tmp_str(tmp_buf, MAX_FIELD_WIDTH, str->charset());
+        String *tmp_str2;
+        tmp_str.init_calc_mem(126);
+        if (
+          !(tmp_str2 = item->val_str(tmp_str.get_str())) ||
+          str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN * 2 + tmp_str2->length() * 2)
+          )
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        tmp_str.mem_calc(); 
+        str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+        if (
+          append_escaped(str->get_str(), tmp_str2) ||
+          str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN)
+          )
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 
-    // 对于blob等二进制内容，字符串中的内容不需转换为表字符集
-    if (field_charset && my_charset_same(field_charset, &my_charset_bin))
-    {
+        str->mem_calc();
+        str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+        break;
+
+      }
+    //case Item::STRING_ITEM:
+    default:
+      // 字符类型需要考虑字符集问题
+      // 对于blob等二进制内容，字符串中的内容不需转换为表字符集
+      if (field_charset && my_charset_same(field_charset, &my_charset_bin))
+      {
         item->print(str->get_str(), (enum_query_type)QT_ORDINARY);
-    }
-    else
-    {
+      }
+      else
+      {
         item->print(str->get_str(), (enum_query_type)QT_TO_SPECIFIED_CHARSET);
+      }
+      str->mem_calc();
+      break;
     }
-    str->mem_calc();
+
   }
   DBUG_RETURN(0);
 }
@@ -8486,6 +8499,7 @@ int spider_db_append_update_columns(
   uint dbton_id
 ) {
   int error_num;
+  TABLE* table = spider->get_table();
   List_iterator_fast<Item> fi(*spider->direct_update_fields),
     vi(*spider->direct_update_values);
   Item *field, *value;
@@ -8520,6 +8534,40 @@ int spider_db_append_update_columns(
       str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
     }
   }
+
+  // for column: timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  if (str && table && (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE))
+  {
+    Field* timestamp_field = table->timestamp_field;
+    char buf[MAX_FIELD_WIDTH];
+    spider_string tmp_str(buf, MAX_FIELD_WIDTH, &my_charset_bin);
+    tmp_str.init_calc_mem(113);
+
+    // 计算timestamp的值
+    table->timestamp_field->set_time();
+    
+    uint field_name_len = strlen(timestamp_field->field_name);
+
+    String* timestamp_val = timestamp_field->val_str(tmp_str.get_str());
+    tmp_str.mem_calc();
+
+    if (str->reserve(2 + field_name_len + SPIDER_SQL_EQUAL_LEN + 
+          SPIDER_SQL_VALUE_QUOTE_LEN * 2 + timestamp_val->length() + SPIDER_SQL_COMMA_LEN  ))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+
+    str->q_append("`", 1);
+    str->q_append(timestamp_field->field_name, field_name_len);
+    str->q_append("`", 1);
+
+    str->q_append(SPIDER_SQL_EQUAL_STR, SPIDER_SQL_EQUAL_LEN);
+
+    str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+    str->q_append(timestamp_val->ptr(), timestamp_val->length());
+    str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+
+    str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  }
+
   if (str)
     str->length(str->length() - SPIDER_SQL_COMMA_LEN);
   DBUG_RETURN(0);
