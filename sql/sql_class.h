@@ -2344,6 +2344,11 @@ public:
     start_time= user_time= t;
     start_utime= utime_after_lock= my_micro_time();
   }
+  inline bool is_set_time()
+  {
+    return user_time != 0;
+  }
+
   /*TODO: this will be obsolete when we have support for 64 bit my_time_t */
   inline bool	is_valid_time() 
   { 
