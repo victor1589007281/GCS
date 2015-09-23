@@ -128,6 +128,7 @@
 #include <process.h>  /* getpid() */
 
 #define sleep(a) Sleep((a)*1000)
+#define usleep(a) Sleep(a)
 
 /* Define missing access() modes. */
 #define F_OK 0
