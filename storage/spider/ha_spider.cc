@@ -9139,6 +9139,18 @@ int ha_spider::direct_update_rows_init(
       */
     }
 
+    // If there is column which timestamp on update CURRENT_TIMESTAMP on table£¬
+    // it can't use direct_update where set timestamp = ** by user.
+    if (thd->is_set_time())
+    {
+      // always one table
+      TABLE* table = select_lex->table_list.first->table;
+      if (table && (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE))
+      {
+        DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+      }
+    }
+
     trx->direct_update_count++;
     thd->status_var.global_direct_update++;
     DBUG_PRINT("info",("spider OK"));

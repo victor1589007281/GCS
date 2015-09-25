@@ -3103,10 +3103,13 @@ int spider_db_fetch_minimum_columns(
       bitmap_is_set(table->write_set, (*field)->field_index)));
     if (dbton_hdl->minimum_select_bit_is_set((*field)->field_index))
     {
-      if ((
-        bitmap_is_set(table->read_set, (*field)->field_index) |
-        bitmap_is_set(table->write_set, (*field)->field_index)
-      )) {
+      // 与spider_mysql_handler::append_minimum_select对应，否则某些列为空，
+      // 非direct_upate导致spider_mysql_handler::append_update_where得不到正确结果
+      // 先加参数spider_param_fetch_minimum_columns控制，默认为TRUE，若有异常则动态设置为false还原
+      if (spider_param_fetch_minimum_columns() ||
+        (bitmap_is_set(table->read_set, (*field)->field_index) |
+        bitmap_is_set(table->write_set, (*field)->field_index))
+      ) {
 #ifndef DBUG_OFF
         my_bitmap_map *tmp_map =
           dbug_tmp_use_all_columns(table, table->write_set);
@@ -8499,7 +8502,7 @@ int spider_db_append_update_columns(
   uint dbton_id
 ) {
   int error_num;
-  TABLE* table = spider->get_table();
+  //TABLE* table = spider->get_table();
   List_iterator_fast<Item> fi(*spider->direct_update_fields),
     vi(*spider->direct_update_values);
   Item *field, *value;
@@ -8536,37 +8539,37 @@ int spider_db_append_update_columns(
   }
 
   // for column: timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-  if (str && table && (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE))
-  {
-    Field* timestamp_field = table->timestamp_field;
-    char buf[MAX_FIELD_WIDTH];
-    spider_string tmp_str(buf, MAX_FIELD_WIDTH, &my_charset_bin);
-    tmp_str.init_calc_mem(113);
+  //if (str && table && (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE))
+  //{
+  //  Field* timestamp_field = table->timestamp_field;
+  //  char buf[MAX_FIELD_WIDTH];
+  //  spider_string tmp_str(buf, MAX_FIELD_WIDTH, &my_charset_bin);
+  //  tmp_str.init_calc_mem(113);
 
-    // 计算timestamp的值
-    table->timestamp_field->set_time();
-    
-    uint field_name_len = strlen(timestamp_field->field_name);
+  //  // 计算timestamp的值
+  //  table->timestamp_field->set_time();
+  //  
+  //  uint field_name_len = strlen(timestamp_field->field_name);
 
-    String* timestamp_val = timestamp_field->val_str(tmp_str.get_str());
-    tmp_str.mem_calc();
+  //  String* timestamp_val = timestamp_field->val_str(tmp_str.get_str());
+  //  tmp_str.mem_calc();
 
-    if (str->reserve(2 + field_name_len + SPIDER_SQL_EQUAL_LEN + 
-          SPIDER_SQL_VALUE_QUOTE_LEN * 2 + timestamp_val->length() + SPIDER_SQL_COMMA_LEN  ))
-      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  //  if (str->reserve(2 + field_name_len + SPIDER_SQL_EQUAL_LEN + 
+  //        SPIDER_SQL_VALUE_QUOTE_LEN * 2 + timestamp_val->length() + SPIDER_SQL_COMMA_LEN  ))
+  //    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 
-    str->q_append("`", 1);
-    str->q_append(timestamp_field->field_name, field_name_len);
-    str->q_append("`", 1);
+  //  str->q_append("`", 1);
+  //  str->q_append(timestamp_field->field_name, field_name_len);
+  //  str->q_append("`", 1);
 
-    str->q_append(SPIDER_SQL_EQUAL_STR, SPIDER_SQL_EQUAL_LEN);
+  //  str->q_append(SPIDER_SQL_EQUAL_STR, SPIDER_SQL_EQUAL_LEN);
 
-    str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
-    str->q_append(timestamp_val->ptr(), timestamp_val->length());
-    str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+  //  str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+  //  str->q_append(timestamp_val->ptr(), timestamp_val->length());
+  //  str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
 
-    str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
-  }
+  //  str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  //}
 
   if (str)
     str->length(str->length() - SPIDER_SQL_COMMA_LEN);

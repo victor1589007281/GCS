@@ -2986,6 +2986,24 @@ my_bool spider_param_get_conn_from_idx()
 	DBUG_RETURN(spider_get_conn_from_idx);
 }
 
+// 临时加该参数控制，出现问题可以快速回退
+static my_bool spider_fetch_minimum_columns;
+static MYSQL_SYSVAR_BOOL(
+	fetch_minimum_columns,
+	spider_fetch_minimum_columns,
+	PLUGIN_VAR_OPCMDARG,
+	"spider_fetch_minimum_columns",
+	NULL,
+	NULL,
+	TRUE
+);
+
+my_bool spider_param_fetch_minimum_columns()
+{
+	DBUG_ENTER("spider_param_general_log");
+	DBUG_RETURN(spider_fetch_minimum_columns);
+}
+
 static uint spider_log_result_errors;
 /*
   0: no log
@@ -3148,6 +3166,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(with_sts_crd),
   MYSQL_SYSVAR(get_conn_from_idx),
   MYSQL_SYSVAR(use_pre_scan),
+  MYSQL_SYSVAR(fetch_minimum_columns),
   MYSQL_SYSVAR(log_result_errors),
   NULL
 };
