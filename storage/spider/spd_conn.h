@@ -357,4 +357,12 @@ SPIDER_IP_PORT_CONN *spider_create_ipport_conn(SPIDER_CONN *conn) ;
 my_bool spider_add_conn_meta_info(SPIDER_CONN *);
 
 void spider_update_conn_meta_info(SPIDER_CONN *, uint); 
-SPIDER_CONN* spider_wait_idle_connection(SPIDER_SHARE *share, int link_idx, enum_ipport_conn_status *conn_status);
+SPIDER_CONN* spider_get_conn_from_idle_connection
+(
+		SPIDER_SHARE *share, 
+		int link_idx, 
+		char *conn_key, 
+		ha_spider *spider, 
+		uint conn_kind, 
+		int base_link_idx, 
+		int *error_num);

@@ -209,6 +209,7 @@ PSI_mutex_key spd_key_mutex_udf_table;
 PSI_mutex_key spd_key_mutex_mem_calc;
 PSI_mutex_key spd_key_thread_id;
 PSI_mutex_key spd_key_conn_id;
+PSI_mutex_key spd_key_mutex_ipport_count;
 
 static PSI_mutex_info all_spider_mutexes[]=
 {
@@ -234,6 +235,7 @@ static PSI_mutex_info all_spider_mutexes[]=
   { &spd_key_mutex_mem_calc, "mem_calc", PSI_FLAG_GLOBAL},
   { &spd_key_thread_id, "thread_id", PSI_FLAG_GLOBAL},
   { &spd_key_conn_id, "conn_id", PSI_FLAG_GLOBAL},
+  { &spd_key_mutex_ipport_count, "ipport_count", PSI_FLAG_GLOBAL},
   { &spd_key_mutex_mta_conn, "mta_conn", 0},
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   { &spd_key_mutex_bg_conn_chain, "bg_conn_chain", 0},
@@ -360,6 +362,7 @@ pthread_mutex_t spider_init_error_tbl_mutex;
 
 extern pthread_mutex_t spider_thread_id_mutex;
 extern pthread_mutex_t spider_conn_id_mutex;
+extern pthread_mutex_t spider_ipport_count_mutex;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 HASH spider_open_pt_share;                                  /* HASH table of SPIDER_PARTITION_SHARE, share by SPIDER_SHARE */
@@ -6168,6 +6171,7 @@ int spider_db_done(
 #endif
   pthread_mutex_destroy(&spider_init_error_tbl_mutex);
   pthread_mutex_destroy(&spider_conn_id_mutex);
+	pthread_mutex_destroy(&spider_ipport_count_mutex);
   pthread_mutex_destroy(&spider_thread_id_mutex);
   pthread_mutex_destroy(&spider_tbl_mutex);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -6335,6 +6339,16 @@ int spider_db_init(
     error_num = HA_ERR_OUT_OF_MEM;
     goto error_conn_id_mutex_init;
   }
+#if MYSQL_VERSION_ID < 50500
+	if (pthread_mutex_init(&spider_ipport_count_mutex, MY_MUTEX_INIT_FAST))
+#else
+	if (mysql_mutex_init(spd_key_mutex_ipport_count,
+		&spider_ipport_count_mutex, MY_MUTEX_INIT_FAST))
+#endif
+	{
+		error_num = HA_ERR_OUT_OF_MEM;
+		goto error_ipport_count_mutex_init;
+	}
 #if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&spider_init_error_tbl_mutex, MY_MUTEX_INIT_FAST))
 #else
@@ -6793,9 +6807,13 @@ error_pt_share_mutex_init:
 #endif
   pthread_mutex_destroy(&spider_init_error_tbl_mutex);
 error_init_error_tbl_mutex_init:
-  pthread_mutex_destroy(&spider_conn_id_mutex);
+  pthread_mutex_destroy(&spider_ipport_count_mutex);
+error_ipport_count_mutex_init:
+	pthread_mutex_destroy(&spider_conn_id_mutex);
 error_conn_id_mutex_init:
   pthread_mutex_destroy(&spider_thread_id_mutex);
+
+
 error_thread_id_mutex_init:
   pthread_mutex_destroy(&spider_tbl_mutex);
 error_tbl_mutex_init:
