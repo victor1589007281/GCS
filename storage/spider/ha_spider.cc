@@ -14041,12 +14041,13 @@ SPIDER_CONN* ha_spider::spider_get_conn_by_idx(int link_idx)
 		this->conns[link_idx] = spider_get_conn(share, link_idx,  this->conn_keys[link_idx], 
 			this->trx, this,  FALSE, TRUE, SPIDER_CONN_KIND_MYSQL, &error_num);
 
-		if(! conns[link_idx])
+		if(! this->conns[link_idx])
 		{// 如果get_conn失败
 			share->init_error = TRUE;
 			share->init_error_time = (time_t) time((time_t*) 0);
 			share->init = TRUE;
 			spider_free_share(share);
+			return this->conns[link_idx]; /* 获取conn失败则返回NULL*/
 		}
 
 		this->conns[link_idx]->error_mode &= this->error_mode;
