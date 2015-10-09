@@ -7275,7 +7275,7 @@ int ha_spider::rnd_next_internal(
         conn->mta_conn_mutex_lock_already = FALSE;
         conn->mta_conn_mutex_unlock_later = FALSE;
         if (roop_count == link_ok)
-        {
+        { /* store result */
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (
@@ -14043,10 +14043,15 @@ SPIDER_CONN* ha_spider::spider_get_conn_by_idx(int link_idx)
 
 		if(! this->conns[link_idx])
 		{// 如果get_conn失败
-			share->init_error = TRUE;
-			share->init_error_time = (time_t) time((time_t*) 0);
-			share->init = TRUE;
-			spider_free_share(share);
+			/* 
+			   1. 分配连接失败，此处释放share对象会导致下次访问异常
+				 2. 分配连接失败，share不应该释放(可能share在它处在使用中）
+			
+			*/
+//			share->init_error = TRUE;
+//			share->init_error_time = (time_t) time((time_t*) 0); /* 不存在左值，无意义 */
+//			share->init = TRUE;
+//			spider_free_share(share);
 			return this->conns[link_idx]; /* 获取conn失败则返回NULL*/
 		}
 
