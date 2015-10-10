@@ -1201,6 +1201,18 @@ int spider_free_conn(
 ) {
   DBUG_ENTER("spider_free_conn");
   DBUG_PRINT("info", ("spider conn=%p", conn));
+
+	SPIDER_IP_PORT_CONN* ip_port_conn;
+	/* willhan */
+	/* 在free conn时，会加conn_mutex； 需要free的也不会在open_connection_hash中  */
+	pthread_mutex_lock(&spider_ipport_count_mutex);
+	if (ip_port_conn = (SPIDER_IP_PORT_CONN*) my_hash_search_using_hash_value(&spider_ipport_conns, conn->conn_key_hash_value, (uchar*)conn->conn_key, conn->conn_key_length))
+	{/* 释放conn时让计数 -1 */
+		ip_port_conn->ip_port_count--;
+	}
+	pthread_mutex_unlock(&spider_ipport_count_mutex);
+
+
   spider_free_conn_alloc(conn);
   spider_free(spider_current_trx, conn, MYF(0));
   DBUG_RETURN(0);
