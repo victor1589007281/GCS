@@ -4492,7 +4492,7 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 	  pthread_mutex_unlock(&spider_ipport_count_mutex);
 		while(retry_times++ < opt_spider_conn_retry_times)
 		{
-			my_sleep(100); // wait 100ms
+			my_sleep(10*1000); // wait 10ms
 			pthread_mutex_lock(&spider_conn_mutex);
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
 			if ((conn = (SPIDER_CONN*) my_hash_search_using_hash_value(
@@ -4524,7 +4524,7 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 				DBUG_RETURN(conn);
 			}
 			else
-			{/* 空闲连接中未找到，尝试等待100ms，再找 */
+			{/* 空闲连接中未找到，尝试等待10ms，再找 */
 				pthread_mutex_unlock(&spider_conn_mutex);
 			}
 		}
