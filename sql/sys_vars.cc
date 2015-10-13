@@ -3038,7 +3038,7 @@ static Sys_var_mybool Sys_log_slow(
 static Sys_var_mybool Sys_log_sql_use_mutil_partition(
 	"log_sql_use_mutil_partition", 
 	"log the sql in spider invoke partition more than 1",
-	GLOBAL_VAR(log_sql_use_mutil_partition), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+	GLOBAL_VAR(log_sql_use_multi_partition), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 
 static Sys_var_mybool Sys_spider_auto_increment_mode_switch(

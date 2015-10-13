@@ -364,6 +364,7 @@ int spider_db_conn_queue_action(
       DBUG_RETURN(error_num);
     if (sql_str.length())
     {// 比如start transaction,  set names等，在query前的SQL走此逻辑来执行
+			thd_proc_info(0, "spider: set names");
       if ((error_num = conn->db_conn->exec_query(sql_str.ptr(),
         sql_str.length(), -1)))
         DBUG_RETURN(error_num);
@@ -616,6 +617,7 @@ int spider_db_query(
 ) {
   int error_num;
   DBUG_ENTER("spider_db_query");
+	thd_proc_info(0,"spider_db_query S");
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (conn->conn_kind == SPIDER_CONN_KIND_MYSQL)
   {
@@ -638,6 +640,8 @@ int spider_db_query(
     DBUG_PRINT("info", ("spider length=%u", length));
 #endif
 	// 此处执行真正意义的SQL
+
+		thd_proc_info(0,"spider： exec query");
     if ((error_num = conn->db_conn->exec_query(query, length, quick_mode)))
       DBUG_RETURN(error_num);
     DBUG_RETURN(0);
@@ -652,6 +656,7 @@ int spider_db_query(
     DBUG_RETURN(conn->db_conn->exec_query(NULL, 0, quick_mode));
   }
 #endif
+	thd_proc_info(0,"spider_db_query E");
 }
 
 int spider_db_errorno(
@@ -3452,7 +3457,12 @@ int spider_db_store_result(
   SPIDER_DB_CONN *db_conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   SPIDER_RESULT *current;
+	char pro_info1[100];
+	char pro_info2[100];
+	sprintf(pro_info1, "spider_db_store_result S %s", spider->share->table_name);
+	sprintf(pro_info2, "spider_db_store_result E %", spider->share->table_name);
   DBUG_ENTER("spider_db_store_result");
+	thd_proc_info(0, pro_info1);
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_MYSQL)
   {
@@ -3911,6 +3921,7 @@ int spider_db_store_result(
     }
   }
 #endif
+	thd_proc_info(0, pro_info2);
   DBUG_RETURN(0);
 }
 

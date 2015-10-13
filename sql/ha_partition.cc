@@ -6125,6 +6125,7 @@ int ha_partition::handle_pre_scan(bool reverse_order, bool use_parallel)
 
   DBUG_PRINT("info", ("m_part_spec.start_part %d", m_part_spec.start_part));
   DBUG_PRINT("info", ("m_part_spec.end_part %d", m_part_spec.end_part));
+	thd_proc_info(0, "spider pre_scan start");
   for (i = m_part_spec.start_part; i <= m_part_spec.end_part; i++)
   {
     if (!(bitmap_is_set(&(m_part_info->used_partitions), i)))
@@ -6187,6 +6188,7 @@ int ha_partition::handle_pre_scan(bool reverse_order, bool use_parallel)
     bulk_access_info_current->called = TRUE;
 #endif
   table->status = 0;
+	thd_proc_info(0, "spider pre_scan end");
   DBUG_RETURN(0);
 }
 

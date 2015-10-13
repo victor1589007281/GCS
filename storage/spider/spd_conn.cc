@@ -2301,6 +2301,7 @@ void *spider_bg_conn_action(
       conn->bg_conn_chain_mutex_ptr = NULL;
     }
     thd->clear_error();
+		thd_proc_info(0, "spider bg wait query");
     pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex); // 等待主线程query语句。 或者query执行完了，等主线和处理结果
     DBUG_PRINT("info",("spider bg roop start"));
     if (conn->bg_caller_sync_wait)
@@ -2357,6 +2358,7 @@ void *spider_bg_conn_action(
       SPIDER_SHARE *share;
       spider_db_handler *dbton_handler;
       DBUG_PRINT("info",("spider bg search start"));
+			thd_proc_info(0, "spider bg start");
       spider = (ha_spider*) conn->bg_target;
       share = spider->share;
       dbton_handler = spider->dbton_handler[conn->dbton_id];
@@ -2384,6 +2386,7 @@ void *spider_bg_conn_action(
           sql_type = SPIDER_SQL_TYPE_SELECT_HS;
         }
 #endif
+				thd_proc_info(0, "spider bg execute query");
         if (dbton_handler->need_lock_before_set_sql_for_exec(sql_type))
         {// false, 不走
           pthread_mutex_lock(&conn->mta_conn_mutex);
@@ -2445,8 +2448,7 @@ void *spider_bg_conn_action(
                     strmov(result_list->bgs_error_msg,
                       spider_stmt_da_message(thd));
                 } else
-                  spider_db_discard_multiple_result(spider, conn->link_idx,
-                    conn);
+                  spider_db_discard_multiple_result(spider, conn->link_idx, conn);
               }
               if (!result_list->bgs_error)
               {
@@ -2466,6 +2468,7 @@ void *spider_bg_conn_action(
                   spider->connection_ids[conn->link_idx] = conn->connection_id;
                   if (!conn->bg_discard_result)
                   {
+										thd_proc_info(0, "spider bg store result");
                     if (!(result_list->bgs_error =
                       spider_db_store_result(spider, conn->link_idx,
                         result_list->table)))
@@ -2501,6 +2504,7 @@ void *spider_bg_conn_action(
       } else {
         spider->connection_ids[conn->link_idx] = conn->connection_id;
         conn->mta_conn_mutex_unlock_later = TRUE;
+				thd_proc_info(0, "spider bg store result");
         result_list->bgs_error =
           spider_db_store_result(spider, conn->link_idx, result_list->table);
         if ((result_list->bgs_error_with_message = thd->is_error()))
@@ -2515,6 +2519,7 @@ void *spider_bg_conn_action(
         pthread_cond_signal(&conn->bg_conn_sync_cond);
         pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
       }
+			thd_proc_info(0, "spider bg end");
       continue; // 后面的逻辑都不会走呀
     }
     if (conn->bg_direct_sql)
