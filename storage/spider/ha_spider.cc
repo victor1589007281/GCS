@@ -2340,10 +2340,8 @@ int ha_spider::index_read_map(
 #endif
   if (use_pre_call)
   {
-		char pro_info1[100];
-		char pro_info2[100];
-		sprintf(pro_info1, "pre_next S %s", this->share->table_name);
-		sprintf(pro_info2, "pre_next E %s", this->share->table_name);
+		char pro_info1[] = "pre_next start";
+		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
@@ -2733,10 +2731,8 @@ int ha_spider::index_read_last_map(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[100];
-		char pro_info2[100];
-		sprintf(pro_info1, "pre_next S %s", this->share->table_name);
-		sprintf(pro_info2, "pre_next E %s", this->share->table_name);
+		char pro_info1[] = "pre_next start";
+		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
@@ -3209,10 +3205,8 @@ int ha_spider::index_first(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[100];
-		char pro_info2[100];
-		sprintf(pro_info1, "pre_next S %s", this->share->table_name);
-		sprintf(pro_info2, "pre_next E %s", this->share->table_name);
+		char pro_info1[] = "pre_next start";
+		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
@@ -3593,10 +3587,8 @@ int ha_spider::index_last(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[100];
-		char pro_info2[100];
-		sprintf(pro_info1, "pre_next S %s", this->share->table_name);
-		sprintf(pro_info2, "pre_next E %s", this->share->table_name);
+		char pro_info1[] = "pre_next start";
+		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
@@ -4029,10 +4021,8 @@ int ha_spider::read_range_first(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[100];
-		char pro_info2[100];
-		sprintf(pro_info1, "pre_next S %s", this->share->table_name);
-		sprintf(pro_info2, "pre_next E %s", this->share->table_name);
+		char pro_info1[] = "pre_next start";
+		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
@@ -5565,10 +5555,8 @@ int ha_spider::read_multi_range_first(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[100];
-		char pro_info2[100];
-		sprintf(pro_info1, "pre_next S %s", this->share->table_name);
-		sprintf(pro_info2, "pre_next E %s", this->share->table_name);
+		char pro_info1[] = "pre_next start";
+		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
@@ -7381,10 +7369,8 @@ int ha_spider::rnd_next(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[100];
-		char pro_info2[100];
-		sprintf(pro_info1, "pre_next S %s", this->share->table_name);
-		sprintf(pro_info2, "pre_next E %s", this->share->table_name);
+		char pro_info1[] = "pre_next start";
+		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
@@ -7964,10 +7950,8 @@ int ha_spider::ft_read(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[100];
-		char pro_info2[100];
-		sprintf(pro_info1, "pre_next S %s", this->share->table_name);
-		sprintf(pro_info2, "pre_next E %s", this->share->table_name);
+		char pro_info1[] = "pre_next start";
+		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)

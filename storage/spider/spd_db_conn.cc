@@ -364,7 +364,7 @@ int spider_db_conn_queue_action(
       DBUG_RETURN(error_num);
     if (sql_str.length())
     {// 比如start transaction,  set names等，在query前的SQL走此逻辑来执行
-			thd_proc_info(0, "spider: set names");
+			thd_proc_info(0, "spider set names");
       if ((error_num = conn->db_conn->exec_query(sql_str.ptr(),
         sql_str.length(), -1)))
         DBUG_RETURN(error_num);
@@ -617,7 +617,7 @@ int spider_db_query(
 ) {
   int error_num;
   DBUG_ENTER("spider_db_query");
-	thd_proc_info(0,"spider_db_query S");
+	thd_proc_info(0,"spider_db_query start");
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (conn->conn_kind == SPIDER_CONN_KIND_MYSQL)
   {
@@ -644,7 +644,7 @@ int spider_db_query(
 		
     if ((error_num = conn->db_conn->exec_query(query, length, quick_mode)))
       DBUG_RETURN(error_num);
-		thd_proc_info(0,"spider_db_query E");
+		thd_proc_info(0,"spider_db_query end");
     DBUG_RETURN(0);
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   } else {
@@ -3457,10 +3457,8 @@ int spider_db_store_result(
   SPIDER_DB_CONN *db_conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   SPIDER_RESULT *current;
-	char pro_info1[100];
-	char pro_info2[100];
-	sprintf(pro_info1, "spider_db_store_result S %s", spider->share->table_name);
-	sprintf(pro_info2, "spider_db_store_result E %", spider->share->table_name);
+	char pro_info1[100] = "spider_db_store_result start";
+	char pro_info2[100] = "spider_db_store_result end";
   DBUG_ENTER("spider_db_store_result");
 	thd_proc_info(0, pro_info1);
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -3471,6 +3469,7 @@ int spider_db_store_result(
 		if(!conn)
 		{
 			error_num = ER_SPIDER_CON_COUNT_ERROR;
+			thd_proc_info(0, pro_info2);
 			DBUG_RETURN(error_num);
 		}
     DBUG_PRINT("info",("spider conn->connection_id=%llu",
@@ -3486,6 +3485,7 @@ int spider_db_store_result(
         SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
         pthread_mutex_unlock(&conn->mta_conn_mutex);
       }
+			thd_proc_info(0, pro_info2);
       DBUG_RETURN(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM);
     }
     db_conn = conn->db_conn;
@@ -3503,6 +3503,7 @@ int spider_db_store_result(
             SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
             pthread_mutex_unlock(&conn->mta_conn_mutex);
           }
+					thd_proc_info(0, pro_info2);
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
         TMP_TABLE_PARAM *tmp_tbl_prm = (TMP_TABLE_PARAM *)
@@ -3534,6 +3535,7 @@ int spider_db_store_result(
               SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
               pthread_mutex_unlock(&conn->mta_conn_mutex);
             }
+						thd_proc_info(0, pro_info2);
             DBUG_RETURN(HA_ERR_OUT_OF_MEM);
           }
           TMP_TABLE_PARAM *tmp_tbl_prm = (TMP_TABLE_PARAM *)
@@ -3577,6 +3579,7 @@ int spider_db_store_result(
               SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
               pthread_mutex_unlock(&conn->mta_conn_mutex);
             }
+						thd_proc_info(0, pro_info2);
             DBUG_RETURN(HA_ERR_OUT_OF_MEM);
           }
           TMP_TABLE_PARAM *tmp_tbl_prm = (TMP_TABLE_PARAM *)
@@ -3617,13 +3620,17 @@ int spider_db_store_result(
             SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
             pthread_mutex_unlock(&conn->mta_conn_mutex);
           }
+					thd_proc_info(0, pro_info2);
           DBUG_RETURN(error_num);
         }
         if (
           error_num != HA_ERR_END_OF_FILE &&
           (error_num = spider_db_errorno(conn))
         )
+				{
+					thd_proc_info(0, pro_info2);
           DBUG_RETURN(error_num);
+				}
         else {
           DBUG_PRINT("info",("spider set finish_flg point 1"));
           DBUG_PRINT("info",("spider current->finish_flg = TRUE"));
@@ -3644,6 +3651,7 @@ int spider_db_store_result(
             SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
             pthread_mutex_unlock(&conn->mta_conn_mutex);
           }
+					thd_proc_info(0, pro_info2);
           DBUG_RETURN(HA_ERR_END_OF_FILE);
         }
       } else {
@@ -3718,6 +3726,7 @@ int spider_db_store_result(
               pthread_mutex_unlock(&conn->mta_conn_mutex);
             }
           }
+					thd_proc_info(0, pro_info2);
           DBUG_RETURN(error_num);
         }
         DBUG_PRINT("info", ("spider conn[%p]->quick_target=%p", conn, spider));
@@ -3752,7 +3761,11 @@ int spider_db_store_result(
           result_list->current_row_num = 0;
           table->status = STATUS_NOT_FOUND;
         } else if (result_list->quick_phase > 0)
+				{
+					thd_proc_info(0, pro_info2);
           DBUG_RETURN(0);
+				}
+				thd_proc_info(0, pro_info2);
         DBUG_RETURN(HA_ERR_END_OF_FILE);
       }
       SPIDER_DB_ROW *tmp_row;
@@ -3770,13 +3783,16 @@ int spider_db_store_result(
           &tmp_row, sizeof(char*) * field_count,
           NullS))
       )
+			{
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+			}
       current->pos_page_size = (int) page_size;
       current->first_position = position;
       current->tmp_tbl_row = tmp_row;
       do {
         if (!(position->row = row->clone()))
         {
+					thd_proc_info(0, pro_info2);
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
         position++;
@@ -3803,6 +3819,7 @@ int spider_db_store_result(
           thd, table, &current->result_tmp_tbl_prm, "a", "b", "c",
           &my_charset_bin)))
         {
+					thd_proc_info(0, pro_info2);
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
         current->result_tmp_tbl_thd = thd;

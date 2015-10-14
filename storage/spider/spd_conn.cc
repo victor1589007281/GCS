@@ -2009,18 +2009,24 @@ int spider_bg_conn_search(
       DBUG_PRINT("info",("spider skip bg first search"));
 		} else {
 			DBUG_PRINT("info",("spider bg first search"));
+			thd_proc_info(0, "bg_search wait start 1");
 			pthread_mutex_lock(&conn->bg_conn_mutex);
+			thd_proc_info(0, "bg_search wait end 1");
 			result_list->bgs_working = TRUE;
 			conn->bg_search = TRUE;
 			conn->bg_caller_wait = TRUE;
 			conn->bg_target = spider;
 			conn->link_idx = link_idx;
 			conn->bg_discard_result = discard_result;
+			thd_proc_info(0, "bg_search wait start 2");
 			pthread_mutex_lock(&conn->bg_conn_sync_mutex); // 必须保证sinal前，后台线程是wait状态
+			thd_proc_info(0, "bg_search wait end 2");
 			pthread_cond_signal(&conn->bg_conn_cond);
 			pthread_mutex_unlock(&conn->bg_conn_mutex);
+			thd_proc_info(0, "bg_search wait start 3");
 			pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 如果不wait，也没影响 ？  相当于一次握手 ？
 			pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+			thd_proc_info(0, "bg_search wait end 3");
 			conn->bg_caller_wait = FALSE;
 			if (result_list->bgs_error)
 			{
@@ -2032,7 +2038,9 @@ int spider_bg_conn_search(
 		}
     if (!result_list->finish_flg)
     {
-      pthread_mutex_lock(&conn->bg_conn_mutex); // 
+			thd_proc_info(0, "bg_search wait start 4");
+      pthread_mutex_lock(&conn->bg_conn_mutex); //
+			thd_proc_info(0, "bg_search wait end 4");
       if (!result_list->finish_flg)
       {
         DBUG_PRINT("info",("spider bg second search"));
@@ -2108,11 +2116,15 @@ int spider_bg_conn_search(
         conn->bg_target = spider;
         conn->link_idx = link_idx;
         conn->bg_discard_result = discard_result;
+				thd_proc_info(0, "bg_search wait start 5");
         pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+				thd_proc_info(0, "bg_search wait end 5");
         pthread_cond_signal(&conn->bg_conn_cond); // 发信号，后台线程执行sql
         pthread_mutex_unlock(&conn->bg_conn_mutex);
+				thd_proc_info(0, "bg_search wait start 6");
         pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 确定后台线程已执行sql
         pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+				thd_proc_info(0, "bg_search wait end 6");
         conn->bg_caller_sync_wait = FALSE;
       } else {
         pthread_mutex_unlock(&conn->bg_conn_mutex);
@@ -2137,8 +2149,10 @@ int spider_bg_conn_search(
     {
       /* wait */
       DBUG_PRINT("info",("spider bg working wait"));
+			thd_proc_info(0, "bg_search wait start 7");
       pthread_mutex_lock(&conn->bg_conn_mutex);
       pthread_mutex_unlock(&conn->bg_conn_mutex);
+			thd_proc_info(0, "bg_search wait end 7");
     }
     if (result_list->bgs_error)
     {
@@ -2161,7 +2175,9 @@ int spider_bg_conn_search(
       DBUG_PRINT("info",("spider bg next search"));
       if (!result_list->current->finish_flg)
       {
+				thd_proc_info(0, "bg_search wait start 8");
         pthread_mutex_lock(&conn->bg_conn_mutex);
+				thd_proc_info(0, "bg_search wait end 8");
         result_list->bgs_phase = 3;
         if (
           result_list->quick_mode == 0 ||
@@ -2212,11 +2228,15 @@ int spider_bg_conn_search(
         if (with_lock) // 通常为0
           conn->bg_conn_chain_mutex_ptr = &first_conn->bg_conn_chain_mutex;
         conn->bg_caller_sync_wait = TRUE;
+				thd_proc_info(0, "bg_search wait start 9");
         pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+				thd_proc_info(0, "bg_search wait end 9");
         pthread_cond_signal(&conn->bg_conn_cond);
         pthread_mutex_unlock(&conn->bg_conn_mutex);
+				thd_proc_info(0, "bg_search wait start 10");
         pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
         pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+				thd_proc_info(0, "bg_search wait end 10");
         conn->bg_caller_sync_wait = FALSE;
       }
     }
