@@ -641,9 +641,10 @@ int spider_db_query(
 #endif
 	// 此处执行真正意义的SQL
 
-		thd_proc_info(0,"spider： exec query");
+		
     if ((error_num = conn->db_conn->exec_query(query, length, quick_mode)))
       DBUG_RETURN(error_num);
+		thd_proc_info(0,"spider_db_query E");
     DBUG_RETURN(0);
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   } else {
@@ -656,7 +657,6 @@ int spider_db_query(
     DBUG_RETURN(conn->db_conn->exec_query(NULL, 0, quick_mode));
   }
 #endif
-	thd_proc_info(0,"spider_db_query E");
 }
 
 int spider_db_errorno(
