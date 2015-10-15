@@ -2039,7 +2039,7 @@ int spider_bg_conn_search(
     if (!result_list->finish_flg)
     {
 			thd_proc_info(0, "bg_search wait start 4");
-      pthread_mutex_lock(&conn->bg_conn_mutex); //
+      pthread_mutex_lock(&conn->bg_conn_mutex); /* 只有spider_bg_action在pthread_cond_wait时才会加锁成功：1,等query;2，等再次处理结果 */
 			thd_proc_info(0, "bg_search wait end 4");
       if (!result_list->finish_flg)
       {
@@ -2112,20 +2112,20 @@ int spider_bg_conn_search(
         conn->bg_search = TRUE;
         if (with_lock) // 通常为0
           conn->bg_conn_chain_mutex_ptr = &first_conn->bg_conn_chain_mutex;
-        conn->bg_caller_sync_wait = TRUE;
+//        conn->bg_caller_sync_wait = TRUE;
         conn->bg_target = spider;
         conn->link_idx = link_idx;
         conn->bg_discard_result = discard_result;
 				thd_proc_info(0, "bg_search wait start 5");
-        pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+//        pthread_mutex_lock(&conn->bg_conn_sync_mutex);
 				thd_proc_info(0, "bg_search wait end 5");
         pthread_cond_signal(&conn->bg_conn_cond); // 发信号，后台线程执行sql
         pthread_mutex_unlock(&conn->bg_conn_mutex);
-				thd_proc_info(0, "bg_search wait start 6");
-        pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 确定后台线程已执行sql
-        pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
-				thd_proc_info(0, "bg_search wait end 6");
-        conn->bg_caller_sync_wait = FALSE;
+//				thd_proc_info(0, "bg_search wait start 6");
+//        pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 确定后台线程已执行sql
+//        pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+//				thd_proc_info(0, "bg_search wait end 6");
+//        conn->bg_caller_sync_wait = FALSE;
       } else {
         pthread_mutex_unlock(&conn->bg_conn_mutex);
         DBUG_PRINT("info",("spider bg current->finish_flg=%s",
@@ -2327,7 +2327,7 @@ void *spider_bg_conn_action(
     if (conn->bg_caller_sync_wait)
     { // bg_serch发过signal信号后，相当于一次握手 ?
       pthread_mutex_lock(&conn->bg_conn_sync_mutex);
-      if (conn->bg_direct_sql)
+      if (conn->bg_direct_sql) /* udf,不走 */
         conn->bg_get_job_stack_off = TRUE;
       pthread_cond_signal(&conn->bg_conn_sync_cond); // 发出线程已响应query的信号
       pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
