@@ -46,6 +46,7 @@
 #include "spd_ping_table.h"
 #include "spd_copy_tables.h"
 #include "spd_malloc.h"
+#include "spd_db_mysql.h"
 
 extern handlerton *spider_hton_ptr;
 extern SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
@@ -3050,6 +3051,7 @@ int spider_db_fetch_minimum_columns(
     if (result_list->current_row_num < result_list->quick_page_size)
     {
       row = current->first_position[result_list->current_row_num].row;
+
     } else {
       if ((error_num = spider_db_get_row_from_tmp_tbl(
         current, &row)))
@@ -3796,6 +3798,7 @@ int spider_db_store_result(
 					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
+				fprintf(stderr, "position->row=%s \n", *(((spider_db_mysql_row*)(position->row))->row));
         position++;
         roop_count++;
       } while (
