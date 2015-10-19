@@ -3459,11 +3459,9 @@ int spider_db_store_result(
   SPIDER_DB_CONN *db_conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   SPIDER_RESULT *current;
-	char pro_info1[100] = "spider_db_store_result start";
-	char pro_info2[100] = "spider_db_store_result end";
 	THD *thd =current_thd;
   DBUG_ENTER("spider_db_store_result");
-	thd_proc_info(thd, pro_info1);
+	thd_proc_info(thd, "spider_store_result start");
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_MYSQL)
   {
@@ -3472,7 +3470,7 @@ int spider_db_store_result(
 		if(!conn)
 		{
 			error_num = ER_SPIDER_CON_COUNT_ERROR;
-			thd_proc_info(thd, pro_info2);
+			thd_proc_info(thd, "spider_store_result end");
 			DBUG_RETURN(error_num);
 		}
     DBUG_PRINT("info",("spider conn->connection_id=%llu",
@@ -3488,7 +3486,7 @@ int spider_db_store_result(
         SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
         pthread_mutex_unlock(&conn->mta_conn_mutex);
       }
-			thd_proc_info(thd, pro_info2);
+			thd_proc_info(thd, "spider_store_result end");
       DBUG_RETURN(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM);
     }
     db_conn = conn->db_conn;
@@ -3506,7 +3504,7 @@ int spider_db_store_result(
             SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
             pthread_mutex_unlock(&conn->mta_conn_mutex);
           }
-					thd_proc_info(thd, pro_info2);
+					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
         TMP_TABLE_PARAM *tmp_tbl_prm = (TMP_TABLE_PARAM *)
@@ -3538,7 +3536,7 @@ int spider_db_store_result(
               SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
               pthread_mutex_unlock(&conn->mta_conn_mutex);
             }
-						thd_proc_info(thd, pro_info2);
+						thd_proc_info(thd, "spider_store_result end");
             DBUG_RETURN(HA_ERR_OUT_OF_MEM);
           }
           TMP_TABLE_PARAM *tmp_tbl_prm = (TMP_TABLE_PARAM *)
@@ -3582,7 +3580,7 @@ int spider_db_store_result(
               SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
               pthread_mutex_unlock(&conn->mta_conn_mutex);
             }
-						thd_proc_info(thd, pro_info2);
+						thd_proc_info(thd, "spider_store_result end");
             DBUG_RETURN(HA_ERR_OUT_OF_MEM);
           }
           TMP_TABLE_PARAM *tmp_tbl_prm = (TMP_TABLE_PARAM *)
@@ -3623,7 +3621,7 @@ int spider_db_store_result(
             SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
             pthread_mutex_unlock(&conn->mta_conn_mutex);
           }
-					thd_proc_info(thd, pro_info2);
+					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(error_num);
         }
         if (
@@ -3631,7 +3629,7 @@ int spider_db_store_result(
           (error_num = spider_db_errorno(conn))
         )
 				{
-					thd_proc_info(thd, pro_info2);
+					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(error_num);
 				}
         else {
@@ -3654,7 +3652,7 @@ int spider_db_store_result(
             SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
             pthread_mutex_unlock(&conn->mta_conn_mutex);
           }
-					thd_proc_info(thd, pro_info2);
+					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(HA_ERR_END_OF_FILE);
         }
       } else {
@@ -3729,7 +3727,7 @@ int spider_db_store_result(
               pthread_mutex_unlock(&conn->mta_conn_mutex);
             }
           }
-					thd_proc_info(thd, pro_info2);
+					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(error_num);
         }
         DBUG_PRINT("info", ("spider conn[%p]->quick_target=%p", conn, spider));
@@ -3765,10 +3763,10 @@ int spider_db_store_result(
           table->status = STATUS_NOT_FOUND;
         } else if (result_list->quick_phase > 0)
 				{
-					thd_proc_info(thd, pro_info2);
+					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(0);
 				}
-				thd_proc_info(thd, pro_info2);
+				thd_proc_info(thd, "spider_store_result end");
         DBUG_RETURN(HA_ERR_END_OF_FILE);
       }
       SPIDER_DB_ROW *tmp_row;
@@ -3795,7 +3793,7 @@ int spider_db_store_result(
       do {
         if (!(position->row = row->clone()))
         {
-					thd_proc_info(thd, pro_info2);
+					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
         position++;
@@ -3822,7 +3820,7 @@ int spider_db_store_result(
           thd, table, &current->result_tmp_tbl_prm, "a", "b", "c",
           &my_charset_bin)))
         {
-					thd_proc_info(thd, pro_info2);
+					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
         current->result_tmp_tbl_thd = thd;
@@ -3941,7 +3939,7 @@ int spider_db_store_result(
     }
   }
 #endif
-	thd_proc_info(thd, pro_info2);
+	thd_proc_info(thd, "spider_store_result end");
   DBUG_RETURN(0);
 }
 
@@ -6407,7 +6405,7 @@ int spider_db_direct_update(
 
   spider_set_result_list_param(spider);
   result_list->finish_flg = FALSE;
-  DBUG_PRINT("info", ("spider do_direct_update=%s",
+	DBUG_PRINT("info", ("spider do_direct_update=%s",
     spider->do_direct_update ? "TRUE" : "FALSE"));
   DBUG_PRINT("info", ("spider direct_update_kinds=%u",
     spider->direct_update_kinds));

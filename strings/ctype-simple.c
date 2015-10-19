@@ -1374,7 +1374,7 @@ my_strntoull10rnd_8bit(CHARSET_INFO *cs __attribute__((unused)),
   int shift= 0, digits= 0, negative, addon;
 
   /* Skip leading spaces and tabs */
-  for ( ; str < end && (*str == ' ' || *str == '\t') ; str++);
+	for ( ; str < end && (*str == ' ' || *str == '\t') ; str++);
 
   if (str >= end)
     goto ret_edom;

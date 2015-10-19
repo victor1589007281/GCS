@@ -1979,7 +1979,7 @@ int spider_bg_conn_search(
   int error_num;
   SPIDER_CONN *conn, *first_conn = NULL;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
-  bool with_lock = FALSE;
+	bool with_lock = FALSE;
 	THD *thd = current_thd;
   DBUG_ENTER("spider_bg_conn_search");
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -2113,20 +2113,20 @@ int spider_bg_conn_search(
         conn->bg_search = TRUE;
         if (with_lock) // 通常为0
           conn->bg_conn_chain_mutex_ptr = &first_conn->bg_conn_chain_mutex;
-//        conn->bg_caller_sync_wait = TRUE;
+        conn->bg_caller_sync_wait = TRUE;
         conn->bg_target = spider;
         conn->link_idx = link_idx;
         conn->bg_discard_result = discard_result;
-//				thd_proc_info(0, "bg_search wait start 5");
-//        pthread_mutex_lock(&conn->bg_conn_sync_mutex);
-//				thd_proc_info(0, "bg_search wait end 5");
+				thd_proc_info(0, "bg_search wait start 5");
+        pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+				thd_proc_info(0, "bg_search wait end 5");
         pthread_cond_signal(&conn->bg_conn_cond); // 发信号，后台线程执行sql
         pthread_mutex_unlock(&conn->bg_conn_mutex);
-//				thd_proc_info(0, "bg_search wait start 6");
-//        pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 确定后台线程已执行sql
-//        pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
-//				thd_proc_info(0, "bg_search wait end 6");
-//        conn->bg_caller_sync_wait = FALSE;
+				thd_proc_info(0, "bg_search wait start 6");
+        pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 确定后台线程已执行sql，不是尚处于wait状态
+        pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+				thd_proc_info(0, "bg_search wait end 6");
+        conn->bg_caller_sync_wait = FALSE;
       } else {
         pthread_mutex_unlock(&conn->bg_conn_mutex);
         DBUG_PRINT("info",("spider bg current->finish_flg=%s",
@@ -2322,7 +2322,6 @@ void *spider_bg_conn_action(
       conn->bg_conn_chain_mutex_ptr = NULL;
     }
     thd->clear_error();
-//		thd_proc_info(0, "spider bg wait query");
     pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex); // 等待主线程query语句。 或者query执行完了，等主线和处理结果
     DBUG_PRINT("info",("spider bg roop start"));
     if (conn->bg_caller_sync_wait)
@@ -4518,7 +4517,7 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 	  pthread_mutex_unlock(&spider_ipport_count_mutex);
 		while(retry_times++ < opt_spider_conn_retry_times)
 		{
-			my_sleep(10*1000); // wait 10ms
+			my_sleep(1*1000); // wait 1 ms
 			pthread_mutex_lock(&spider_conn_mutex);
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
 			if ((conn = (SPIDER_CONN*) my_hash_search_using_hash_value(

@@ -3064,7 +3064,7 @@ static Sys_var_uint Sys_spider_conn_retry_times(
 	"spider_conn_retry_times", 
 	"the values, as the max time retry to get a conn",
 	GLOBAL_VAR(opt_spider_conn_retry_times), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(0, 100000), DEFAULT(200), BLOCK_SIZE(1));
+	VALID_RANGE(0, 100000), DEFAULT(1000), BLOCK_SIZE(1));
 
 static Sys_var_uint Sys_spider_auto_increment_step(
 	"spider_auto_increment_step", 

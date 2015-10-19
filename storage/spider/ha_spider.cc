@@ -2341,18 +2341,16 @@ int ha_spider::index_read_map(
 #endif
   if (use_pre_call)
   {
-		char pro_info1[] = "pre_next start";
-		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
         table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(store_error_num);
     }
-		thd_proc_info(thd, pro_info1);
+		thd_proc_info(thd, "pre_next start");
     if ((error_num = spider_bg_all_conn_pre_next(this, search_link_idx)))
       DBUG_RETURN(error_num);
-		thd_proc_info(thd, pro_info2);
+		thd_proc_info(thd, "pre_next end");
     use_pre_call = FALSE;
     if (
       result_list.sorted &&
@@ -2733,18 +2731,16 @@ int ha_spider::index_read_last_map(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[] = "pre_next start";
-		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
         table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(store_error_num);
     }
-		thd_proc_info(thd, pro_info1);
+		thd_proc_info(thd, "pre_next start");
     if ((error_num = spider_bg_all_conn_pre_next(this, search_link_idx)))
       DBUG_RETURN(error_num);
-		thd_proc_info(thd, pro_info2);
+		thd_proc_info(thd, "pre_next end");
     use_pre_call = FALSE;
     DBUG_RETURN(index_prev(buf));
   }
@@ -3208,18 +3204,16 @@ int ha_spider::index_first(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[] = "pre_next start";
-		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
         table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(store_error_num);
     }
-		thd_proc_info(thd, pro_info1);
+		thd_proc_info(thd, "pre_next start");
     if ((error_num = spider_bg_all_conn_pre_next(this, search_link_idx)))
       DBUG_RETURN(error_num);
-		thd_proc_info(thd, pro_info2);
+		thd_proc_info(thd, "pre_next end");
     use_pre_call = FALSE;
     DBUG_RETURN(index_next(buf));
   }
@@ -3591,18 +3585,16 @@ int ha_spider::index_last(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[] = "pre_next start";
-		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
         table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(store_error_num);
     }
-		thd_proc_info(thd, pro_info1);
+		thd_proc_info(thd, "pre_next start");
     if ((error_num = spider_bg_all_conn_pre_next(this, search_link_idx)))
       DBUG_RETURN(error_num);
-		thd_proc_info(thd, pro_info2);
+		thd_proc_info(thd, "pre_next end");
     use_pre_call = FALSE;
     DBUG_RETURN(index_prev(buf));
   }
@@ -4026,18 +4018,16 @@ int ha_spider::read_range_first(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[] = "pre_next start";
-		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
         table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(store_error_num);
     }
-		thd_proc_info(thd, pro_info1);
+		thd_proc_info(thd, "pre_next start");
     if ((error_num = spider_bg_all_conn_pre_next(this, search_link_idx)))
       DBUG_RETURN(error_num);
-		thd_proc_info(thd, pro_info2);
+		thd_proc_info(thd, "pre_next end");
     use_pre_call = FALSE;
     DBUG_RETURN(read_range_next());
   }
@@ -5561,18 +5551,16 @@ int ha_spider::read_multi_range_first(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[] = "pre_next start";
-		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
         table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(store_error_num);
     }
-		thd_proc_info(thd, pro_info1);
+		thd_proc_info(thd, "pre_next start");
     if ((error_num = spider_bg_all_conn_pre_next(this, search_link_idx)))
       DBUG_RETURN(error_num);
-		thd_proc_info(thd, pro_info2);
+		thd_proc_info(thd, "pre_next end");
     use_pre_call = FALSE;
     DBUG_RETURN(read_multi_range_next(found_range_p));
   }
@@ -7376,18 +7364,16 @@ int ha_spider::rnd_next(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[] = "pre_next start";
-		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
         table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(store_error_num);
     }
-		thd_proc_info(thd, pro_info1);
+		thd_proc_info(thd, "pre_next start");
     if ((error_num = spider_bg_all_conn_pre_next(this, search_link_idx)))
       DBUG_RETURN(error_num);
-		thd_proc_info(thd, pro_info2);
+		thd_proc_info(thd, "pre_next end");
     use_pre_call = FALSE;
   }
   DBUG_RETURN(rnd_next_internal(buf));
@@ -7958,18 +7944,16 @@ int ha_spider::ft_read(
   DBUG_PRINT("info",("spider this=%p", this));
   if (use_pre_call)
   {
-		char pro_info1[] = "pre_next start";
-		char pro_info2[]="pre_next end";
     if (store_error_num)
     {
       if (store_error_num == HA_ERR_END_OF_FILE)
         table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(store_error_num);
     }
-		thd_proc_info(thd, pro_info1);
+		thd_proc_info(thd, "pre_next start");
     if ((error_num = spider_bg_all_conn_pre_next(this, search_link_idx)))
       DBUG_RETURN(error_num);
-		thd_proc_info(thd, pro_info2);
+		thd_proc_info(thd, "pre_next end");
     use_pre_call = FALSE;
   }
   DBUG_RETURN(ft_read_internal(buf));
