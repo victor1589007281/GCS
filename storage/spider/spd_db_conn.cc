@@ -3798,7 +3798,20 @@ int spider_db_store_result(
 					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
-				fprintf(stderr, "position->row=%s \n", *(((spider_db_mysql_row*)(position->row))->row));
+				{
+					Field **field;
+					char str[500];
+					int i;
+					SPIDER_DB_ROW *row = position->row;
+					sprintf(str,  "position=%p, position->row=%p,",  position, position->row);
+					for (field = table->field,i=0; i<4; field++,i++) 
+				 {
+					 sprintf(str,"%s %s,value=%s, rprt=%p, vptr=%p;", str, (*field)->field_name, *(((spider_db_mysql_row*)(row))->row), row, (((spider_db_mysql_row*)(row))->row) );
+					 row->next();
+				 }
+					fprintf(stderr, "%s\n", str);
+
+				}
         position++;
         roop_count++;
       } while (
