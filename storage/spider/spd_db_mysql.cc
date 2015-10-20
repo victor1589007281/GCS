@@ -316,6 +316,11 @@ void spider_db_mysql_row::next()
   DBUG_PRINT("info",("spider this=%p", this));
   row++;
   lengths++;
+
+	{
+		fprintf(stderr, "row-%s,rowp=%p, this=%p\n", *row, row, this);
+	}
+
   DBUG_VOID_RETURN;
 }
 

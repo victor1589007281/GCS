@@ -3804,12 +3804,13 @@ int spider_db_store_result(
 					int i;
 					SPIDER_DB_ROW *row = position->row;
 					sprintf(str,  "position=%p, position->row=%p,",  position, position->row);
-					for (field = table->field,i=0; i<4; field++,i++) 
+					for (field = table->field,i=0; i<5 && *field ; field++,i++) 
 				 {
 					 sprintf(str,"%s %s,value=%s, rprt=%p, vptr=%p;", str, (*field)->field_name, *(((spider_db_mysql_row*)(row))->row), row, (((spider_db_mysql_row*)(row))->row) );
 					 row->next();
 				 }
 					fprintf(stderr, "%s\n", str);
+					row->first();
 
 				}
         position++;
