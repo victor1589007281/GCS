@@ -2439,7 +2439,6 @@ int spider_db_refetch_for_item_sum_funcs(
     if (result_list->snap_mrr_with_cnt)
     {
       row->next();
-			fprintf(stderr, "spider_db_refetch_for_item_sum_funcs");
     }
     if ((error_num = spider_db_fetch_for_item_sum_funcs(row, spider)))
       DBUG_RETURN(error_num);
@@ -2486,7 +2485,6 @@ int spider_db_fetch_for_item_sum_func(
         else
           DBUG_RETURN(ER_SPIDER_UNKNOWN_NUM);
         row->next();
-				fprintf(stderr, "spider_db_fetch_for_item_sum_func1");
       }
       break;
     case Item_sum::SUM_FUNC:
@@ -2501,7 +2499,6 @@ int spider_db_fetch_for_item_sum_func(
           item_sum_sum->direct_add(row->val_real(), row->is_null());
         }
         row->next();
-				fprintf(stderr, "spider_db_fetch_for_item_sum_func2");
       }
       break;
     case Item_sum::MIN_FUNC:
@@ -2567,7 +2564,6 @@ int spider_db_fetch_for_item_sum_func(
         }
         item_hybrid->direct_add(item);
         row->next();
-				fprintf(stderr, "spider_db_fetch_for_item_sum_func3");
       }
       break;
     case Item_sum::COUNT_DISTINCT_FUNC:
@@ -2604,7 +2600,6 @@ int spider_db_append_match_fetch(
       else
         DBUG_RETURN(ER_SPIDER_UNKNOWN_NUM);
       row->next();
-			fprintf(stderr, "spider_db_append_match_fetch");
       if (ft_info == ft_current)
         break;
       ft_info = ft_info->next;
@@ -2804,7 +2799,6 @@ int spider_db_fetch_table(
         else
           DBUG_RETURN(ER_SPIDER_UNKNOWN_NUM);
         row->next();
-				fprintf(stderr, "spider_db_append_match_fetch1");
       } else {
         spider->multi_range_hit_point = 0;
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
@@ -2862,7 +2856,6 @@ int spider_db_fetch_table(
 #endif
       }
       row->next();
-			fprintf(stderr, "spider_db_append_match_fetch2");
     }
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   } else {
@@ -2987,7 +2980,6 @@ int spider_db_fetch_key(
     else
       DBUG_RETURN(ER_SPIDER_UNKNOWN_NUM);
     row->next();
-		fprintf(stderr, "spider_db_fetch_key");
   }
 
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
@@ -3028,7 +3020,6 @@ int spider_db_fetch_key(
 #endif
     }
     row->next();
-		fprintf(stderr, "spider_db_fetch_key2");
   }
   table->status = 0;
   DBUG_RETURN(0);
@@ -3090,7 +3081,6 @@ int spider_db_fetch_minimum_columns(
     else
       DBUG_RETURN(ER_SPIDER_UNKNOWN_NUM);
     row->next();
-		fprintf(stderr, "spider_db_fetch_minimum_columns1");
   }
 
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
@@ -3141,7 +3131,7 @@ int spider_db_fetch_minimum_columns(
 #endif
       }
       row->next();
-				fprintf(stderr, "spider_db_fetch_minimum_columns2");
+			fprintf(stderr, "field=%s, field_ptr=%p\n", (*field)->field_name, *field);
     }
   }
   table->status = 0;
@@ -3822,7 +3812,6 @@ int spider_db_store_result(
 				 }
 					fprintf(stderr, "%s\n", str);
 					row->first();
-
 				}
         position++;
         roop_count++;
@@ -4980,7 +4969,6 @@ int spider_db_seek_tmp_table(
     if (pos->sql_kind == SPIDER_SQL_KIND_SQL)
     {
       row->next();
-				fprintf(stderr, "spider_db_seek_tmp_table1");
     } else {
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
       spider->result_list.snap_mrr_with_cnt = FALSE;
@@ -5023,7 +5011,6 @@ int spider_db_seek_tmp_table(
 #endif
     }
     row->next();
-		fprintf(stderr, "spider_db_seek_tmp_table2");
   }
   DBUG_RETURN(0);
 }
@@ -5068,7 +5055,6 @@ int spider_db_seek_tmp_key(
   {
     DBUG_PRINT("info", ("spider mrr_with_cnt"));
     row->next();
-		fprintf(stderr, "spider_db_seek_tmp_key1");
 
   }
 
@@ -5110,7 +5096,6 @@ int spider_db_seek_tmp_key(
 #endif
     }
     row->next();
-				fprintf(stderr, "spider_db_seek_tmp_key2");
   }
   DBUG_RETURN(0);
 }
@@ -5152,7 +5137,6 @@ int spider_db_seek_tmp_minimum_columns(
   {
     DBUG_PRINT("info", ("spider mrr_with_cnt"));
     row->next();
-				fprintf(stderr, "spider_db_seek_tmp_minimum_columns1");
   }
 
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
@@ -5195,7 +5179,6 @@ int spider_db_seek_tmp_minimum_columns(
         spider_db_fetch_row(spider->share, *field, row, ptr_diff)))
         DBUG_RETURN(error_num);
       row->next();
-			fprintf(stderr, "spider_db_seek_tmp_minimum_columns2");
 #ifndef DBUG_OFF
       dbug_tmp_restore_column_map(table->write_set, tmp_map);
 #endif
