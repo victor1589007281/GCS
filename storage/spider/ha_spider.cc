@@ -151,6 +151,7 @@ ha_spider::ha_spider(
   result_list.tmp_pos_row_first = NULL;
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
   result_list.direct_aggregate = FALSE;
+	query_bg_search_flag = 0;
 #endif
   DBUG_VOID_RETURN;
 }
@@ -179,6 +180,7 @@ ha_spider::ha_spider(
   trx_hs_w_conn_adjustment = 0;
 #endif
   search_link_query_id = 0;
+	query_bg_search_flag = 0;
   searched_bitmap = NULL;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   partition_handler_share = NULL;
@@ -1596,6 +1598,7 @@ int ha_spider::reset()
   result_list.tmp_table_join = FALSE;
   result_list.use_union = FALSE;
   pt_clone_last_searcher = NULL;
+	query_bg_search_flag = 0;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   conn_kinds = SPIDER_CONN_KIND_MYSQL;
 #endif

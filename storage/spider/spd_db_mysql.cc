@@ -5237,6 +5237,7 @@ int spider_mysql_handler::append_insert_tmp_bka_table(
     SPIDER_SQL_COMMA_LEN))
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   str->q_append(SPIDER_SQL_INSERT_STR, SPIDER_SQL_INSERT_LEN);
+	spider->query_bg_search_flag |= SPIDER_SQL_TYPE_INSERT;
   str->q_append(SPIDER_SQL_INTO_STR, SPIDER_SQL_INTO_LEN);
   *db_name_pos = str->length();
   str->q_append(tmp_table_name, tmp_table_name_length);
@@ -5367,6 +5368,7 @@ int spider_mysql_handler::append_insert_for_recovery(
     /* SPIDER_SQL_NAME_QUOTE_LEN */ 4 + SPIDER_SQL_OPEN_PAREN_LEN))
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   insert_sql->q_append(SPIDER_SQL_INSERT_STR, SPIDER_SQL_INSERT_LEN);
+	spider->query_bg_search_flag |= SPIDER_SQL_TYPE_INSERT;
   insert_sql->q_append(SPIDER_SQL_SQL_IGNORE_STR, SPIDER_SQL_SQL_IGNORE_LEN);
   insert_sql->q_append(SPIDER_SQL_INTO_STR, SPIDER_SQL_INTO_LEN);
   mysql_share->append_table_name(insert_sql, spider->conn_link_idx[link_idx]);
@@ -5564,10 +5566,12 @@ int spider_mysql_handler::append_insert(
     if (str->reserve(SPIDER_SQL_REPLACE_LEN))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     str->q_append(SPIDER_SQL_REPLACE_STR, SPIDER_SQL_REPLACE_LEN);
+		spider->query_bg_search_flag |= SPIDER_SQL_TYPE_REPLACE;
   } else {
     if (str->reserve(SPIDER_SQL_INSERT_LEN))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     str->q_append(SPIDER_SQL_INSERT_STR, SPIDER_SQL_INSERT_LEN);
+		spider->query_bg_search_flag |= SPIDER_SQL_TYPE_INSERT;
   }
   if (spider->low_priority)
   {
@@ -6009,6 +6013,7 @@ int spider_mysql_handler::append_select(
     if (str->reserve(SPIDER_SQL_SELECT_LEN))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     str->q_append(SPIDER_SQL_SELECT_STR, SPIDER_SQL_SELECT_LEN);
+		spider->query_bg_search_flag |= SPIDER_SQL_TYPE_SELECT;
     if (result_list->lock_type != F_WRLCK && spider->lock_mode < 1)
     {
       /* no lock */

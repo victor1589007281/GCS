@@ -38,6 +38,27 @@
       conns[roop_count]->param_name = param_val; \
   }
 
+
+#define SPIDER_SQL_TYPE_INSERT				1<<0
+#define SPIDER_SQL_TYPE_REPLACE				1<<1
+#define SPIDER_SQL_TYPE_SELECT				1<<2
+#define SPIDER_SQL_TYPE_UPDATE			  1<<3
+#define SPIDER_SQL_TYPE_DELETE				1<<4
+#define SPIDER_SQL_TYPE_FROM					1<<5
+#define SPIDER_SQL_TYPE_WHERE					1<<6
+#define SPIDER_SQL_TYPE_OR						1<<7
+#define SPIDER_SQL_TYPE_ORDER					1<<8
+#define SPIDER_SQL_TYPE_DESC					1<<9
+#define SPIDER_SQL_TYPE_LIMIT					1<<10
+#define SPIDER_SQL_TYPE_INTO					1<<11
+#define SPIDER_SQL_TYPE_VALUES				1<<12
+#define SPIDER_SQL_TYPE_SHARED_LOCK		1<<13
+#define SPIDER_SQL_TYPE_FOR_UPDATE		1<<14
+#define SPIDER_SQL_TYPE_GROUP					1<<15
+#define SPIDER_SQL_TYPE_OTHER					1<<16
+
+
+
 class ha_spider;
 struct st_spider_ft_info
 {
@@ -245,6 +266,8 @@ public:
 
   /* for dbton */
   spider_db_handler  **dbton_handler;
+
+	ulonglong					 query_bg_search_flag;
 
   ha_spider();
   ha_spider(

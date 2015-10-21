@@ -3646,7 +3646,6 @@ int spider_db_store_result(
           {
 #endif
             result_list->current_row_num = 0;
-						fprintf(stderr, "spider_db_store_result1 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
             table->status = STATUS_NOT_FOUND;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
           }
@@ -3690,7 +3689,6 @@ int spider_db_store_result(
         {
 #endif
           result_list->current_row_num = 0;
-					fprintf(stderr, "spider_db_store_result2 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
         }
 #endif
@@ -3765,7 +3763,6 @@ int spider_db_store_result(
           result_list->quick_phase == 0
         ) {
           result_list->current_row_num = 0;
-					fprintf(stderr, "spider_db_store_result3 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
           table->status = STATUS_NOT_FOUND;
         } else if (result_list->quick_phase > 0)
 				{
@@ -3900,7 +3897,6 @@ int spider_db_store_result(
         result_list->quick_phase == 0
       ) {
         result_list->current_row_num = 0;
-				fprintf(stderr, "spider_db_store_result4 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
       }
     }
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
