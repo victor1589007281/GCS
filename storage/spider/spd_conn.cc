@@ -730,7 +730,7 @@ SPIDER_CONN *spider_create_conn(
 	{/* 存在计算+1 */
 		if(opt_spider_max_connections)
 		{/* 启用了连接池限制 */
-			if(ip_port_conn->ip_port_count >= opt_spider_max_connections)
+			if((unsigned long)(ip_port_conn->ip_port_count) >= opt_spider_max_connections)
 			{/* 如果创建的连接数达到上限，则释放conn， return NULL */
 				pthread_mutex_unlock(&spider_ipport_count_mutex);
 				goto error_too_many_ipport_count;
@@ -2162,6 +2162,7 @@ int spider_bg_conn_search(
       {
         result_list->current = result_list->current->next;
         result_list->current_row_num = 0;
+					fprintf(stderr, "spider_bg_search1 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
         result_list->table->status = STATUS_NOT_FOUND;
       }
       if (result_list->bgs_error_with_message)
@@ -2171,6 +2172,7 @@ int spider_bg_conn_search(
     }
     result_list->current = result_list->current->next;
     result_list->current_row_num = 0;
+		fprintf(stderr, "spider_bg_search2 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
     if (result_list->current == result_list->bgs_current)
     {
       DBUG_PRINT("info",("spider bg next search"));

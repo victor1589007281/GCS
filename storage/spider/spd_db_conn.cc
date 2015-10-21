@@ -4081,6 +4081,7 @@ int spider_db_fetch(
       result_list);
   }
   result_list->current_row_num++;
+	fprintf(stderr, "spider_db_fetch result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
   DBUG_PRINT("info",("spider error_num=%d", error_num));
   spider->pushed_pos = NULL;
   DBUG_RETURN(error_num);
@@ -4108,8 +4109,10 @@ int spider_db_seek_prev(
     }
     result_list->current = result_list->current->prev;
     result_list->current_row_num = result_list->current->record_num - 1;
+		fprintf(stderr, "spider_db_seek_prev1 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
   } else {
     result_list->current_row_num -= 2;
+		fprintf(stderr, "spider_db_seek_prev2 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
   }
   if (result_list->quick_mode == 0)
     result_list->current->result->move_to_pos(result_list->current_row_num);
@@ -4165,21 +4168,21 @@ int spider_db_seek_next(
     }
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-    if (result_list->bgs_phase > 0)
-    {
-      for (roop_count = roop_start; roop_count < roop_end;
-        roop_count = spider_conn_link_idx_next(share->link_statuses,
-          spider->conn_link_idx, roop_count, share->link_count,
-          SPIDER_LINK_STATUS_RECOVERY)
-      ) {
-        if ((error_num = spider_bg_conn_search(spider, roop_count, roop_start,
-          FALSE, FALSE, (roop_count != link_ok))))
-        {
-          DBUG_PRINT("info",("spider error_num 1=%d", error_num));
-          DBUG_RETURN(error_num);
-        }
-      }
-    } else {
+		if (result_list->bgs_phase > 0)
+		{
+			for (roop_count = roop_start; roop_count < roop_end;
+				roop_count = spider_conn_link_idx_next(share->link_statuses,
+				spider->conn_link_idx, roop_count, share->link_count,
+				SPIDER_LINK_STATUS_RECOVERY)
+				) {
+					if ((error_num = spider_bg_conn_search(spider, roop_count, roop_start,
+						FALSE, FALSE, (roop_count != link_ok))))
+					{
+						DBUG_PRINT("info",("spider error_num 1=%d", error_num));
+						DBUG_RETURN(error_num);
+					}
+			}
+		} else {
 #endif
       if (result_list->current == result_list->bgs_current)
       {
@@ -4419,6 +4422,7 @@ int spider_db_seek_last(
     }
     result_list->current = result_list->last;
     result_list->current_row_num = result_list->current->record_num - 1;
+		fprintf(stderr, "spider_db_seek_last1 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
     if (result_list->quick_mode == 0)
       result_list->current->result->move_to_pos(result_list->current_row_num);
     DBUG_RETURN(spider_db_fetch(buf, spider, table));
@@ -4615,6 +4619,7 @@ int spider_db_seek_last(
       }
     }
     result_list->current_row_num = result_list->current->record_num - 1;
+			fprintf(stderr, "spider_db_seek_last2 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
     if (result_list->quick_mode == 0)
       result_list->current->result->move_to_pos(result_list->current_row_num);
     DBUG_RETURN(spider_db_fetch(buf, spider, table));
@@ -4844,6 +4849,7 @@ void spider_db_set_pos_to_first_row(
 ) {
   DBUG_ENTER("spider_db_set_pos_to_first_row");
   result_list->current_row_num = 0;
+		fprintf(stderr, "spider_db_set_pos_to_first_row result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
   if (result_list->quick_mode == 0)
     result_list->current->result->move_to_pos(0);
   DBUG_VOID_RETURN;
