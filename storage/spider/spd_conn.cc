@@ -2164,6 +2164,7 @@ int spider_bg_conn_search(
         result_list->current_row_num = 0;
 				result_list->current_row_num_will1 = 0;
 				result_list->current_row_num_will2 = 0;
+				result_list->current_row_num_flag = 12;
 					fprintf(stderr, "spider_bg_search1 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
         result_list->table->status = STATUS_NOT_FOUND;
       }
@@ -2176,6 +2177,7 @@ int spider_bg_conn_search(
     result_list->current_row_num = 0;
 		result_list->current_row_num_will1 = 0;
 		result_list->current_row_num_will2 = 0;
+		result_list->current_row_num_flag = 13;
 		fprintf(stderr, "spider_bg_search2 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
     if (result_list->current == result_list->bgs_current)
     {
