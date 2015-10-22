@@ -1616,6 +1616,11 @@ typedef struct st_spider_result_list
   longlong                current_row_num;
 	volatile longlong       current_row_num_will2;
 	longlong								current_row_num_flag;
+	longlong								will_test1;
+	longlong								will_test2;
+	longlong								will_test3;
+	longlong								will_test4;
+	longlong								will_test5;
   longlong                record_num;
   bool                    finish_flg;
   longlong                limit_num;

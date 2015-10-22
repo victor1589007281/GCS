@@ -2393,6 +2393,7 @@ void *spider_bg_conn_action(
       result_list = &spider->result_list;
       result_list->bgs_error = 0;
       result_list->bgs_error_with_message = FALSE;
+			result_list->will_test3 = 222;
       if (
         result_list->quick_mode == 0 ||
         result_list->bgs_phase == 1 ||
@@ -2530,6 +2531,7 @@ void *spider_bg_conn_action(
           pthread_mutex_unlock(&conn->mta_conn_mutex);
         }
       } else {/* 一次没取完结果，继续fetch走此逻辑 */
+				result_list->will_test4 = 222;
         spider->connection_ids[conn->link_idx] = conn->connection_id;
         conn->mta_conn_mutex_unlock_later = TRUE;
 	//			thd_proc_info(0, "spider bg store result");

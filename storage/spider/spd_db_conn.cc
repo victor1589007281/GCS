@@ -3465,6 +3465,9 @@ int spider_db_store_result(
 	THD *thd =current_thd;
   DBUG_ENTER("spider_db_store_result");
 	thd_proc_info(thd, "spider_store_result start");
+
+	result_list->will_test2 = 222;
+
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (spider->conn_kind[link_idx] == SPIDER_CONN_KIND_MYSQL)
   {
@@ -3701,6 +3704,7 @@ int spider_db_store_result(
       }
     } else {
       /* has_result() for case of result with result_tmp_tbl */
+			result_list->will_test5=222;
       if (current->prev && current->prev->result &&
         current->prev->result->has_result())
       {
@@ -4096,6 +4100,10 @@ int spider_db_fetch(
 	result_list->current_row_num_will1++;
 	result_list->current_row_num_will2++;
 	result_list->current_row_num_flag = 5;
+	result_list->will_test1 = 111;
+	result_list->will_test2 = 111;
+	result_list->will_test3 = 111;
+	result_list->will_test4 = 111;
 	fprintf(stderr, "spider_db_fetch result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
   DBUG_PRINT("info",("spider error_num=%d", error_num));
   spider->pushed_pos = NULL;
@@ -4156,12 +4164,14 @@ int spider_db_seek_next(
 		error_num = ER_SPIDER_CON_COUNT_ERROR;
 		DBUG_RETURN(error_num);
 	}
+	result_list->will_test1 = 111;
   if (
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     spider->conn_kind[spider->result_link_idx] == SPIDER_CONN_KIND_MYSQL &&
 #endif
     result_list->current_row_num >= result_list->current->record_num
   ) {
+		result_list->will_test1 = 222;
     DBUG_PRINT("info",("spider result_list->current_row_num=%lld",
       result_list->current_row_num));
     DBUG_PRINT("info",("spider result_list->current->record_num=%lld",
