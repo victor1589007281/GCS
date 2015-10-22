@@ -1621,6 +1621,8 @@ typedef struct st_spider_result_list
 	longlong								will_test3;
 	longlong								will_test4;
 	longlong								will_test5;
+	longlong								will_store_result_flag;
+	longlong								will_store_result_step;
   longlong                record_num;
   bool                    finish_flg;
   longlong                limit_num;

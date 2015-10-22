@@ -2497,7 +2497,7 @@ void *spider_bg_conn_action(
                   spider->connection_ids[conn->link_idx] = conn->connection_id;
                   if (!conn->bg_discard_result)
                   {
-			//							thd_proc_info(0, "spider bg store result");
+										result_list->will_store_result_flag=7;
                     if (!(result_list->bgs_error =
                       spider_db_store_result(spider, conn->link_idx,
                         result_list->table)))
@@ -2534,7 +2534,7 @@ void *spider_bg_conn_action(
 				result_list->will_test4 = 222;
         spider->connection_ids[conn->link_idx] = conn->connection_id;
         conn->mta_conn_mutex_unlock_later = TRUE;
-	//			thd_proc_info(0, "spider bg store result");
+				result_list->will_store_result_flag=8;
         result_list->bgs_error =
           spider_db_store_result(spider, conn->link_idx, result_list->table);
         if ((result_list->bgs_error_with_message = thd->is_error()))

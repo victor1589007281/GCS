@@ -2178,6 +2178,7 @@ int ha_spider::index_read_map_internal(
         conn->mta_conn_mutex_unlock_later = FALSE;
         if (roop_count == link_ok)
         {
+					result_list.will_store_result_flag=9;
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (
@@ -2664,6 +2665,7 @@ int ha_spider::index_read_last_map_internal(
         conn->mta_conn_mutex_unlock_later = FALSE;
         if (roop_count == link_ok)
         {
+					result_list.will_store_result_flag=10;
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (
@@ -3128,6 +3130,7 @@ int ha_spider::index_first_internal(
           conn->mta_conn_mutex_unlock_later = FALSE;
           if (roop_count == link_ok)
           {
+						result_list.will_store_result_flag=11;
             if ((error_num = spider_db_store_result(this, roop_count, table)))
             {
               if (
@@ -3509,6 +3512,7 @@ int ha_spider::index_last_internal(
           conn->mta_conn_mutex_unlock_later = FALSE;
           if (roop_count == link_ok)
           {
+						result_list.will_store_result_flag=12;
             if ((error_num = spider_db_store_result(this, roop_count, table)))
             {
               if (
@@ -3948,6 +3952,7 @@ int ha_spider::read_range_first_internal(
         conn->mta_conn_mutex_unlock_later = FALSE;
         if (roop_count == link_ok)
         {
+					result_list.will_store_result_flag=13;
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (
@@ -4543,6 +4548,7 @@ int ha_spider::read_multi_range_first_internal(
               conn->mta_conn_mutex_unlock_later = FALSE;
               if (roop_count == link_ok)
               {
+								result_list.will_store_result_flag=14;
                 error_num = spider_db_store_result(this, roop_count, table);
                 if (
                   error_num &&
@@ -5361,6 +5367,7 @@ int ha_spider::read_multi_range_first_internal(
             conn->mta_conn_mutex_unlock_later = FALSE;
             if (roop_count == link_ok)
             {
+							result_list.will_store_result_flag=15;
               if ((error_num = spider_db_store_result(this, roop_count, table)))
               {
                 if (
@@ -5902,6 +5909,7 @@ int ha_spider::read_multi_range_next(
               conn->mta_conn_mutex_unlock_later = FALSE;
               if (roop_count == link_ok)
               {
+								result_list.will_store_result_flag=16;
                 error_num = spider_db_store_result(this, roop_count, table);
                 if (
                   error_num &&
@@ -6730,6 +6738,7 @@ int ha_spider::read_multi_range_next(
             conn->mta_conn_mutex_unlock_later = FALSE;
             if (roop_count == link_ok)
             {
+							result_list.will_store_result_flag=17;
               if ((error_num = spider_db_store_result(this, roop_count, table)))
               {
                 if (
@@ -7297,6 +7306,7 @@ int ha_spider::rnd_next_internal(
         conn->mta_conn_mutex_unlock_later = FALSE;
         if (roop_count == link_ok)
         { /* store result */
+					result_list.will_store_result_flag=18;
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (
@@ -7875,6 +7885,7 @@ int ha_spider::ft_read_internal(
         conn->mta_conn_mutex_unlock_later = FALSE;
         if (roop_count == link_ok)
         {
+					result_list.will_store_result_flag=19;
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (

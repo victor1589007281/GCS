@@ -585,6 +585,7 @@ int spider_db_before_query(
       conn->mta_conn_mutex_unlock_later = TRUE;
       while (conn->quick_target)
       {
+				result_list->will_store_result_flag=2;
         if (
           (error_num = spider_db_store_result(spider, conn->link_idx,
             result_list->table)) &&
@@ -3832,6 +3833,7 @@ int spider_db_store_result(
         page_size > roop_count &&
         (row = current->result->fetch_row())
       );
+			result_list->will_store_result_step=2;
       if (
         result_list->quick_mode == 3 &&
         page_size == roop_count &&
@@ -3846,10 +3848,12 @@ int spider_db_store_result(
 
         DBUG_PRINT("info",("spider store result to temporary table"));
         DBUG_ASSERT(!current->result_tmp_tbl);
+				result_list->will_store_result_step=3;
         if (!(current->result_tmp_tbl = spider_mk_sys_tmp_table_for_result(
           thd, table, &current->result_tmp_tbl_prm, "a", "b", "c",
           &my_charset_bin)))
         {
+					result_list->will_store_result_step=4;
 					thd_proc_info(thd, "spider_store_result end");
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
@@ -3860,6 +3864,7 @@ int spider_db_store_result(
         do {
           if ((error_num = row->store_to_tmp_table(tmp_tbl, &tmp_str)))
           {
+						result_list->will_store_result_step=5;
             tmp_tbl->file->ha_end_bulk_insert();
             DBUG_RETURN(error_num);
           }
@@ -3870,9 +3875,11 @@ int spider_db_store_result(
         );
         tmp_tbl->file->ha_end_bulk_insert();
         page_size = result_list->limit_num;
+				result_list->will_store_result_step=6;
       }
       current->record_num = roop_count;
       result_list->record_num += roop_count;
+			result_list->will_store_result_step=7;
       if (
         result_list->internal_limit <= result_list->record_num ||
         page_size > roop_count
@@ -3891,6 +3898,7 @@ int spider_db_store_result(
         DBUG_PRINT("info", ("spider conn[%p]->quick_target=NULL", conn));
         conn->quick_target = NULL;
         spider->quick_targets[link_idx] = NULL;
+				result_list->will_store_result_step=8;
       } else if (result_list->limit_num == roop_count)
       {
         current->result->free_result();
@@ -3902,7 +3910,9 @@ int spider_db_store_result(
         DBUG_PRINT("info", ("spider conn[%p]->quick_target=NULL", conn));
         conn->quick_target = NULL;
         spider->quick_targets[link_idx] = NULL;
+				result_list->will_store_result_step=9;
       }
+			result_list->will_store_result_step=10;
       if (
 #ifndef WITHOUT_SPIDER_BG_SEARCH
         result_list->bgs_phase <= 1 &&
@@ -3913,6 +3923,7 @@ int spider_db_store_result(
 				result_list->current_row_num_will1 = 0;
 				result_list->current_row_num_will2 = 0;
 				result_list->current_row_num_flag = 4;
+				result_list->will_store_result_step=11;
       }
     }
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -3973,6 +3984,7 @@ int spider_db_store_result(
   }
 #endif
 	thd_proc_info(thd, "spider_store_result end");
+	result_list->will_store_result_step=12;
   DBUG_RETURN(0);
 }
 
@@ -4104,7 +4116,10 @@ int spider_db_fetch(
 	result_list->will_test2 = 111;
 	result_list->will_test3 = 111;
 	result_list->will_test4 = 111;
-	fprintf(stderr, "spider_db_fetch result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
+	result_list->will_test5 = 111;
+	result_list->will_store_result_flag=111;
+	fprintf(stderr, "spider_db_fetch result_list=%p,num=%ld, store_step=%ld\n", result_list, result_list->current_row_num, result_list->will_store_result_step);
+	result_list->will_store_result_step=111;
   DBUG_PRINT("info",("spider error_num=%d", error_num));
   spider->pushed_pos = NULL;
   DBUG_RETURN(error_num);
@@ -4368,6 +4383,7 @@ int spider_db_seek_next(
             conn->mta_conn_mutex_unlock_later = FALSE;
             if (roop_count == link_ok)
             {
+							result_list->will_store_result_flag=3;
               if ((error_num = spider_db_store_result(spider, roop_count,
                 table)))
               {
@@ -4404,6 +4420,7 @@ int spider_db_seek_next(
         } else {
           spider->connection_ids[link_idx] = conn->connection_id;
           conn->mta_conn_mutex_unlock_later = TRUE;
+					result_list->will_store_result_flag=4;
           if ((error_num = spider_db_store_result(spider, link_idx, table)))
           {
             conn->mta_conn_mutex_unlock_later = FALSE;
@@ -4625,6 +4642,7 @@ int spider_db_seek_last(
       conn->mta_conn_mutex_unlock_later = FALSE;
       if (roop_count == link_ok)
       {
+				result_list->will_store_result_flag=5;
         if ((error_num = spider_db_store_result(spider, roop_count, table)))
         {
           if (
@@ -4832,6 +4850,7 @@ int spider_db_seek_last(
     conn->mta_conn_mutex_unlock_later = FALSE;
     if (roop_count == link_ok)
     {
+			result_list->will_store_result_flag=6;
       if ((error_num = spider_db_store_result(spider, roop_count, table)))
       {
         if (
