@@ -592,6 +592,7 @@ SPIDER_CONN *spider_create_conn(
     conn->tgt_port = share->tgt_ports[link_idx];
     conn->tgt_ssl_vsc = share->tgt_ssl_vscs[link_idx];
     conn->dbton_id = share->sql_dbton_ids[link_idx];
+		conn->bg_conn_working = false;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   } else if (conn_kind == SPIDER_CONN_KIND_HS_READ) {
     if (!(conn = (SPIDER_CONN *)
@@ -1212,6 +1213,7 @@ int spider_free_conn(
 	}
 	pthread_mutex_unlock(&spider_ipport_count_mutex);
 
+	conn->bg_conn_working = false;
 
   spider_free_conn_alloc(conn);
   spider_free(spider_current_trx, conn, MYF(0));
@@ -2037,14 +2039,16 @@ int spider_bg_conn_search(
 				DBUG_RETURN(result_list->bgs_error);
 			}
 		}
-    if (!result_list->finish_flg)
+    if (!result_list->finish_flg || conn->bg_conn_working)
     {
 			thd_proc_info(thd, "bg_search wait start 4");
       pthread_mutex_lock(&conn->bg_conn_mutex); /* 只有spider_bg_action在pthread_cond_wait时才会加锁成功：1,等query;2，等再次处理结果 */
+			assert(!conn->bg_conn_working);
 			thd_proc_info(thd, "bg_search wait end 4");
 			result_list->will_test6=222;
       if (!result_list->finish_flg)
       {
+				result_list->will_test6=333;
         DBUG_PRINT("info",("spider bg second search"));
         if (!spider->use_pre_call || pre_next)
         {
@@ -2130,14 +2134,13 @@ int spider_bg_conn_search(
         conn->bg_caller_sync_wait = FALSE;
       } else {
         pthread_mutex_unlock(&conn->bg_conn_mutex);
+				result_list->will_test6=333;
         DBUG_PRINT("info",("spider bg current->finish_flg=%s",
-          result_list->current ?
-          (result_list->current->finish_flg ? "TRUE" : "FALSE") : "NULL"));
+          result_list->current ? (result_list->current->finish_flg ? "TRUE" : "FALSE") : "NULL"));
       }
     } else {
       DBUG_PRINT("info",("spider bg current->finish_flg=%s",
-        result_list->current ?
-        (result_list->current->finish_flg ? "TRUE" : "FALSE") : "NULL"));
+        result_list->current ? (result_list->current->finish_flg ? "TRUE" : "FALSE") : "NULL"));
     }
   } else {
     DBUG_PRINT("info",("spider bg search"));
@@ -2331,7 +2334,9 @@ void *spider_bg_conn_action(
       conn->bg_conn_chain_mutex_ptr = NULL;
     }
     thd->clear_error();
+		conn->bg_conn_working = false;
     pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex); // 等待主线程query语句。 或者query执行完了，等主线和处理结果
+		conn->bg_conn_working = true;
     DBUG_PRINT("info",("spider bg roop start"));
     if (conn->bg_caller_sync_wait)
     { // bg_serch发过signal信号后，相当于一次握手 ?
