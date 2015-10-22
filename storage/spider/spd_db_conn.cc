@@ -3646,6 +3646,8 @@ int spider_db_store_result(
           {
 #endif
             result_list->current_row_num = 0;
+						result_list->current_row_num_will1 = 0;
+						result_list->current_row_num_will2 = 0;
             table->status = STATUS_NOT_FOUND;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
           }
@@ -3689,6 +3691,8 @@ int spider_db_store_result(
         {
 #endif
           result_list->current_row_num = 0;
+					result_list->current_row_num_will1 = 0;
+					result_list->current_row_num_will2 = 0;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
         }
 #endif
@@ -3763,6 +3767,8 @@ int spider_db_store_result(
           result_list->quick_phase == 0
         ) {
           result_list->current_row_num = 0;
+					result_list->current_row_num_will1 = 0;
+					result_list->current_row_num_will2 = 0;
           table->status = STATUS_NOT_FOUND;
         } else if (result_list->quick_phase > 0)
 				{
@@ -3897,6 +3903,8 @@ int spider_db_store_result(
         result_list->quick_phase == 0
       ) {
         result_list->current_row_num = 0;
+				result_list->current_row_num_will1 = 0;
+				result_list->current_row_num_will2 = 0;
       }
     }
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -4081,6 +4089,8 @@ int spider_db_fetch(
       result_list);
   }
   result_list->current_row_num++;
+	result_list->current_row_num_will1++;
+	result_list->current_row_num_will2++;
 	fprintf(stderr, "spider_db_fetch result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
   DBUG_PRINT("info",("spider error_num=%d", error_num));
   spider->pushed_pos = NULL;
@@ -4109,9 +4119,13 @@ int spider_db_seek_prev(
     }
     result_list->current = result_list->current->prev;
     result_list->current_row_num = result_list->current->record_num - 1;
+		result_list->current_row_num_will1 = result_list->current->record_num - 1;
+		result_list->current_row_num_will2 = result_list->current->record_num - 1;
 		fprintf(stderr, "spider_db_seek_prev1 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
   } else {
     result_list->current_row_num -= 2;
+		result_list->current_row_num_will1 -= 2;
+		result_list->current_row_num_will2 -= 2;
 		fprintf(stderr, "spider_db_seek_prev2 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
   }
   if (result_list->quick_mode == 0)
@@ -4384,6 +4398,8 @@ int spider_db_seek_next(
       } else {
         result_list->current = result_list->current->next;
         result_list->current_row_num = 0;
+				result_list->current_row_num_will1 = 0;
+				result_list->current_row_num_will2 = 0;
 				fprintf(stderr, "spider_db_seek_next result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
         if (
           result_list->current == result_list->bgs_current &&
@@ -4423,6 +4439,8 @@ int spider_db_seek_last(
     }
     result_list->current = result_list->last;
     result_list->current_row_num = result_list->current->record_num - 1;
+		result_list->current_row_num_will1 = result_list->current->record_num - 1;
+		result_list->current_row_num_will2 = result_list->current->record_num - 1;
 		fprintf(stderr, "spider_db_seek_last1 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
     if (result_list->quick_mode == 0)
       result_list->current->result->move_to_pos(result_list->current_row_num);
@@ -4620,6 +4638,8 @@ int spider_db_seek_last(
       }
     }
     result_list->current_row_num = result_list->current->record_num - 1;
+		result_list->current_row_num_will1 = result_list->current->record_num - 1;
+		result_list->current_row_num_will2 = result_list->current->record_num - 1;
 			fprintf(stderr, "spider_db_seek_last2 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
     if (result_list->quick_mode == 0)
       result_list->current->result->move_to_pos(result_list->current_row_num);
@@ -4850,6 +4870,8 @@ void spider_db_set_pos_to_first_row(
 ) {
   DBUG_ENTER("spider_db_set_pos_to_first_row");
   result_list->current_row_num = 0;
+	result_list->current_row_num_will1 = 0;
+	result_list->current_row_num_will2 = 0;
 		fprintf(stderr, "spider_db_set_pos_to_first_row result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
   if (result_list->quick_mode == 0)
     result_list->current->result->move_to_pos(0);
