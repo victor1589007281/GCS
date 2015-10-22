@@ -2042,6 +2042,7 @@ int spider_bg_conn_search(
 			thd_proc_info(thd, "bg_search wait start 4");
       pthread_mutex_lock(&conn->bg_conn_mutex); /* 只有spider_bg_action在pthread_cond_wait时才会加锁成功：1,等query;2，等再次处理结果 */
 			thd_proc_info(thd, "bg_search wait end 4");
+			result_list->will_test6=222;
       if (!result_list->finish_flg)
       {
         DBUG_PRINT("info",("spider bg second search"));
@@ -2117,15 +2118,15 @@ int spider_bg_conn_search(
         conn->bg_target = spider;
         conn->link_idx = link_idx;
         conn->bg_discard_result = discard_result;
-				thd_proc_info(0, "bg_search wait start 5");
+				thd_proc_info(thd, "bg_search wait start 5");
         pthread_mutex_lock(&conn->bg_conn_sync_mutex);
-				thd_proc_info(0, "bg_search wait end 5");
+				thd_proc_info(thd, "bg_search wait end 5");
         pthread_cond_signal(&conn->bg_conn_cond); // 发信号，后台线程执行sql
         pthread_mutex_unlock(&conn->bg_conn_mutex);
-				thd_proc_info(0, "bg_search wait start 6");
+				thd_proc_info(thd, "bg_search wait start 6");
         pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex); // 确定后台线程已执行sql，不是尚处于wait状态
         pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
-				thd_proc_info(0, "bg_search wait end 6");
+				thd_proc_info(thd, "bg_search wait end 6");
         conn->bg_caller_sync_wait = FALSE;
       } else {
         pthread_mutex_unlock(&conn->bg_conn_mutex);
