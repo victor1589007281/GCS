@@ -2045,10 +2045,8 @@ int spider_bg_conn_search(
       pthread_mutex_lock(&conn->bg_conn_mutex); /* 只有spider_bg_action在pthread_cond_wait时才会加锁成功：1,等query;2，等再次处理结果 */
 			assert(!conn->bg_conn_working);
 			thd_proc_info(thd, "bg_search wait end 4");
-			result_list->will_test6=222;
       if (!result_list->finish_flg)
       {
-				result_list->will_test6=333;
         DBUG_PRINT("info",("spider bg second search"));
         if (!spider->use_pre_call || pre_next)
         {
@@ -2134,7 +2132,6 @@ int spider_bg_conn_search(
         conn->bg_caller_sync_wait = FALSE;
       } else {
         pthread_mutex_unlock(&conn->bg_conn_mutex);
-				result_list->will_test6=333;
         DBUG_PRINT("info",("spider bg current->finish_flg=%s",
           result_list->current ? (result_list->current->finish_flg ? "TRUE" : "FALSE") : "NULL"));
       }
@@ -2166,10 +2163,6 @@ int spider_bg_conn_search(
       {
         result_list->current = result_list->current->next;
         result_list->current_row_num = 0;
-				result_list->current_row_num_will1 = 0;
-				result_list->current_row_num_will2 = 0;
-				result_list->current_row_num_flag = 12;
-					fprintf(stderr, "spider_bg_search1 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
         result_list->table->status = STATUS_NOT_FOUND;
       }
       if (result_list->bgs_error_with_message)
@@ -2179,10 +2172,6 @@ int spider_bg_conn_search(
     }
     result_list->current = result_list->current->next;
     result_list->current_row_num = 0;
-		result_list->current_row_num_will1 = 0;
-		result_list->current_row_num_will2 = 0;
-		result_list->current_row_num_flag = 13;
-		fprintf(stderr, "spider_bg_search2 result_list=%p,num=%ld\n", result_list, result_list->current_row_num);
     if (result_list->current == result_list->bgs_current)
     {
       DBUG_PRINT("info",("spider bg next search"));
@@ -2399,7 +2388,6 @@ void *spider_bg_conn_action(
       result_list = &spider->result_list;
       result_list->bgs_error = 0;
       result_list->bgs_error_with_message = FALSE;
-			result_list->will_test3 = 222;
       if (
         result_list->quick_mode == 0 ||
         result_list->bgs_phase == 1 ||
@@ -2503,7 +2491,6 @@ void *spider_bg_conn_action(
                   spider->connection_ids[conn->link_idx] = conn->connection_id;
                   if (!conn->bg_discard_result)
                   {
-										result_list->will_store_result_flag=7;
                     if (!(result_list->bgs_error =
                       spider_db_store_result(spider, conn->link_idx,
                         result_list->table)))
@@ -2537,10 +2524,8 @@ void *spider_bg_conn_action(
           pthread_mutex_unlock(&conn->mta_conn_mutex);
         }
       } else {/* 一次没取完结果，继续fetch走此逻辑 */
-				result_list->will_test4 = 222;
         spider->connection_ids[conn->link_idx] = conn->connection_id;
         conn->mta_conn_mutex_unlock_later = TRUE;
-				result_list->will_store_result_flag=8;
         result_list->bgs_error =
           spider_db_store_result(spider, conn->link_idx, result_list->table);
         if ((result_list->bgs_error_with_message = thd->is_error()))

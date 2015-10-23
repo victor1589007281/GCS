@@ -115,7 +115,7 @@ typedef struct st_mysql_field {
   void *extension;
 } MYSQL_FIELD;
 
-typedef char **MYSQL_ROW;		/* rmeturn data as array of strings */
+typedef char **MYSQL_ROW;		/* return data as array of strings */
 typedef unsigned int MYSQL_FIELD_OFFSET; /* offset to current field */
 
 #ifndef _global_h
