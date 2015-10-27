@@ -366,7 +366,6 @@ int spider_db_conn_queue_action(
       DBUG_RETURN(error_num);
     if (sql_str.length())
     {// 比如start transaction,  set names等，在query前的SQL走此逻辑来执行
-			thd_proc_info(thd, "spider set names");
       if ((error_num = conn->db_conn->exec_query(sql_str.ptr(),
         sql_str.length(), -1)))
         DBUG_RETURN(error_num);

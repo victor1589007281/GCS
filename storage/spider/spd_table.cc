@@ -7721,6 +7721,55 @@ st_select_lex *spider_get_select_lex(
   DBUG_RETURN(NULL);
 }
 
+bool is_spider_select_order_by(ha_spider *spider)
+{
+	st_select_lex *select_lex;
+	DBUG_ENTER("is_spider_select_order_by");
+	select_lex = spider_get_select_lex(spider);
+	if (select_lex && select_lex->order_list.first)
+	{
+		DBUG_RETURN(true);
+	}
+	DBUG_RETURN(false);
+}
+
+bool is_spider_select_group_by(ha_spider *spider)
+{
+	st_select_lex *select_lex;
+	DBUG_ENTER("is_spider_select_group_by");
+	select_lex = spider_get_select_lex(spider);
+	if (select_lex && select_lex->group_list.first)
+	{
+		DBUG_RETURN(true);
+	}
+	DBUG_RETURN(false);
+}
+
+bool is_spider_select_having(ha_spider *spider)
+{
+	st_select_lex *select_lex;
+	select_lex = spider_get_select_lex(spider);
+	DBUG_ENTER("is_spider_select_having");
+	if (select_lex && select_lex->having)
+	{
+		DBUG_RETURN(true);
+	}
+	DBUG_RETURN(false);
+}
+
+bool is_spider_select_mul_table(ha_spider *spider)
+{
+	st_select_lex *select_lex;
+	select_lex = spider_get_select_lex(spider);
+	DBUG_ENTER("is_spider_select_mul_table");
+	if (select_lex && select_lex->table_list.elements >= 2)
+	{
+		DBUG_RETURN(true);
+	}
+	DBUG_RETURN(false);
+}
+
+
 void spider_get_select_limit(
   ha_spider *spider,
   st_select_lex **select_lex,

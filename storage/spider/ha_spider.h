@@ -267,7 +267,6 @@ public:
   /* for dbton */
   spider_db_handler  **dbton_handler;
 
-	ulonglong					 query_bg_search_flag;
 
   ha_spider();
   ha_spider(

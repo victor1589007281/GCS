@@ -151,7 +151,6 @@ ha_spider::ha_spider(
   result_list.tmp_pos_row_first = NULL;
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
   result_list.direct_aggregate = FALSE;
-	query_bg_search_flag = 0;
 #endif
   DBUG_VOID_RETURN;
 }
@@ -180,7 +179,6 @@ ha_spider::ha_spider(
   trx_hs_w_conn_adjustment = 0;
 #endif
   search_link_query_id = 0;
-	query_bg_search_flag = 0;
   searched_bitmap = NULL;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   partition_handler_share = NULL;
@@ -1598,7 +1596,6 @@ int ha_spider::reset()
   result_list.tmp_table_join = FALSE;
   result_list.use_union = FALSE;
   pt_clone_last_searcher = NULL;
-	query_bg_search_flag = 0;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   conn_kinds = SPIDER_CONN_KIND_MYSQL;
 #endif
@@ -11775,6 +11772,7 @@ void ha_spider::check_pre_call(
     use_pre_call = FALSE;
     DBUG_VOID_RETURN;
   }
+
   use_pre_call = use_parallel;
   if (!use_pre_call)
   {
@@ -11790,6 +11788,18 @@ void ha_spider::check_pre_call(
       use_pre_call = TRUE;
     }
   }
+
+
+	if (thd->sql_use_partition_count < 2 || 
+		is_spider_select_order_by(this) || 
+		is_spider_select_group_by(this) ||
+		is_spider_select_having(this) ||
+		is_spider_select_mul_table(this))
+	{
+		use_pre_call = FALSE;
+		DBUG_VOID_RETURN;
+	}
+
   DBUG_VOID_RETURN;
 }
 
