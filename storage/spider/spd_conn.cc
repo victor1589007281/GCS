@@ -4568,6 +4568,7 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 		}
 		else
 		{
+			pthread_mutex_unlock(&spider_conn_mutex);
 			DBUG_RETURN(NULL);
 		}
 	}
