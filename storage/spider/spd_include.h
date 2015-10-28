@@ -44,6 +44,8 @@
 #undef pthread_cond_wait
 #endif
 #define pthread_cond_wait mysql_cond_wait
+#define pthread_cond_timedwait mysql_cond_timedwait
+#define pthread_cond_wait mysql_cond_wait
 #ifdef pthread_cond_signal
 #undef pthread_cond_signal
 #endif
