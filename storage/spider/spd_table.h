@@ -444,3 +444,5 @@ spider_current_time(void *tm);
 
 void 
 spider_make_mysql_time(MYSQL_TIME *, time_t *);
+
+int spider_db_init_for_conn_i();

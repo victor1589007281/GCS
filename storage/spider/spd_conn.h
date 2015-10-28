@@ -21,6 +21,8 @@
 #define SPIDER_BG_SIMPLE_CONNECT             1
 #define SPIDER_BG_SIMPLE_DISCONNECT          2
 
+#define SPIDER_MAX_PARTITION_NUM             16
+
 
 #define  SPIDER_DISABLE_SYNC   // 一些sts, crd的同步逻辑 默认下是不走的，禁止掉该代码
 #define  SPIDER_DISABLE_LINK 
@@ -366,3 +368,13 @@ SPIDER_CONN* spider_get_conn_from_idle_connection
 		uint conn_kind, 
 		int base_link_idx, 
 		int *error_num);
+
+SPIDER_CONN* spider_get_conn_from_idle_connection_bak
+(
+ SPIDER_SHARE *share, 
+ int link_idx, 
+ char *conn_key, 
+ ha_spider *spider, 
+ uint conn_kind, 
+ int base_link_idx, 
+ int *error_num);

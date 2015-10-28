@@ -44,7 +44,10 @@ extern handlerton *spider_hton_ptr;
 extern SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
 pthread_mutex_t spider_conn_id_mutex;
 pthread_mutex_t spider_ipport_count_mutex;
+pthread_mutex_t spider_conn_i_mutex[SPIDER_MAX_PARTITION_NUM];
+pthread_cond_t  spider_conn_i_cond[SPIDER_MAX_PARTITION_NUM];
 ulonglong spider_conn_id = 1;
+long spider_conn_mutex_id = 0;
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 extern pthread_attr_t spider_pt_attr;
@@ -215,6 +218,7 @@ void spider_free_conn_from_trx(
   int *roop_count
 ) {
   ha_spider *spider;
+	SPIDER_IP_PORT_CONN *ip_port_conn = NULL;
   DBUG_ENTER("spider_free_conn_from_trx");
   spider_conn_clear_queue(conn);
   conn->use_for_active_standby = FALSE;
@@ -292,6 +296,18 @@ void spider_free_conn_from_trx(
             pthread_mutex_unlock(&spider_conn_mutex);
             spider_free_conn(conn);
           } else {
+						long mutex_num=0;
+						if(ip_port_conn = (SPIDER_IP_PORT_CONN*) my_hash_search_using_hash_value(&spider_ipport_conns, conn->conn_key_hash_value, (uchar*) conn->conn_key, conn->conn_key_length))
+						{/* 如果存在 */
+							if(opt_spider_max_connections)
+							{
+								mutex_num = ip_port_conn->conn_mutex_num;
+								pthread_mutex_lock(&spider_conn_i_mutex[mutex_num]);
+								pthread_cond_signal(&spider_conn_i_cond[mutex_num]);
+								pthread_mutex_unlock(&spider_conn_i_mutex[mutex_num]);
+							}
+						}
+
             if (spider_open_connections.array.max_element > old_elements)
             {
               spider_alloc_calc_mem(spider_current_trx,
@@ -304,7 +320,6 @@ void spider_free_conn_from_trx(
              into spider_open_connections
             ************************************************************************/
 						/*
-
 								TODO,
 								conn对象的获取非常频率，尤其在高并发下。 为此尽量减少锁中的行为
 						*/
@@ -4345,6 +4360,8 @@ spider_create_ipport_conn(SPIDER_CONN *conn)
 			goto err_return_direct;
 		}
 
+		ret->conn_mutex_num = spider_conn_mutex_id++;
+
 		ret->key_len = conn->conn_key_length;
 		if (ret->key_len <= 0) {
 			goto err_return_direct;
@@ -4494,6 +4511,94 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 	int base_link_idx,
 	int *error_num
 )
+{	
+	DBUG_ENTER("spider_wait_idle_connection");
+	uint retry_times = 0;
+	SPIDER_IP_PORT_CONN *ip_port_conn;
+	SPIDER_CONN *conn = NULL;
+	// opt_spider_max_connections为0时，不启用连接池限制
+	assert(opt_spider_max_connections > 0); // opt_spider_max_connections大于0才等空闲连接
+
+	unsigned long ip_port_count = 0; // 初始为0，表示不存在当前ip#port的连接 
+	long mutex_num=0;
+	pthread_mutex_lock(&spider_ipport_count_mutex);
+	if(ip_port_conn = (SPIDER_IP_PORT_CONN*) my_hash_search_using_hash_value(&spider_ipport_conns, share->conn_keys_hash_value[link_idx], (uchar*) share->conn_keys[link_idx], share->conn_keys_lengths[link_idx]))
+	{/* 如果存在 */
+		ip_port_count = ip_port_conn->ip_port_count;
+		mutex_num = ip_port_conn->conn_mutex_num;
+	}
+
+	if(ip_port_count >= opt_spider_max_connections)
+	{ /* 当前 spider_open_connections 无空闲连接，且当前连接的使用个数大于 opt_spider_max_connections */
+		pthread_mutex_unlock(&spider_ipport_count_mutex);
+
+		pthread_mutex_lock(&spider_conn_i_mutex[mutex_num]);
+		pthread_cond_wait(&spider_conn_i_cond[mutex_num], &spider_conn_i_mutex[mutex_num]);
+		pthread_mutex_unlock(&spider_conn_i_mutex[mutex_num]);
+
+		pthread_mutex_lock(&spider_conn_mutex);
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+		if ((conn = (SPIDER_CONN*) my_hash_search_using_hash_value(
+			&spider_open_connections, share->conn_keys_hash_value[link_idx],
+			(uchar*) share->conn_keys[link_idx],
+			share->conn_keys_lengths[link_idx])))
+#else
+		if ((conn = (SPIDER_CONN*) my_hash_search(&spider_open_connections,
+			(uchar*) share->conn_keys[link_idx],
+			share->conn_keys_lengths[link_idx])))
+#endif
+		{
+			/* 从空闲连接中找到可重用资源, 则将conn从空闲连接中删除掉 */
+#ifdef HASH_UPDATE_WITH_HASH_VALUE
+			my_hash_delete_with_hash_value(&spider_open_connections,
+				conn->conn_key_hash_value, (uchar*) conn);
+#else
+			my_hash_delete(&spider_open_connections, (uchar*) conn);  
+#endif
+			/* 通过spider_wait_idle_connection 分配了conn， 对spider_open_connections上锁，delete后释放*/
+			pthread_mutex_unlock(&spider_conn_mutex);
+			DBUG_PRINT("info",("spider get global conn"));
+			if (spider)
+			{
+				spider->conns[base_link_idx] = conn;
+				if (spider_bit_is_set(spider->conn_can_fo, base_link_idx))
+					conn->use_for_active_standby = TRUE;  
+			}
+			DBUG_RETURN(conn);
+		}
+		else
+		{
+			DBUG_RETURN(NULL);
+		}
+	}
+	else
+	{/* 需要创建连接 */
+		pthread_mutex_unlock(&spider_ipport_count_mutex); 
+		DBUG_PRINT("info",("spider create new conn"));
+		if (!(conn = spider_create_conn(share, spider, link_idx, base_link_idx, conn_kind, error_num)))
+			DBUG_RETURN(conn); // 函数外围 goto error;
+		*conn->conn_key = *conn_key;
+		if (spider)
+		{
+			spider->conns[base_link_idx] = conn;
+			if (spider_bit_is_set(spider->conn_can_fo, base_link_idx))
+				conn->use_for_active_standby = TRUE;
+		}
+	}
+
+	DBUG_RETURN(conn);
+}
+
+
+SPIDER_CONN* spider_get_conn_from_idle_connection_bak(
+	SPIDER_SHARE *share,
+	int link_idx,
+	char *conn_key,
+	ha_spider *spider,
+	uint conn_kind,
+	int base_link_idx,
+	int *error_num
+	)
 {
 	DBUG_ENTER("spider_wait_idle_connection");
 	uint retry_times = 0;
@@ -4510,7 +4615,7 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 	}
 	if(ip_port_count >= opt_spider_max_connections)
 	{ /* 当前 spider_open_connections 无空闲连接，且当前连接的使用个数大于 opt_spider_max_connections */
-	  pthread_mutex_unlock(&spider_ipport_count_mutex);
+		pthread_mutex_unlock(&spider_ipport_count_mutex);
 		while(retry_times++ < opt_spider_conn_retry_times)
 		{
 			my_sleep(1*1000); // wait 1 ms
@@ -4526,22 +4631,22 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 				share->conn_keys_lengths[link_idx])))
 #endif
 			{
-				 /* 从空闲连接中找到可重用资源, 则将conn从空闲连接中删除掉 */
+				/* 从空闲连接中找到可重用资源, 则将conn从空闲连接中删除掉 */
 #ifdef HASH_UPDATE_WITH_HASH_VALUE
-					my_hash_delete_with_hash_value(&spider_open_connections,
-						conn->conn_key_hash_value, (uchar*) conn);
+				my_hash_delete_with_hash_value(&spider_open_connections,
+					conn->conn_key_hash_value, (uchar*) conn);
 #else
-					my_hash_delete(&spider_open_connections, (uchar*) conn);  
+				my_hash_delete(&spider_open_connections, (uchar*) conn);  
 #endif
-					/* 通过spider_wait_idle_connection 分配了conn， 对spider_open_connections上锁，delete后释放*/
-					pthread_mutex_unlock(&spider_conn_mutex);
-					DBUG_PRINT("info",("spider get global conn"));
-					if (spider)
-					{
-						spider->conns[base_link_idx] = conn;
-						if (spider_bit_is_set(spider->conn_can_fo, base_link_idx))
-							conn->use_for_active_standby = TRUE;  
-					}
+				/* 通过spider_wait_idle_connection 分配了conn， 对spider_open_connections上锁，delete后释放*/
+				pthread_mutex_unlock(&spider_conn_mutex);
+				DBUG_PRINT("info",("spider get global conn"));
+				if (spider)
+				{
+					spider->conns[base_link_idx] = conn;
+					if (spider_bit_is_set(spider->conn_can_fo, base_link_idx))
+						conn->use_for_active_standby = TRUE;  
+				}
 				DBUG_RETURN(conn);
 			}
 			else
@@ -4567,3 +4672,5 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 
 	DBUG_RETURN(conn);
 }
+
+

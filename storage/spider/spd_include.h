@@ -1262,5 +1262,6 @@ typedef struct st_spider_ip_port_conn {
     char remote_ip_str[SPIDER_CONN_META_BUF_LEN];
     long remote_port;
 		long ip_port_count;
+		long conn_mutex_num;
 	ulonglong conn_id; // 每个conn都有唯一的conn_id标识
 } SPIDER_IP_PORT_CONN;
