@@ -91,7 +91,7 @@ extern bool opt_large_files, server_id_supplied;
 extern bool opt_update_log, opt_bin_log, opt_error_log;
 extern my_bool opt_bin_log_compress;
 extern my_bool opt_log, opt_slow_log, log_sql_use_multi_partition, spider_auto_increment_mode_switch, opt_alter_log;
-extern uint spider_auto_increment_mode_value, spider_auto_increment_step, opt_spider_max_connections,opt_spider_conn_retry_times;
+extern uint spider_auto_increment_mode_value, spider_auto_increment_step, opt_spider_max_connections,opt_spider_conn_retry_timeout,opt_spider_max_partitions;
 extern my_bool opt_backup_history_log;
 extern my_bool opt_backup_progress_log;
 extern ulonglong log_output_options;

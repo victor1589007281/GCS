@@ -44,8 +44,8 @@ extern handlerton *spider_hton_ptr;
 extern SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
 pthread_mutex_t spider_conn_id_mutex;
 pthread_mutex_t spider_ipport_count_mutex;
-pthread_mutex_t spider_conn_i_mutex[SPIDER_MAX_PARTITION_NUM];
-pthread_cond_t  spider_conn_i_cond[SPIDER_MAX_PARTITION_NUM];
+pthread_mutex_t spider_conn_i_mutexs[SPIDER_MAX_PARTITION_NUM];
+pthread_cond_t  spider_conn_i_conds[SPIDER_MAX_PARTITION_NUM];
 ulonglong spider_conn_id = 1;
 long spider_conn_mutex_id = 0;
 
@@ -302,9 +302,9 @@ void spider_free_conn_from_trx(
 							if(opt_spider_max_connections)
 							{
 								mutex_num = ip_port_conn->conn_mutex_num;
-								pthread_mutex_lock(&spider_conn_i_mutex[mutex_num]);
-								pthread_cond_signal(&spider_conn_i_cond[mutex_num]);
-								pthread_mutex_unlock(&spider_conn_i_mutex[mutex_num]);
+								pthread_mutex_lock(&spider_conn_i_mutexs[mutex_num]);
+								pthread_cond_signal(&spider_conn_i_conds[mutex_num]);
+								pthread_mutex_unlock(&spider_conn_i_mutexs[mutex_num]);
 							}
 						}
 
@@ -4513,13 +4513,12 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 )
 {	
 	DBUG_ENTER("spider_wait_idle_connection");
-	uint retry_times = 0;
 	SPIDER_IP_PORT_CONN *ip_port_conn;
 	SPIDER_CONN *conn = NULL;
 	uint spider_max_connections = 0;
 	struct timespec abstime;
 	ulonglong start, inter_val = 0;
-	ulonglong wait_time=10*1000*1000*1000ULL; // 10s
+	ulonglong wait_time = (ulonglong)opt_spider_conn_retry_timeout*1000*1000*1000; // default 10s
 
 	unsigned long ip_port_count = 0; // 初始为0，表示不存在当前ip#port的连接 
 	long mutex_num=0;
@@ -4547,14 +4546,14 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 				DBUG_RETURN(NULL);
 			}
 			set_timespec_nsec(abstime, wait_time - inter_val*100);
-			pthread_mutex_lock(&spider_conn_i_mutex[mutex_num]);
-			error = pthread_cond_timedwait(&spider_conn_i_cond[mutex_num], &spider_conn_i_mutex[mutex_num], &abstime);
+			pthread_mutex_lock(&spider_conn_i_mutexs[mutex_num]);
+			error = pthread_cond_timedwait(&spider_conn_i_conds[mutex_num], &spider_conn_i_mutexs[mutex_num], &abstime);
 			if (error == ETIMEDOUT || error == ETIME || error!=0 )
 			{
-				pthread_mutex_unlock(&spider_conn_i_mutex[mutex_num]); /* 超时退出 */
+				pthread_mutex_unlock(&spider_conn_i_mutexs[mutex_num]); /* 超时退出 */
 				DBUG_RETURN(NULL);
 			}
-			pthread_mutex_unlock(&spider_conn_i_mutex[mutex_num]);
+			pthread_mutex_unlock(&spider_conn_i_mutexs[mutex_num]);
 
 			pthread_mutex_lock(&spider_conn_mutex);
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
@@ -4637,7 +4636,7 @@ SPIDER_CONN* spider_get_conn_from_idle_connection_bak(
 	if(ip_port_count >= opt_spider_max_connections)
 	{ /* 当前 spider_open_connections 无空闲连接，且当前连接的使用个数大于 opt_spider_max_connections */
 		pthread_mutex_unlock(&spider_ipport_count_mutex);
-		while(retry_times++ < opt_spider_conn_retry_times)
+		while(retry_times++ < opt_spider_conn_retry_timeout)
 		{
 			my_sleep(1*1000); // wait 1 ms
 			pthread_mutex_lock(&spider_conn_mutex);

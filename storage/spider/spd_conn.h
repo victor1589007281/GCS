@@ -21,7 +21,7 @@
 #define SPIDER_BG_SIMPLE_CONNECT             1
 #define SPIDER_BG_SIMPLE_DISCONNECT          2
 
-#define SPIDER_MAX_PARTITION_NUM             16
+#define SPIDER_MAX_PARTITION_NUM             1024
 
 
 #define  SPIDER_DISABLE_SYNC   // 一些sts, crd的同步逻辑 默认下是不走的，禁止掉该代码
