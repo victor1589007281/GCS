@@ -374,6 +374,8 @@ bool is_spider_select_group_by(ha_spider *spider);
 bool is_spider_select_order_by(ha_spider *spider);
 bool is_spider_select_having(ha_spider *spider);
 bool is_spider_select_mul_table(ha_spider *spider);
+bool is_spider_select_limit(ha_spider *spider);
+bool is_spider_select_limit_x_y(ha_spider *spider);
 
 longlong spider_split_read_param(
   ha_spider *spider

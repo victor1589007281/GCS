@@ -4518,7 +4518,7 @@ SPIDER_CONN* spider_get_conn_from_idle_connection(
 	uint spider_max_connections = 0;
 	struct timespec abstime;
 	ulonglong start, inter_val = 0;
-	ulonglong wait_time = (ulonglong)opt_spider_conn_retry_timeout*1000*1000*1000; // default 10s
+	ulonglong wait_time = (ulonglong)opt_spider_conn_wait_timeout*1000*1000*1000; // default 10s
 
 	unsigned long ip_port_count = 0; // 初始为0，表示不存在当前ip#port的连接 
 	long mutex_num=0;
@@ -4636,7 +4636,7 @@ SPIDER_CONN* spider_get_conn_from_idle_connection_bak(
 	if(ip_port_count >= opt_spider_max_connections)
 	{ /* 当前 spider_open_connections 无空闲连接，且当前连接的使用个数大于 opt_spider_max_connections */
 		pthread_mutex_unlock(&spider_ipport_count_mutex);
-		while(retry_times++ < opt_spider_conn_retry_timeout)
+		while(retry_times++ < opt_spider_conn_wait_timeout)
 		{
 			my_sleep(1*1000); // wait 1 ms
 			pthread_mutex_lock(&spider_conn_mutex);

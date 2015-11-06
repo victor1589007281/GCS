@@ -3046,6 +3046,12 @@ static Sys_var_mybool Sys_spider_auto_increment_mode_switch(
 	"the switch use to control if use the spider_auto_increment_mode, default true ",
 	READ_ONLY GLOBAL_VAR(spider_auto_increment_mode_switch), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_spider_parallel_limit(
+	"spider_parallel_limit", 
+	"spider_parallel_limit defaults is true, set spider parallel process without supporting group by, order by, limit",
+	GLOBAL_VAR(opt_spider_parallel_limit), CMD_LINE(OPT_ARG), DEFAULT(TRUE));
+
+
 
 static Sys_var_uint Sys_spider_auto_increment_mode_value(
 	"spider_auto_increment_mode_value", 
@@ -3060,10 +3066,10 @@ static Sys_var_uint Sys_spider_max_connections(
 	GLOBAL_VAR(opt_spider_max_connections), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(0, 100000), DEFAULT(0), BLOCK_SIZE(1));
 
-static Sys_var_uint Sys_spider_conn_retry_timeout(
-	"spider_conn_retry_timeout", 
+static Sys_var_uint Sys_spider_conn_wait_timeout(
+	"spider_conn_wait_timeout", 
 	"the values, as the max time when spider get a remote conn",
-	GLOBAL_VAR(opt_spider_conn_retry_timeout), CMD_LINE(REQUIRED_ARG),
+	GLOBAL_VAR(opt_spider_conn_wait_timeout), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(0, 1000), DEFAULT(10), BLOCK_SIZE(1));
 
 static Sys_var_uint Sys_spider_max_partitions(
