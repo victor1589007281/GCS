@@ -4839,8 +4839,7 @@ SPIDER_SHARE *spider_get_share(
                share->table_name, share->tgt_hosts[0], share->tgt_ports[0]);
           goto error_but_no_delete;
       }
-
-      my_sleep(10);
+			my_sleep(1000); // wait 1 ms
     }
 
     if (!share->link_status_init)

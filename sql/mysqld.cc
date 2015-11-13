@@ -361,6 +361,7 @@ my_bool opt_bin_log_compress;
 my_bool opt_log, opt_slow_log, log_sql_use_mutil_partition;
 my_bool spider_auto_increment_mode_switch;
 my_bool opt_spider_parallel_limit;
+my_bool opt_spider_ignore_autocommit;
 uint spider_auto_increment_mode_value;
 uint spider_auto_increment_step;
 uint opt_spider_max_connections;

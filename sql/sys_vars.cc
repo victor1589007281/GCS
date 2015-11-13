@@ -3051,6 +3051,10 @@ static Sys_var_mybool Sys_spider_parallel_limit(
 	"spider_parallel_limit defaults is true, set spider parallel process without supporting group by, order by, limit",
 	GLOBAL_VAR(opt_spider_parallel_limit), CMD_LINE(OPT_ARG), DEFAULT(TRUE));
 
+static Sys_var_mybool Sys_spider_ignore_autocommit(
+	"spider_ignore_autocommit", 
+	"spider_ignore_autocommit defaults is false, let spider transmit set autocommit=0 to remote mysql when the param is true and conn->autocommit=0",
+	GLOBAL_VAR(opt_spider_ignore_autocommit), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 
 static Sys_var_uint Sys_spider_auto_increment_mode_value(
