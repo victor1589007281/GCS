@@ -263,6 +263,7 @@ int spider_db_conn_queue_action(
 ) {
   int error_num;
   char sql_buf[MAX_FIELD_WIDTH * 2];
+  bool spider_ignore_autocommit = opt_spider_ignore_autocommit;
   spider_string sql_str(sql_buf, sizeof(sql_buf), system_charset_info);
   DBUG_ENTER("spider_db_conn_queue_action");
   DBUG_PRINT("info", ("spider conn=%p", conn));
@@ -324,12 +325,13 @@ int spider_db_conn_queue_action(
       (
         conn->queued_autocommit &&
         (
-          (conn->queued_autocommit_val && conn->autocommit != 1) ||
-          (!conn->queued_autocommit_val && conn->autocommit != 0)
-        ) &&
+          (!spider_ignore_autocommit && ((conn->queued_autocommit_val && conn->autocommit != 1) ||
+                                          (!conn->queued_autocommit_val && conn->autocommit != 0))) ||
+          (spider_ignore_autocommit && !conn->autocommit)
+      ) &&
         conn->db_conn->set_autocommit_in_bulk_sql() &&
         (error_num = spider_dbton[conn->dbton_id].db_util->
-          append_autocommit(&sql_str, conn->queued_autocommit_val))
+          append_autocommit(&sql_str, conn->queued_autocommit_val || spider_ignore_autocommit ))
       ) ||
       (
         conn->queued_sql_log_off &&
@@ -493,13 +495,14 @@ int spider_db_conn_queue_action(
 
     if (conn->queued_autocommit)
     {
-      if (conn->queued_autocommit_val && conn->autocommit != 1)
-      {
-        conn->autocommit = 1;
-      } else if (!conn->queued_autocommit_val && conn->autocommit != 0)
-      {
-        conn->autocommit = 0;
-      }
+      conn->autocommit = conn->queued_autocommit_val || spider_ignore_autocommit;
+      //if (conn->queued_autocommit_val && conn->autocommit != 1)
+      //{
+      //  conn->autocommit = 1;
+      //} else if (!conn->queued_autocommit_val && conn->autocommit != 0)
+      //{
+      //  conn->autocommit = 0;
+      //}
       DBUG_PRINT("info", ("spider conn->autocommit=%d",
         conn->autocommit));
     }

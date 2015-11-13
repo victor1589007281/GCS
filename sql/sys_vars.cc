@@ -3053,6 +3053,13 @@ static Sys_var_uint Sys_spider_auto_increment_mode_value(
 	READ_ONLY GLOBAL_VAR(spider_auto_increment_mode_value), CMD_LINE(REQUIRED_ARG),
 	VALID_RANGE(0, 64), DEFAULT(1), BLOCK_SIZE(1));
 
+
+static Sys_var_mybool Sys_spider_ignore_autocommit(
+  "spider_ignore_autocommit", 
+  "spider_ignore_autocommit defaults is false, let spider transmit set autocommit=0 to remote mysql when the param is true and conn->autocommit=0",
+  GLOBAL_VAR(opt_spider_ignore_autocommit), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+
 static Sys_var_uint Sys_spider_auto_increment_step(
 	"spider_auto_increment_step", 
 	"the values set spider auto_increment add by spider_auto_increment_step",
