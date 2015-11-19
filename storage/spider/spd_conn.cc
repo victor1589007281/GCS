@@ -1224,7 +1224,8 @@ int spider_free_conn(
 	pthread_mutex_lock(&spider_ipport_count_mutex);
 	if (ip_port_conn = (SPIDER_IP_PORT_CONN*) my_hash_search_using_hash_value(&spider_ipport_conns, conn->conn_key_hash_value, (uchar*)conn->conn_key, conn->conn_key_length))
 	{/* 释放conn时让计数 -1 */
-		ip_port_conn->ip_port_count--;
+    if (ip_port_conn->ip_port_count > 0)
+		  ip_port_conn->ip_port_count--;
 	}
 	pthread_mutex_unlock(&spider_ipport_count_mutex);
 
@@ -4285,24 +4286,26 @@ void spider_free_conn_recycle_thread()
 void
 spider_free_conn_meta(void *meta)
 {
-    DBUG_ENTER("free_spider_conn_meta");
-    if (meta) {
-        SPIDER_CONN_META_INFO *p = (SPIDER_CONN_META_INFO *)meta;
-        my_free(p->key, MYF(0));
-    }
+  DBUG_ENTER("free_spider_conn_meta");
+  if (meta) {
+    SPIDER_CONN_META_INFO *p = (SPIDER_CONN_META_INFO *)meta;
+    my_free(p->key, MYF(0));
+    my_free(p, MYF(0));
+  }
 
-    DBUG_VOID_RETURN;
+  DBUG_VOID_RETURN;
 }
 
 void
 spider_free_ipport_conn(void *info)
 {
-	DBUG_ENTER("spider_free_ipport_conn");
-	if (info) {
-		SPIDER_IP_PORT_CONN *p = (SPIDER_IP_PORT_CONN *)info;
-		my_free(p->key, MYF(0));
-	}
-	DBUG_VOID_RETURN;
+  DBUG_ENTER("spider_free_ipport_conn");
+  if (info) {
+    SPIDER_IP_PORT_CONN *p = (SPIDER_IP_PORT_CONN *)info;
+    my_free(p->key, MYF(0));
+    my_free(p, MYF(0));
+  }
+  DBUG_VOID_RETURN;
 }
 
 SPIDER_CONN_META_INFO *
@@ -4353,43 +4356,61 @@ err_return_direct:
 SPIDER_IP_PORT_CONN *
 spider_create_ipport_conn(SPIDER_CONN *conn) 
 {
-	DBUG_ENTER("spider_create_ipport_conn");
-	if (conn) {
-		SPIDER_IP_PORT_CONN *ret = (SPIDER_IP_PORT_CONN *) my_malloc(sizeof(*ret), MY_ZEROFILL | MY_WME);
-		if (!ret) {
-			goto err_return_direct;
-		}
+  DBUG_ENTER("spider_create_ipport_conn");
+  if (conn) {
+    SPIDER_IP_PORT_CONN *ret = (SPIDER_IP_PORT_CONN *) my_malloc(sizeof(*ret), MY_ZEROFILL | MY_WME);
+    if (!ret) {
+      goto err_return_direct;
+    }
 
-		ret->conn_mutex_num = spider_conn_mutex_id++;
+    int next_spider_conn_mutex_id = spider_conn_mutex_id+1;
+    if (next_spider_conn_mutex_id >= SPIDER_MAX_PARTITION_NUM) {
+      // RETURN ERROR and output error log;
+    }
 
-		ret->key_len = conn->conn_key_length;
-		if (ret->key_len <= 0) {
-			goto err_return_direct;
-		}
+    if (next_spider_conn_mutex_id >= opt_spider_max_connections) {
+      //to do dynamic alloc
+      if (pthread_mutex_init(&(spider_conn_i_mutexs[next_spider_conn_mutex_id].m_mutex), MY_MUTEX_INIT_FAST)) {
+        //error
+      }
 
-		ret->key = (char *) my_malloc(ret->key_len, MY_ZEROFILL | MY_WME);
-		if (!ret->key) {
-			goto err_malloc_key;
-		}
+      if (pthread_cond_init(&(spider_conn_i_conds[next_spider_conn_mutex_id].m_cond), NULL)) {
+        pthread_mutex_destroy(&(spider_conn_i_mutexs[next_spider_conn_mutex_id]));
 
-		memcpy(ret->key, conn->conn_key, ret->key_len);
+        //error
+      }
+    }
 
-		strncpy(ret->remote_ip_str, conn->tgt_host, sizeof(ret->remote_ip_str));
-		ret->remote_port = conn->tgt_port;
-		ret->conn_id = conn->conn_id;
-		ret->ip_port_count = 1; // 初始化为1
+    ret->conn_mutex_num = spider_conn_mutex_id++;
+
+    ret->key_len = conn->conn_key_length;
+    if (ret->key_len <= 0) {
+      goto err_return_direct;
+    }
+
+    ret->key = (char *) my_malloc(ret->key_len, MY_ZEROFILL | MY_WME);
+    if (!ret->key) {
+      goto err_malloc_key;
+    }
+
+    memcpy(ret->key, conn->conn_key, ret->key_len);
+
+    strncpy(ret->remote_ip_str, conn->tgt_host, sizeof(ret->remote_ip_str));
+    ret->remote_port = conn->tgt_port;
+    ret->conn_id = conn->conn_id;
+    ret->ip_port_count = 1; // 初始化为1
 
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
-		ret->key_hash_value = conn->conn_key_hash_value;
+    ret->key_hash_value = conn->conn_key_hash_value;
 #endif
-		DBUG_RETURN(ret);    
+    DBUG_RETURN(ret);    
 err_malloc_key:
-		my_free(ret, MYF(0));
+    my_free(ret, MYF(0));
 err_return_direct:
-		DBUG_RETURN(NULL);
-	}
+    DBUG_RETURN(NULL);
+  }
 
-	DBUG_RETURN(NULL);
+  DBUG_RETURN(NULL);
 }
 
 /*

@@ -45,6 +45,7 @@
 
 #include "my_stacktrace.h"
 extern HASH spider_conn_meta_info;
+extern long spider_conn_mutex_id;
 
 // will. 下面的结构体及对应的函数，主要用来处理table name的保存
 // 用一个一维数组保存所有的表名，表名间用\0间隔。
@@ -6179,11 +6180,12 @@ int spider_db_done(
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   pthread_attr_destroy(&spider_pt_attr);
 #endif
-	for(roop_count=0; roop_count < opt_spider_max_partitions; roop_count++)
-	{
-		pthread_mutex_destroy(&spider_conn_i_mutexs[roop_count]);
-		pthread_cond_destroy(&spider_conn_i_conds[roop_count]);
-	}
+  int conn_i_count = max(opt_spider_max_partitions, spider_conn_mutex_id);
+  for(roop_count=0; roop_count < conn_i_count; roop_count++)
+  {
+    pthread_mutex_destroy(&spider_conn_i_mutexs[roop_count]);
+    pthread_cond_destroy(&spider_conn_i_conds[roop_count]);
+  }
 
   for (roop_count = 0; roop_count < SPIDER_MEM_CALC_LIST_NUM; roop_count++)
   {
