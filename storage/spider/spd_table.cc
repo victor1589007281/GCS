@@ -7788,7 +7788,7 @@ bool is_spider_select_limit(ha_spider *spider)
 	st_select_lex *select_lex;
 	select_lex = spider_get_select_lex(spider);
 	DBUG_ENTER("is_spider_select_limit");
-	if (select_lex && select_lex->select_limit)
+	if (select_lex && select_lex->select_limit && select_lex->explicit_limit)
 	{
 		DBUG_RETURN(true);
 	}
@@ -7800,7 +7800,7 @@ bool is_spider_select_limit_x_y(ha_spider *spider)
 	st_select_lex *select_lex;
 	select_lex = spider_get_select_lex(spider);
 	DBUG_ENTER("is_spider_select_limit_x_y");
-	if (select_lex && select_lex->select_limit && select_lex->offset_limit)
+	if (select_lex && select_lex->select_limit && select_lex->explicit_limit && select_lex->offset_limit)
 	{
 		DBUG_RETURN(true);
 	}
