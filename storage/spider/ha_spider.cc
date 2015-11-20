@@ -11784,7 +11784,7 @@ void ha_spider::check_pre_call(
       select_lex &&
       select_lex->sql_cache != SELECT_LEX::SQL_NO_CACHE && 
       (!select_lex->explicit_limit || !select_limit)
-    ) {
+    ) {/* ÎÞlimit³¡¾° */
       use_pre_call = TRUE;
     }
   }
@@ -11796,9 +11796,7 @@ void ha_spider::check_pre_call(
 		(!opt_spider_parallel_group_order &&
 		(is_spider_select_order_by(this) ||
 		is_spider_select_group_by(this) ||
-		is_spider_select_having(this))) ||
-		(!opt_spider_parallel_limit && 
-    is_spider_select_limit(this))
+		is_spider_select_having(this))) 
 		)
 	{
 		use_pre_call = FALSE;

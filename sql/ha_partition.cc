@@ -6000,7 +6000,7 @@ bool ha_partition::check_parallel_search()
       if (select_lex->sql_cache == SELECT_LEX::SQL_NO_CACHE)
         DBUG_RETURN(FALSE);
 
-      if (!select_lex->explicit_limit)
+      if (!select_lex->explicit_limit || opt_spider_parallel_limit)
       {
         DBUG_PRINT("info",("partition explicit_limit=FALSE"));
         DBUG_PRINT("info",("partition TRUE"));
