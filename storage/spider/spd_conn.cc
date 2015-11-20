@@ -4363,20 +4363,24 @@ spider_create_ipport_conn(SPIDER_CONN *conn)
       goto err_return_direct;
     }
 
-    int next_spider_conn_mutex_id = spider_conn_mutex_id+1;
+    int next_spider_conn_mutex_id = spider_conn_mutex_id;
     if (next_spider_conn_mutex_id >= SPIDER_MAX_PARTITION_NUM) {
       // RETURN ERROR and output error log;
+      goto err_return_direct;
     }
 
-    if (next_spider_conn_mutex_id >= opt_spider_max_connections) {
+    if (next_spider_conn_mutex_id >= opt_spider_max_connections) 
+    {
       //to do dynamic alloc
       if (pthread_mutex_init(&(spider_conn_i_mutexs[next_spider_conn_mutex_id].m_mutex), MY_MUTEX_INIT_FAST)) {
         //error
+         goto err_return_direct;
       }
 
-      if (pthread_cond_init(&(spider_conn_i_conds[next_spider_conn_mutex_id].m_cond), NULL)) {
+      if (pthread_cond_init(&(spider_conn_i_conds[next_spider_conn_mutex_id].m_cond), NULL)) 
+      {
         pthread_mutex_destroy(&(spider_conn_i_mutexs[next_spider_conn_mutex_id]));
-
+        goto err_return_direct;
         //error
       }
     }

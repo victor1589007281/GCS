@@ -3049,7 +3049,7 @@ static Sys_var_mybool Sys_spider_auto_increment_mode_switch(
 static Sys_var_mybool Sys_spider_parallel_limit(
 	"spider_parallel_limit", 
 	"spider_parallel_limit defaults is true, set spider parallel process without supporting group by, order by, limit",
-	GLOBAL_VAR(opt_spider_parallel_limit), CMD_LINE(OPT_ARG), DEFAULT(TRUE));
+	GLOBAL_VAR(opt_spider_parallel_limit), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 static Sys_var_mybool Sys_spider_ignore_autocommit(
 	"spider_ignore_autocommit", 

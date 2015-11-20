@@ -11792,11 +11792,11 @@ void ha_spider::check_pre_call(
 
 	if (thd->sql_use_partition_count < 2 || 
 		is_spider_select_limit_x_y(this) ||
+    is_spider_select_mul_table(this) ||
 		(opt_spider_parallel_limit &&
 		(is_spider_select_order_by(this) ||
 		is_spider_select_group_by(this) ||
 		is_spider_select_having(this) ||
-		is_spider_select_mul_table(this) ||
 		is_spider_select_limit(this)))
 		)
 	{
