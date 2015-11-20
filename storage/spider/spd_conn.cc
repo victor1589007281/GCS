@@ -4356,6 +4356,7 @@ err_return_direct:
 SPIDER_IP_PORT_CONN *
 spider_create_ipport_conn(SPIDER_CONN *conn) 
 {
+  int next_spider_conn_mutex_id;
   DBUG_ENTER("spider_create_ipport_conn");
   if (conn) {
     SPIDER_IP_PORT_CONN *ret = (SPIDER_IP_PORT_CONN *) my_malloc(sizeof(*ret), MY_ZEROFILL | MY_WME);
@@ -4363,7 +4364,7 @@ spider_create_ipport_conn(SPIDER_CONN *conn)
       goto err_return_direct;
     }
 
-    int next_spider_conn_mutex_id = spider_conn_mutex_id;
+    next_spider_conn_mutex_id = spider_conn_mutex_id;
     if (next_spider_conn_mutex_id >= SPIDER_MAX_PARTITION_NUM) {
       // RETURN ERROR and output error log;
       goto err_return_direct;
