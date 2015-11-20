@@ -3046,10 +3046,17 @@ static Sys_var_mybool Sys_spider_auto_increment_mode_switch(
 	"the switch use to control if use the spider_auto_increment_mode, default true ",
 	READ_ONLY GLOBAL_VAR(spider_auto_increment_mode_switch), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_spider_parallel_group_order(
+	"spider_parallel_group_order", 
+	"spider_parallel_group_order defaults is false, set spider parallel process without supporting group by, order by",
+	GLOBAL_VAR(opt_spider_parallel_group_order), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+
 static Sys_var_mybool Sys_spider_parallel_limit(
-	"spider_parallel_limit", 
-	"spider_parallel_limit defaults is true, set spider parallel process without supporting group by, order by, limit",
-	GLOBAL_VAR(opt_spider_parallel_limit), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+  "spider_parallel_limit", 
+  "spider_parallel_limit defaults is false, set spider parallel process without supporting  limit",
+  GLOBAL_VAR(opt_spider_parallel_limit), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
 
 static Sys_var_mybool Sys_spider_ignore_autocommit(
 	"spider_ignore_autocommit", 
