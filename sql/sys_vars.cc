@@ -3087,7 +3087,7 @@ static Sys_var_uint Sys_spider_max_partitions(
 	"spider_max_partitions", 
 	"the values used as the max partition num in current instance to init lock as the db_init;  can by used when set opt_spider_max_connections > 1",
 	READ_ONLY GLOBAL_VAR(opt_spider_max_partitions), CMD_LINE(REQUIRED_ARG),
-	VALID_RANGE(0, 1024), DEFAULT(128), BLOCK_SIZE(1));
+	VALID_RANGE(0, 1024), DEFAULT(64), BLOCK_SIZE(1));
 
 static Sys_var_uint Sys_spider_auto_increment_step(
 	"spider_auto_increment_step", 

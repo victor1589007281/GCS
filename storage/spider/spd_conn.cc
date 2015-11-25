@@ -4367,7 +4367,14 @@ spider_create_ipport_conn(SPIDER_CONN *conn)
     next_spider_conn_mutex_id = spider_conn_mutex_id;
     if (next_spider_conn_mutex_id >= SPIDER_MAX_PARTITION_NUM) {
       // RETURN ERROR and output error log;
-      goto err_return_direct;
+      time_t cur_time = (time_t) time((time_t*) 0);
+      struct tm lt;
+      struct tm *l_time = localtime_r(&cur_time, &lt);
+      fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN SPIDER RESULT] "
+        "error to spider_create_ipport_conn, next_spider_conn_mutex_id is %d\n",
+        l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+        l_time->tm_hour, l_time->tm_min, l_time->tm_sec, next_spider_conn_mutex_id);
+      goto err_malloc_key;
     }
 
     if (next_spider_conn_mutex_id >= opt_spider_max_connections) 
@@ -4375,13 +4382,13 @@ spider_create_ipport_conn(SPIDER_CONN *conn)
       //to do dynamic alloc
       if (pthread_mutex_init(&(spider_conn_i_mutexs[next_spider_conn_mutex_id].m_mutex), MY_MUTEX_INIT_FAST)) {
         //error
-         goto err_return_direct;
+         goto err_malloc_key;
       }
 
       if (pthread_cond_init(&(spider_conn_i_conds[next_spider_conn_mutex_id].m_cond), NULL)) 
       {
         pthread_mutex_destroy(&(spider_conn_i_mutexs[next_spider_conn_mutex_id]));
-        goto err_return_direct;
+        goto err_malloc_key;
         //error
       }
     }
@@ -4390,7 +4397,7 @@ spider_create_ipport_conn(SPIDER_CONN *conn)
 
     ret->key_len = conn->conn_key_length;
     if (ret->key_len <= 0) {
-      goto err_return_direct;
+      goto err_malloc_key;
     }
 
     ret->key = (char *) my_malloc(ret->key_len, MY_ZEROFILL | MY_WME);
