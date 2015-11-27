@@ -1130,7 +1130,7 @@ public:
     maybe_null=1;
   }
   virtual void print(String *str, enum_query_type query_type);
-  const char* Item_func_timestamp_diff::print_type();
+  const char* print_type();
 };
 
 
