@@ -8234,6 +8234,7 @@ int spider_db_open_item_string(
   CHARSET_INFO* field_charset
 ) {
   DBUG_ENTER("spider_db_open_item_string");
+  THD *thd = current_thd;
   if (str)
   {
     assert(!field_charset || my_charset_same(field_charset, str->charset()) || my_charset_same(field_charset, &my_charset_bin));
@@ -8242,28 +8243,30 @@ int spider_db_open_item_string(
     case Item::FUNC_ITEM:
     case Item::CACHE_ITEM:
       {
-        // 这两种类型需要计算最终值，尤其是时间类型（now等）
-        char tmp_buf[MAX_FIELD_WIDTH];
-        spider_string tmp_str(tmp_buf, MAX_FIELD_WIDTH, str->charset());
-        String *tmp_str2;
-        tmp_str.init_calc_mem(126);
-        if (
-          !(tmp_str2 = item->val_str(tmp_str.get_str())) ||
-          str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN * 2 + tmp_str2->length() * 2)
-          )
-          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-        tmp_str.mem_calc(); 
-        str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
-        if (
-          append_escaped(str->get_str(), tmp_str2) ||
-          str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN)
-          )
-          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        if (thd->is_set_time())
+        {
+          // 这两种类型需要计算最终值，尤其是时间类型（now等）
+          char tmp_buf[MAX_FIELD_WIDTH];
+          spider_string tmp_str(tmp_buf, MAX_FIELD_WIDTH, str->charset());
+          String *tmp_str2;
+          tmp_str.init_calc_mem(126);
+          if (
+            !(tmp_str2 = item->val_str(tmp_str.get_str())) ||
+            str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN * 2 + tmp_str2->length() * 2)
+            )
+            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+          tmp_str.mem_calc(); 
+          str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+          if (
+            append_escaped(str->get_str(), tmp_str2) ||
+            str->reserve(SPIDER_SQL_VALUE_QUOTE_LEN)
+            )
+            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 
-        str->mem_calc();
-        str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
-        break;
-
+          str->mem_calc();
+          str->q_append(SPIDER_SQL_VALUE_QUOTE_STR, SPIDER_SQL_VALUE_QUOTE_LEN);
+          break;
+        }
       }
     //case Item::STRING_ITEM:
     default:

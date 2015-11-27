@@ -126,6 +126,7 @@ public:
   bool eq(const Item *item, bool binary_cmp) const;
   virtual optimize_type select_optimize() const { return OPTIMIZE_NONE; }
   virtual bool have_rev_func() const { return 0; }
+  virtual const char* print_type(){return "";};
   virtual Item *key_item() const { return args[0]; }
   virtual bool const_item() const { return const_item_cache; }
   inline Item **arguments() const { return args; }
