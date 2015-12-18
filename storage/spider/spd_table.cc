@@ -4261,6 +4261,7 @@ SPIDER_SHARE *spider_get_share(
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   uint length, tmp_conn_link_idx = 0;
   char *tmp_name, *tmp_cid;
+  *error_num = 0;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   char *tmp_hs_r_name, *tmp_hs_w_name;
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
@@ -4840,9 +4841,10 @@ SPIDER_SHARE *spider_get_share(
                share->table_name, share->tgt_hosts[0], share->tgt_ports[0]);
           goto error_but_no_delete;
       }
-			my_sleep(1000); // wait 1 ms
+			my_sleep(10000); // wait 10 ms
     }
 
+     spider->share = share;
     if (!share->link_status_init)
     {
       pthread_mutex_lock(&share->mutex);
@@ -5329,6 +5331,7 @@ error_but_no_delete:
     share->use_count--;
     pthread_mutex_unlock(&spider_tbl_mutex);
   }
+  if(!*error_num){*error_num = ER_SPIDER_GET_SHARE_ERROR;}
   DBUG_RETURN(NULL);
 }
 
