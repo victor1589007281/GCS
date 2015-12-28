@@ -5740,7 +5740,7 @@ int spider_open_all_tables(
     }
     conn->error_mode &= spider_param_error_read_mode(thd, 0);
     conn->error_mode &= spider_param_error_write_mode(thd, 0);
-    spider_mta_conn_mutex_lock(&conn);
+    spider_mta_conn_mutex_lock(conn);
     conn->need_mon = &mon_val;
     conn->mta_conn_mutex_lock_already = TRUE;
     conn->mta_conn_mutex_unlock_later = TRUE;
@@ -5748,7 +5748,7 @@ int spider_open_all_tables(
     {
       conn->mta_conn_mutex_lock_already = FALSE;
       conn->mta_conn_mutex_unlock_later = FALSE;
-      spider_mta_conn_mutex_unlock(&conn);
+      spider_mta_conn_mutex_unlock(conn);
       spider_sys_index_end(table_tables);
       spider_close_sys_table(thd, table_tables,
         &open_tables_backup, TRUE);
@@ -5759,7 +5759,7 @@ int spider_open_all_tables(
     }
     conn->mta_conn_mutex_lock_already = FALSE;
     conn->mta_conn_mutex_unlock_later = FALSE;
-    spider_mta_conn_mutex_unlock(&conn);
+    spider_mta_conn_mutex_unlock(conn);
 
     if (lock && spider_param_use_snapshot_with_flush_tables(thd) == 2)
     {
@@ -6180,7 +6180,7 @@ int spider_db_done(
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   pthread_attr_destroy(&spider_pt_attr);
 #endif
-  int conn_i_count = max(opt_spider_max_partitions, spider_conn_mutex_id);
+  uint conn_i_count = max(opt_spider_max_partitions, spider_conn_mutex_id);
   for(roop_count=0; roop_count < conn_i_count; roop_count++)
   {
     pthread_mutex_destroy(&spider_conn_i_mutexs[roop_count]);
@@ -8629,7 +8629,7 @@ spider_make_mysql_time(MYSQL_TIME *ts, time_t *tm)
 
 int spider_db_init_for_conn_mutexs_conds()
 {
-	int mutex_i,  j;
+	uint mutex_i,  j;
 	DBUG_ENTER("spider_db_init_for_conn_i");
 	for(mutex_i=0; mutex_i < opt_spider_max_partitions; mutex_i++)
 	{

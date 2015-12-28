@@ -2423,7 +2423,7 @@ void *spider_bg_conn_action(
 	//			thd_proc_info(0, "spider bg execute query");
         if (dbton_handler->need_lock_before_set_sql_for_exec(sql_type))
         {// false, 不走
-          spider_mta_conn_mutex_lock(&conn);
+          spider_mta_conn_mutex_lock(conn);
         }
         if ((error_num = dbton_handler->set_sql_for_exec(sql_type,
           conn->link_idx)))
@@ -2434,7 +2434,7 @@ void *spider_bg_conn_action(
         }
         if (!dbton_handler->need_lock_before_set_sql_for_exec(sql_type))
         {
-          spider_mta_conn_mutex_lock(&conn);
+          spider_mta_conn_mutex_lock(conn);
         }
         sql_type &= ~SPIDER_SQL_TYPE_TMP_SQL;
         DBUG_PRINT("info",("spider sql_type=%lu", sql_type));
@@ -2526,9 +2526,9 @@ void *spider_bg_conn_action(
 #endif
           conn->mta_conn_mutex_lock_already = FALSE;
           conn->mta_conn_mutex_unlock_later = FALSE;
-          spider_mta_conn_mutex_unlock(&conn);
+          spider_mta_conn_mutex_unlock(conn);
         } else {
-          spider_mta_conn_mutex_unlock(&conn);
+          spider_mta_conn_mutex_unlock(conn);
         }
       } else {/* 一次没取完结果，继续fetch走此逻辑 */
         spider->connection_ids[conn->link_idx] = conn->connection_id;
@@ -4352,7 +4352,7 @@ err_return_direct:
 SPIDER_IP_PORT_CONN *
 spider_create_ipport_conn(SPIDER_CONN *conn) 
 {
-  int next_spider_conn_mutex_id;
+  uint next_spider_conn_mutex_id;
   DBUG_ENTER("spider_create_ipport_conn");
   if (conn) {
     SPIDER_IP_PORT_CONN *ret = (SPIDER_IP_PORT_CONN *) my_malloc(sizeof(*ret), MY_ZEROFILL | MY_WME);
