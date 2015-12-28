@@ -378,3 +378,7 @@ SPIDER_CONN* spider_get_conn_from_idle_connection_bak
  uint conn_kind, 
  int base_link_idx, 
  int *error_num);
+
+
+void spider_mta_conn_mutex_lock(SPIDER_CONN *conn);
+void spider_mta_conn_mutex_unlock(SPIDER_CONN *conn);

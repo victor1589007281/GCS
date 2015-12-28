@@ -2423,8 +2423,7 @@ void *spider_bg_conn_action(
 	//			thd_proc_info(0, "spider bg execute query");
         if (dbton_handler->need_lock_before_set_sql_for_exec(sql_type))
         {// false, 不走
-          pthread_mutex_lock(&conn->mta_conn_mutex);
-          SPIDER_SET_FILE_POS(&conn->mta_conn_mutex_file_pos);
+          spider_mta_conn_mutex_lock(&conn);
         }
         if ((error_num = dbton_handler->set_sql_for_exec(sql_type,
           conn->link_idx)))
@@ -2435,8 +2434,7 @@ void *spider_bg_conn_action(
         }
         if (!dbton_handler->need_lock_before_set_sql_for_exec(sql_type))
         {
-          pthread_mutex_lock(&conn->mta_conn_mutex);
-          SPIDER_SET_FILE_POS(&conn->mta_conn_mutex_file_pos);
+          spider_mta_conn_mutex_lock(&conn);
         }
         sql_type &= ~SPIDER_SQL_TYPE_TMP_SQL;
         DBUG_PRINT("info",("spider sql_type=%lu", sql_type));
@@ -2528,11 +2526,9 @@ void *spider_bg_conn_action(
 #endif
           conn->mta_conn_mutex_lock_already = FALSE;
           conn->mta_conn_mutex_unlock_later = FALSE;
-          SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
-          pthread_mutex_unlock(&conn->mta_conn_mutex);
+          spider_mta_conn_mutex_unlock(&conn);
         } else {
-          SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
-          pthread_mutex_unlock(&conn->mta_conn_mutex);
+          spider_mta_conn_mutex_unlock(&conn);
         }
       } else {/* 一次没取完结果，继续fetch走此逻辑 */
         spider->connection_ids[conn->link_idx] = conn->connection_id;
@@ -4724,6 +4720,28 @@ SPIDER_CONN* spider_get_conn_from_idle_connection_bak(
 	}
 
 	DBUG_RETURN(conn);
+}
+
+void spider_mta_conn_mutex_lock(SPIDER_CONN *conn)
+{
+  if(conn && !conn->mta_conn_mutex_lock_already)
+  {
+    pthread_mutex_lock(&conn->mta_conn_mutex);
+    SPIDER_SET_FILE_POS(&conn->mta_conn_mutex_file_pos);
+    //  conn->mta_conn_mutex_unlock_later = TRUE;
+    conn->mta_conn_mutex_lock_already = TRUE;
+  }
+}
+void spider_mta_conn_mutex_unlock(SPIDER_CONN *conn)
+{
+
+  if(conn && conn->mta_conn_mutex_lock_already)
+  {
+    conn->mta_conn_mutex_lock_already = FALSE;
+    SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
+    pthread_mutex_unlock(&conn->mta_conn_mutex);
+    //  conn->mta_conn_mutex_unlock_later = TRUE;
+  }
 }
 
 

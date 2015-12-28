@@ -116,7 +116,7 @@
 #define ER_SPIDER_CON_COUNT_ERROR_STR "too many connections between spider and remote"
 #define ER_SPIDER_CON_COUNT_ERROR_LEN (sizeof(ER_SPIDER_CON_COUNT_ERROR_STR) - 1)
 #define ER_SPIDER_GET_SHARE_ERROR 12724
-#define ER_SPIDER_GET_SHARE_ERROR_STR "too many connections between spider and remote"
+#define ER_SPIDER_GET_SHARE_ERROR_STR "failed get spider share"
 #define ER_SPIDER_GET_SHARE_ERROR_LEN (sizeof(ER_SPIDER_GET_SHARE_ERROR_STR) - 1)
 #define ER_SPIDER_COND_SKIP_NUM 12801
 
