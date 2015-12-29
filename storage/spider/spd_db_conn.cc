@@ -9918,8 +9918,7 @@ int spider_db_udf_copy_tables(
         {
           tmp_conn = dst_tbl_conn->conn;
           insert_ct = dst_tbl_conn->copy_table;
-          pthread_mutex_lock(&tmp_conn->mta_conn_mutex);
-          SPIDER_SET_FILE_POS(&tmp_conn->mta_conn_mutex_file_pos);
+          spider_mta_conn_mutex_lock(tmp_conn);
           tmp_conn->need_mon = &dst_tbl_conn->need_mon;
           tmp_conn->mta_conn_mutex_lock_already = TRUE;
           tmp_conn->mta_conn_mutex_unlock_later = TRUE;

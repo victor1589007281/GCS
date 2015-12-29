@@ -4722,26 +4722,34 @@ SPIDER_CONN* spider_get_conn_from_idle_connection_bak(
 	DBUG_RETURN(conn);
 }
 
-void spider_mta_conn_mutex_lock(SPIDER_CONN *conn)
-{
-  if(conn && !conn->mta_conn_mutex_lock_already)
-  {
-    pthread_mutex_lock(&conn->mta_conn_mutex);
-    SPIDER_SET_FILE_POS(&conn->mta_conn_mutex_file_pos);
-    //  conn->mta_conn_mutex_unlock_later = TRUE;
-    conn->mta_conn_mutex_lock_already = TRUE;
-  }
-}
-void spider_mta_conn_mutex_unlock(SPIDER_CONN *conn)
-{
-
-  if(conn && conn->mta_conn_mutex_lock_already)
-  {
-    conn->mta_conn_mutex_lock_already = FALSE;
-    SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
-    pthread_mutex_unlock(&conn->mta_conn_mutex);
-    //  conn->mta_conn_mutex_unlock_later = TRUE;
-  }
-}
+//void spider_mta_conn_mutex_lock(SPIDER_CONN *conn)
+//{
+//  //if(conn && !conn->mta_conn_mutex_lock_already)
+//  pid_t pid = my_pthread_get_tid();
+//  if(conn && conn->mta_conn_mutex_os_thread_id != pid)
+//  {
+//    pthread_mutex_lock(&conn->mta_conn_mutex);
+//    SPIDER_SET_FILE_POS(&conn->mta_conn_mutex_file_pos);
+//    conn->mta_conn_mutex_os_thread_id = pid;
+//    //  conn->mta_conn_mutex_unlock_later = TRUE;
+//    //conn->mta_conn_mutex_lock_already = TRUE;
+//    return;
+//  }
+//  assert(0);
+//}
+//void spider_mta_conn_mutex_unlock(SPIDER_CONN *conn)
+//{
+//  pid_t pid = my_pthread_get_tid();
+//  if(conn && conn->mta_conn_mutex_os_thread_id == pid)
+//  {
+//    //conn->mta_conn_mutex_lock_already = FALSE;
+//    SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);
+//    pthread_mutex_unlock(&conn->mta_conn_mutex);
+//    conn->mta_conn_mutex_os_thread_id = 0;
+//    //  conn->mta_conn_mutex_unlock_later = TRUE;
+//    return;
+//  }
+//  assert(0);
+//}
 
 

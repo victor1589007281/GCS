@@ -141,6 +141,27 @@
 #define SPIDER_CLEAR_FILE_POS(A) \
   {(A)->thd = NULL; (A)->func_name = NULL; (A)->file_name = NULL; (A)->line_no = 0;}
 
+#define spider_mta_conn_mutex_lock(conn) \
+{\
+  pid_t pid = my_pthread_get_tid();\
+  if(conn && conn->mta_conn_mutex_os_thread_id != pid)\
+  {\
+    pthread_mutex_lock(&conn->mta_conn_mutex);\
+    SPIDER_SET_FILE_POS(&conn->mta_conn_mutex_file_pos);\
+    conn->mta_conn_mutex_os_thread_id = pid;\
+  }\
+}
+
+#define spider_mta_conn_mutex_unlock(conn) \
+{\
+  pid_t pid = my_pthread_get_tid();\
+  if(conn && conn->mta_conn_mutex_os_thread_id == pid)\
+  {\
+    SPIDER_CLEAR_FILE_POS(&conn->mta_conn_mutex_file_pos);\
+    pthread_mutex_unlock(&conn->mta_conn_mutex);\
+    conn->mta_conn_mutex_os_thread_id = 0;\
+  }\
+}
 
 /* harryczhang: recycle connection thread initialized flag */
 extern volatile bool      conn_rcyc_init;
@@ -277,6 +298,7 @@ typedef struct st_spider_conn
   volatile bool      mta_conn_mutex_lock_already;
   volatile bool      mta_conn_mutex_unlock_later;
   SPIDER_FILE_POS    mta_conn_mutex_file_pos;
+  pid_t              mta_conn_mutex_os_thread_id; 
   uint               join_trx;
   int                trx_isolation;
   bool               semi_trx_isolation_chk;

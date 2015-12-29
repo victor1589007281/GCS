@@ -2892,7 +2892,7 @@ const char *load_default_groups[]= {
 #ifdef WITH_NDBCLUSTER_STORAGE_ENGINE
 "mysql_cluster",
 #endif
-"mysqld","server", MYSQL_BASE_VERSION, "tmysqld", 0, 0};
+"mysqld","server", MYSQL_BASE_VERSION, "tspider", 0, 0};
 
 #if defined(__WIN__) && !defined(EMBEDDED_LIBRARY)
 static const int load_default_groups_sz=
