@@ -5766,6 +5766,9 @@ const char* handler::get_row_type_str() const
       case ROW_TYPE_COMPACT:
           tmp_buff= "Compact";
           break;
+      case ROW_TYPE_GCS_DYNAMIC:
+          tmp_buff= "Gcs_dynamic";
+          break;
       case ROW_TYPE_GCS: /* added for gcs row_format */
           tmp_buff= get_row_type_str_for_gcs();
           break;

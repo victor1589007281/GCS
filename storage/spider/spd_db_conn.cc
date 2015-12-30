@@ -261,7 +261,6 @@ int spider_db_conn_queue_action(
   char sql_buf[MAX_FIELD_WIDTH * 2];
   bool spider_ignore_autocommit = opt_spider_ignore_autocommit;
   spider_string sql_str(sql_buf, sizeof(sql_buf), system_charset_info);
-	THD *thd =current_thd;
   DBUG_ENTER("spider_db_conn_queue_action");
   DBUG_PRINT("info", ("spider conn=%p", conn));
   sql_str.init_calc_mem(106);
