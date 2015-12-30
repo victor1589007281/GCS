@@ -920,6 +920,7 @@ int spider_db_query_with_set_names(
   conn->mta_conn_mutex_unlock_later = TRUE;
   if ((error_num = spider_db_set_names(spider, conn, link_idx)))
   {
+    conn->mta_conn_mutex_lock_already = FALSE;
     conn->mta_conn_mutex_unlock_later = FALSE;
     spider_mta_conn_mutex_unlock(conn);
     if (
@@ -975,6 +976,7 @@ int spider_db_query_with_set_names(
     }
     DBUG_RETURN(error_num);
   }
+  conn->mta_conn_mutex_lock_already = FALSE;
   conn->mta_conn_mutex_unlock_later = FALSE;
   spider_mta_conn_mutex_unlock(conn);
   DBUG_RETURN(0);
@@ -999,6 +1001,7 @@ int spider_db_query_for_bulk_update(
   conn->mta_conn_mutex_unlock_later = TRUE;
   if ((error_num = spider_db_set_names(spider, conn, link_idx)))
   {
+    conn->mta_conn_mutex_lock_already = FALSE;
     conn->mta_conn_mutex_unlock_later = FALSE;
     spider_mta_conn_mutex_unlock(conn);
     if (
@@ -1076,6 +1079,7 @@ int spider_db_query_for_bulk_update(
   }
   if (error_num > 0 && !conn->db_conn->is_dup_entry_error(error_num))
   {
+    conn->mta_conn_mutex_lock_already = FALSE;
     conn->mta_conn_mutex_unlock_later = FALSE;
     spider_mta_conn_mutex_unlock(conn);
     if (
@@ -5713,6 +5717,7 @@ int spider_db_bulk_bulk_insert(
     }
 #endif 
     spider_mta_conn_mutex_lock(conn);
+    conn->mta_conn_mutex_lock_already = TRUE;
     conn->mta_conn_mutex_unlock_later = TRUE;
     if ((tmp_error_num = spider_db_bulk_open_handler(spider, conn,
       roop_count2)))
