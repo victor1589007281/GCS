@@ -652,7 +652,7 @@ static struct my_option my_long_options[] =
   {"unique-key-check", 0, "Set UNIQUE_CHECKS and FOREIGN_KEY_CHECKS to 1.",
    &unique_key_check, &unique_key_check, 0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0, 0},
   {"foreign-key-check", 0, "Set UNIQUE_CHECKS and FOREIGN_KEY_CHECKS to 1.",
-   &foreign_key_check, &foreign_key_check, 0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0, 0},
+   &foreign_key_check, &foreign_key_check, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"quote-names",'Q', "Quote table and column names with backticks (`).",
    &opt_quoted, &opt_quoted, 0, GET_BOOL, NO_ARG, 1, 0, 0, 0,
    0, 0},
