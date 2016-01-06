@@ -243,7 +243,7 @@ static bool change_refs_to_tmp_fields(THD *thd, Item **ref_pointer_array,
 				      List<Item> &new_list1,
 				      List<Item> &new_list2,
 				      uint elements, List<Item> &items);
-static void init_tmptable_sum_functions(Item_sum **func);
+static void init_tmptable_sum_functions(Item_sum **func,bool ignore_direct_reset);
 static void update_tmptable_sum_func(Item_sum **func,TABLE *tmp_table);
 static void copy_sum_funcs(Item_sum **func_ptr, Item_sum **end);
 static bool add_ref_to_table_cond(THD *thd, JOIN_TAB *join_tab);
@@ -12933,7 +12933,7 @@ end_update(JOIN *join, JOIN_TAB *join_tab __attribute__((unused)),
     if (key_part->null_bit)
       memcpy(table->record[0]+key_part->offset, group->buff, 1);
   }
-  init_tmptable_sum_functions(join->sum_funcs);
+  init_tmptable_sum_functions(join->sum_funcs, 0);
   if (copy_funcs(join->tmp_table_param.items_to_copy, join->thd))
     DBUG_RETURN(NESTED_LOOP_ERROR);           /* purecov: inspected */
   if ((error=table->file->ha_write_row(table->record[0])))
@@ -12968,7 +12968,7 @@ end_unique_update(JOIN *join, JOIN_TAB *join_tab __attribute__((unused)),
     DBUG_RETURN(NESTED_LOOP_KILLED);             /* purecov: inspected */
   }
 
-  init_tmptable_sum_functions(join->sum_funcs);
+  init_tmptable_sum_functions(join->sum_funcs, 1);
   copy_fields(&join->tmp_table_param);		// Groups are copied twice.
   if (copy_funcs(join->tmp_table_param.items_to_copy, join->thd))
     DBUG_RETURN(NESTED_LOOP_ERROR);           /* purecov: inspected */
@@ -15985,11 +15985,11 @@ static bool prepare_sum_aggregators(Item_sum **func_ptr, bool need_distinct)
 
 
 static void
-init_tmptable_sum_functions(Item_sum **func_ptr)
+init_tmptable_sum_functions(Item_sum **func_ptr, bool ignore_direct_reset)
 {
   Item_sum *func;
   while ((func= *(func_ptr++)))
-    func->reset_field();
+    func->reset_field(ignore_direct_reset);
 }
 
 

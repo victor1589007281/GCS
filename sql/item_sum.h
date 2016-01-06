@@ -425,7 +425,7 @@ public:
     Item_sum is used only if quick_group is not null. Otherwise
     copy_or_same() is used to obtain a copy of this item.
   */
-  virtual void reset_field()=0;
+  virtual void reset_field(bool ignore_direct_reset)=0;
   /*
     Called for each new value in the group, when temporary table is in use.
     Similar to add(), but uses temporary table field to obtain current value,
@@ -677,7 +677,7 @@ public:
   }
   String *val_str(String*str);
   my_decimal *val_decimal(my_decimal *);
-  void reset_field();
+  void reset_field(bool ignore_direct_reset);
 };
 
 
@@ -730,7 +730,7 @@ public:
   String *val_str(String*str);
   my_decimal *val_decimal(my_decimal *);
   enum Item_result result_type () const { return hybrid_type; }
-  void reset_field();
+  void reset_field(bool ignore_direct_reset);
   void update_field();
   void no_rows_in_result() {}
   const char *func_name() const 
@@ -788,7 +788,7 @@ class Item_sum_count :public Item_sum_int
     Item_sum::make_const();
   }
   longlong val_int();
-  void reset_field();
+  void reset_field(bool ignore_direct_reset);
   void update_field();
   const char *func_name() const 
   { 
@@ -853,7 +853,7 @@ public:
   longlong val_int() { return (longlong) rint(val_real()); }
   my_decimal *val_decimal(my_decimal *);
   String *val_str(String *str);
-  void reset_field();
+  void reset_field(bool ignore_direct_reset);
   void update_field();
   Item *result_item(Field *field)
   { return new Item_avg_field(hybrid_type, this); }
@@ -948,7 +948,7 @@ public:
   bool add();
   double val_real();
   my_decimal *val_decimal(my_decimal *);
-  void reset_field();
+  void reset_field(bool ignore_direct_reset);
   void update_field();
   Item *result_item(Field *field)
   { return new Item_variance_field(this); }
@@ -1034,7 +1034,7 @@ protected:
   double val_real();
   longlong val_int();
   my_decimal *val_decimal(my_decimal *);
-  void reset_field();
+  void reset_field(bool ignore_direct_reset);
   String *val_str(String *);
   bool keep_field_type(void) const { return 1; }
   enum Item_result result_type () const { return hybrid_type; }
@@ -1096,7 +1096,7 @@ public:
   enum Sumfunctype sum_func () const {return SUM_BIT_FUNC;}
   void clear();
   longlong val_int();
-  void reset_field();
+  void reset_field(bool ignore_direct_reset);
   void update_field();
   void fix_length_and_dec()
   { decimals= 0; max_length=21; unsigned_flag= 1; maybe_null= null_value= 0; }
@@ -1182,7 +1182,7 @@ public:
   virtual void no_rows_in_result() { clear(); }
   void clear();
   bool add();
-  void reset_field() {};
+  void reset_field(bool ignore_direct_reset) {};
   void update_field() {};
   void cleanup();
   virtual void print(String *str, enum_query_type query_type);
@@ -1439,7 +1439,7 @@ public:
   }
   void clear();
   bool add();
-  void reset_field() { DBUG_ASSERT(0); }        // not used
+  void reset_field(bool ignore_direct_reset) { DBUG_ASSERT(0); }        // not used
   void update_field() { DBUG_ASSERT(0); }       // not used
   bool fix_fields(THD *,Item **);
   bool setup(THD *thd);
