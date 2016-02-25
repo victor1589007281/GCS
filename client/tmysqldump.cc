@@ -118,7 +118,7 @@ static char *alloc_query_str(ulong size);
 static int cmd_argc = 0;
 
 static void field_escape(DYNAMIC_STRING* in, const char *from);
-static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0,
+static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0, opt_semantic_check = 0,
                 quick= 1, extended_insert= 1,
                 lock_tables=1,ignore_errors=0,flush_logs=0,flush_privileges=0,
                 opt_drop=1,opt_keywords=0,opt_lock=1,opt_compress=0,
@@ -626,6 +626,8 @@ static struct my_option my_long_options[] =
    NO_ARG, 0, 0, 0, 0, 0, 0},
   {"no-data", 'd', "No row information.", &opt_no_data,
    &opt_no_data, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+  {"semantic-check", 0, "only for semantic-check,ignore views dump", &opt_semantic_check,
+  &opt_semantic_check, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"no-set-names", 'N', "Same as --skip-set-charset.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"opt", OPT_OPTIMIZE,
@@ -2923,7 +2925,6 @@ static uint get_table_structure(char *table, char *db, char *table_type,
   DBUG_PRINT("enter", ("db: %s  table: %s", db, table));
 
   *ignore_flag= check_if_ignore_table(db, table, table_type); // table_type is output parameter
-  
 
   delayed= opt_delayed;
   if (delayed && (*ignore_flag & IGNORE_INSERT_DELAYED))
@@ -3171,62 +3172,66 @@ static uint get_table_structure(char *table, char *db, char *table_type,
 	  dynstr_free(&ds_table);
       mysql_free_result(result);
     }
-    my_snprintf(query_buff, sizeof(query_buff), "show fields from %s",
-                result_table);
-    if (mysql_query_with_error_report(mysql, &result, query_buff))
-    {
-      if (path)
-        my_fclose(sql_file, MYF(MY_WME));
-      DBUG_RETURN(0);
-    }
 
-    /*
+    if (!opt_semantic_check)
+    {
+      my_snprintf(query_buff, sizeof(query_buff), "show fields from %s",
+        result_table);
+      if (mysql_query_with_error_report(mysql, &result, query_buff))
+      {
+        if (path)
+          my_fclose(sql_file, MYF(MY_WME));
+        DBUG_RETURN(0);
+      }
+
+      /*
       If write_data is true, then we build up insert statements for
       the table's data. Note: in subsequent lines of code, this test
       will have to be performed each time we are appending to
       insert_pat.
-    */
-    if (write_data)
-    {
-      if (opt_replace_into)
-        dynstr_append_checked(&insert_pat, "REPLACE ");
-      else
+      */
+      if (write_data)
       {
-        if(opt_enable_compress_optimization && *is_blob_compress_in_table)
-          dynstr_append_checked(&insert_pat, "INSERT SQL_COMPRESSED ");
+        if (opt_replace_into)
+          dynstr_append_checked(&insert_pat, "REPLACE ");
         else
-          dynstr_append_checked(&insert_pat, "INSERT ");
-      }
-      dynstr_append_checked(&insert_pat, insert_option);
-      dynstr_append_checked(&insert_pat, "INTO ");
-      dynstr_append_checked(&insert_pat, opt_quoted_table);
-      if (complete_insert)
-      {
-        dynstr_append_checked(&insert_pat, " (");
-      }
-      else
-      {
-        dynstr_append_checked(&insert_pat, " VALUES ");
-        if (!extended_insert)
-          dynstr_append_checked(&insert_pat, "(");
-      }
-    }
-
-    while ((row= mysql_fetch_row(result)))
-    {
-      if (complete_insert)
-      {
-        if (init)
         {
-          dynstr_append_checked(&insert_pat, ", ");
+          if(opt_enable_compress_optimization && *is_blob_compress_in_table)
+            dynstr_append_checked(&insert_pat, "INSERT SQL_COMPRESSED ");
+          else
+            dynstr_append_checked(&insert_pat, "INSERT ");
         }
-        init=1;
-        dynstr_append_checked(&insert_pat,
-                      quote_name(row[SHOW_FIELDNAME], name_buff, 0));
+        dynstr_append_checked(&insert_pat, insert_option);
+        dynstr_append_checked(&insert_pat, "INTO ");
+        dynstr_append_checked(&insert_pat, opt_quoted_table);
+        if (complete_insert)
+        {
+          dynstr_append_checked(&insert_pat, " (");
+        }
+        else
+        {
+          dynstr_append_checked(&insert_pat, " VALUES ");
+          if (!extended_insert)
+            dynstr_append_checked(&insert_pat, "(");
+        }
       }
+
+      while ((row= mysql_fetch_row(result)))
+      {
+        if (complete_insert)
+        {
+          if (init)
+          {
+            dynstr_append_checked(&insert_pat, ", ");
+          }
+          init=1;
+          dynstr_append_checked(&insert_pat,
+            quote_name(row[SHOW_FIELDNAME], name_buff, 0));
+        }
+      }
+      num_fields= mysql_num_rows(result);
+      mysql_free_result(result);
     }
-    num_fields= mysql_num_rows(result);
-    mysql_free_result(result);
   }
   else
   {
@@ -6317,6 +6322,13 @@ char check_if_ignore_table(const char *db, const char *table_name, char *table_t
   char buff[FN_REFLEN + 1024], show_name_buff[FN_REFLEN];
   MYSQL_RES *res= NULL;
   MYSQL_ROW row;
+
+  if (opt_semantic_check)
+  {
+	  strmake(table_type, "Innodb", NAME_LEN-1);
+	  return result;
+  }
+
   DBUG_ENTER("check_if_ignore_table");
 
   /* Check memory for quote_for_like() */
@@ -6798,6 +6810,13 @@ int main(int argc, char **argv)
   if (opt_replace_into && opt_enable_compress_optimization)
   {
 	  fprintf(stderr, "opt_replace_into can't be use with opt_enable_compress_optimization.\n");
+	  free_resources();
+	  exit(EX_MYSQLERR);
+  }
+
+  if (opt_semantic_check && !opt_no_data)
+  {
+	  fprintf(stderr, "semantic_check option must be use with no_data.\n");
 	  free_resources();
 	  exit(EX_MYSQLERR);
   }
