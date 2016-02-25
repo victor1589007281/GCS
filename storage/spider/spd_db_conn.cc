@@ -678,6 +678,12 @@ int spider_db_errorno(
       }
       DBUG_RETURN(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM);
     }
+//    if(conn->db_conn->get_mysql_conn())
+//   {
+//      my_message(ER_SPIDER_CONN_BE_FREE_NUM,
+//        ER_SPIDER_CONN_BE_FREE_STR, MYF(0));
+//      DBUG_RETURN(ER_SPIDER_CONN_BE_FREE_NUM);
+//    }
     if ((error_num = conn->db_conn->get_errno()))
     {
       DBUG_PRINT("info",("spider error_num = %d", error_num));
@@ -7982,6 +7988,12 @@ int spider_db_open_item_ident(
       field_name_length = strlen(item_ident->field_name);
     else
       field_name_length = 0;
+    if(item_ident->type_s() == Item::INSERT_VALUE_ITEM)
+    {
+      if (str->reserve(SPIDER_SQL_VALUES_FOR_UPDATE_LEN + 2))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      str->q_append(SPIDER_SQL_VALUES_FOR_UPDATE_STR, SPIDER_SQL_VALUES_FOR_UPDATE_LEN);
+    }
     if (share->access_charset->cset == system_charset_info->cset)
     {
       if (str->reserve(alias_length +
@@ -8005,6 +8017,10 @@ int spider_db_open_item_ident(
       {
         DBUG_RETURN(error_num);
       }
+    }
+    if(item_ident->type_s() == Item::INSERT_VALUE_ITEM)
+    {
+      str->q_append(SPIDER_SQL_CLOSE_PAREN_STR, SPIDER_SQL_CLOSE_PAREN_LEN);
     }
   }
   DBUG_RETURN(0);

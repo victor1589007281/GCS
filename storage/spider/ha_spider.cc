@@ -7965,6 +7965,7 @@ int ha_spider::info(
 		}
 
 		sts_mode = crd_mode = 1; // 设定都按show table status句式
+//    spider_copy_share_to_sts_and_crd(share, share->partition_share, table->s->fields);
 		if (spider_param_spider_get_sts_or_crd() && 
         sql_command == SQLCOM_SHOW_TABLE_STATUS &&
         difftime(tmp_time, share->sts_get_time) >= sts_interval)

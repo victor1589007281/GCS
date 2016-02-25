@@ -292,6 +292,7 @@ public:
   int set_character_set(
     const char *csname
   );
+//  void* get_mysql_conn(){return db_conn;}
   int select_db(
     const char *dbname
   );

@@ -5547,6 +5547,25 @@ int spider_free_pt_share(
   DBUG_RETURN(0);
 }
 
+/*
+void spider_copy_share_to_sts_and_crd(
+  SPIDER_SHARE *share, 
+  SPIDER_PARTITION_SHARE *partition_share,
+  int fields
+){
+  DBUG_ENTER("spider_copy_share_to_sts_and_crd");
+
+  memcpy(&partition_share->data_file_length, &share->data_file_length,
+    sizeof(ulonglong) * 4 + sizeof(ha_rows) +
+    sizeof(ulong) + sizeof(time_t) * 3);
+  memcpy(partition_share->cardinality, share->cardinality,
+    sizeof(longlong) * fields);
+
+  DBUG_VOID_RETURN;
+}
+*/
+
+
 void spider_copy_sts_to_pt_share(
   SPIDER_PARTITION_SHARE *partition_share,
   SPIDER_SHARE *share

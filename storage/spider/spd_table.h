@@ -195,7 +195,13 @@ void spider_copy_sts_to_pt_share(
   SPIDER_PARTITION_SHARE *partition_share,
   SPIDER_SHARE *share
 );
-
+/*
+void spider_copy_share_to_sts_and_crd(
+  SPIDER_SHARE *share, 
+  SPIDER_PARTITION_SHARE *partition_share,
+  int fields
+);
+*/
 void spider_copy_sts_to_share(
   SPIDER_SHARE *share,
   SPIDER_PARTITION_SHARE *partition_share

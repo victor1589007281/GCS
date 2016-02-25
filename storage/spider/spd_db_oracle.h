@@ -323,6 +323,7 @@ public:
   );
   int get_errno();
   const char *get_error();
+//  void* get_mysql_conn(){return NULL;}
   bool is_server_gone_error(
     int error_num
   );

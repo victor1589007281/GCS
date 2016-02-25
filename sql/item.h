@@ -1650,6 +1650,7 @@ public:
   void cleanup();
   bool remove_dependence_processor(uchar * arg);
   virtual void print(String *str, enum_query_type query_type);
+  virtual enum Type type_s() const {return FIELD_ITEM;} // used for spider 
   virtual bool change_context_processor(uchar *cntx)
     { context= (Name_resolution_context *)cntx; return FALSE; }
   friend bool insert_fields(THD *thd, Name_resolution_context *context,
@@ -1701,8 +1702,9 @@ public:
   /* field need any privileges (for VIEW creation) */
   bool any_privileges;
   Item_field(Name_resolution_context *context_arg,
-             const char *db_arg,const char *table_name_arg,
-	     const char *field_name_arg);
+    const char *db_arg,const char *table_name_arg,
+    const char *field_name_arg);
+
   /*
     Constructor needed to process subselect with temporary tables (see Item)
   */
@@ -1720,6 +1722,7 @@ public:
   */
   Item_field(Field *field);
   enum Type type() const { return FIELD_ITEM; }
+  virtual enum Type type_s() const {return FIELD_ITEM;} // used for spider 
   bool eq(const Item *item, bool binary_cmp) const;
   double val_real();
   longlong val_int();
@@ -3125,6 +3128,7 @@ public:
   bool eq(const Item *item, bool binary_cmp) const;
   bool fix_fields(THD *, Item **);
   virtual void print(String *str, enum_query_type query_type);
+  enum Type type_s() const {return INSERT_VALUE_ITEM;} 
   int save_in_field(Field *field_arg, bool no_conversions)
   {
     return Item_field::save_in_field(field_arg, no_conversions);

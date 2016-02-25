@@ -1845,6 +1845,10 @@ int spider_db_mysql::set_character_set(
 ) {
   DBUG_ENTER("spider_db_mysql::set_character_set");
   DBUG_PRINT("info",("spider this=%p", this));
+//  if(!db_conn)
+//  {
+//    DBUG_RETURN(1);
+//  }
   DBUG_RETURN(mysql_set_character_set(db_conn, csname));
 }
 

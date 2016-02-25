@@ -162,7 +162,8 @@ typedef st_spider_result SPIDER_RESULT;
 #define SPIDER_SQL_CONNECTION_LEN (sizeof(SPIDER_SQL_CONNECTION_STR) - 1)
 #define SPIDER_SQL_LCL_NAME_QUOTE_STR "`"
 #define SPIDER_SQL_LCL_NAME_QUOTE_LEN (sizeof(SPIDER_SQL_LCL_NAME_QUOTE_STR) - 1)
-
+#define SPIDER_SQL_VALUES_FOR_UPDATE_STR "values("
+#define SPIDER_SQL_VALUES_FOR_UPDATE_LEN (sizeof(SPIDER_SQL_VALUES_FOR_UPDATE_STR) - 1)
 /* 连接类型 */
 #define SPIDER_CONN_KIND_MYSQL (1 << 0)
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -816,6 +817,7 @@ public:
     int quick_mode
   ) = 0;
   virtual int get_errno() = 0;
+//  virtual void* get_mysql_conn()=0;
   virtual const char *get_error() = 0;
   virtual bool is_server_gone_error(
     int error_num

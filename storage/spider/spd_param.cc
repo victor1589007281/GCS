@@ -2927,24 +2927,7 @@ int spider_param_conn_meta_max_invalid_duration()
     DBUG_RETURN(spider_conn_meta_max_invalid_duration);
 }
 
-//  spider_with_sts_crd 控制spider在open table的时候，要不要直接
-// 调用 get table status与get index status 默认为false
-static my_bool spider_with_sts_crd;
-static MYSQL_SYSVAR_BOOL(
-  with_sts_crd,
-  spider_with_sts_crd,
-  PLUGIN_VAR_OPCMDARG,
-  "control the spider open table with get table status and get index status",
-  NULL,
-  NULL,
-  FALSE
-);
 
-my_bool spider_param_with_sts_crd()
-{
-	DBUG_ENTER("spider_param_with_sts_crd");
-	DBUG_RETURN(spider_with_sts_crd);
-}
 
 static my_bool spider_use_pre_scan;
 static MYSQL_SYSVAR_BOOL(
@@ -3163,7 +3146,6 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(general_log),
   MYSQL_SYSVAR(client_found_rows),
   MYSQL_SYSVAR(get_sts_or_crd),
-  MYSQL_SYSVAR(with_sts_crd),
   MYSQL_SYSVAR(get_conn_from_idx),
   MYSQL_SYSVAR(use_pre_scan),
   MYSQL_SYSVAR(fetch_minimum_columns),
