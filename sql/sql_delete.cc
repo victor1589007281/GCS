@@ -140,7 +140,8 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
     if (!using_limit && const_cond_result &&
         !(specialflag & (SPECIAL_NO_NEW_FUNC | SPECIAL_SAFE_MODE)) &&
         (!thd->is_current_stmt_binlog_format_row() &&
-        !(table->triggers && table->triggers->has_delete_triggers())))
+        !(table->triggers && table->triggers->has_delete_triggers())) && 
+        opt_spider_use_delete_all)
     {
         /* Update the table->file->stats.records number */
         table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);

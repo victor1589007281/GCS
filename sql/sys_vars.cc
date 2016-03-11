@@ -3058,6 +3058,12 @@ static Sys_var_mybool Sys_spider_parallel_limit(
   GLOBAL_VAR(opt_spider_parallel_limit), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 
+static Sys_var_mybool Sys_spider_use_delete_all(
+  "spider_use_delete_all", 
+  "spider_use_delete_all defaults is false, do not use delete_all_row()",
+  GLOBAL_VAR(opt_spider_use_delete_all), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+
 static Sys_var_mybool Sys_spider_ignore_autocommit(
 	"spider_ignore_autocommit", 
 	"spider_ignore_autocommit defaults is false, let spider transmit set autocommit=0 to remote mysql when the param is true and conn->autocommit=0",
