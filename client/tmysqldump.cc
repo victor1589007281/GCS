@@ -118,7 +118,7 @@ static char *alloc_query_str(ulong size);
 static int cmd_argc = 0;
 
 static void field_escape(DYNAMIC_STRING* in, const char *from);
-static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0, opt_semantic_check = 0,
+static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0, opt_semantic_check = 0,opt_ignore_show_create_table_error=0,
                 quick= 1, extended_insert= 1,
                 lock_tables=1,ignore_errors=0,flush_logs=0,flush_privileges=0,
                 opt_drop=1,opt_keywords=0,opt_lock=1,opt_compress=0,
@@ -628,6 +628,8 @@ static struct my_option my_long_options[] =
    &opt_no_data, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"semantic-check", 0, "only for semantic-check,ignore views dump", &opt_semantic_check,
   &opt_semantic_check, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+  {"ignore-show-create-table-error", 0, "ignore show create table error , and continue dump", &opt_ignore_show_create_table_error,
+  &opt_ignore_show_create_table_error, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"no-set-names", 'N', "Same as --skip-set-charset.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"opt", OPT_OPTIMIZE,
@@ -1450,6 +1452,7 @@ static void maybe_die(int error_num, const char* fmt_reason, ...)
 static int mysql_query_with_error_report(MYSQL *mysql_con, MYSQL_RES **res,
                                          const char *query)
 {
+  // if ignore show create table error ,and  query is show create table ,return 0;
   if (mysql_query(mysql_con, query) ||
       (res && !((*res)= mysql_store_result(mysql_con))))
   {
@@ -1460,6 +1463,27 @@ static int mysql_query_with_error_report(MYSQL *mysql_con, MYSQL_RES **res,
   return 0;
 }
 
+static int mysql_query_with_error_report_for_create_table(MYSQL *mysql_con, MYSQL_RES **res,
+  const char *query,bool ignore_err)
+{
+
+  if (mysql_query(mysql_con, query) ||
+    (res && !((*res)= mysql_store_result(mysql_con))))
+  {
+
+    // if ignore show create table error ,and  query is show create table ,return 0;
+    if(!ignore_err)
+    {
+
+      //char *mysql_err=mysql_error(mysql_con);
+      //uint *mysql_errno=mysql_errno(mysql_con);
+      maybe_die(EX_MYSQLERR, "Couldn't execute '%s': %s (%d)",
+        query, mysql_error(mysql_con), mysql_errno(mysql_con));
+    }
+    return 1;
+  }
+  return 0;
+}
 /*
   This function handles sig_timeout calls
   If query is in process, kill query
@@ -2756,7 +2780,7 @@ static uint dump_routines_for_db(char *db)
         my_snprintf(query_buff, sizeof(query_buff), "SHOW CREATE %s %s",
                     routine_type[i], routine_name);
 
-        if (mysql_query_with_error_report(mysql, &routine_res, query_buff))
+        if (mysql_query_with_error_report(mysql, &routine_res, query_buff)) 
           DBUG_RETURN(1);
 
         while ((row= mysql_fetch_row(routine_res)))
@@ -2981,11 +3005,12 @@ static uint get_table_structure(char *table, char *db, char *table_type,
       /* 不需要create语句，但启用压缩，需要获得create table语句，但不能输出文件 */
       if (opt_no_create_info && opt_enable_compress_optimization)
           write_to_file = false;
-
+      //SHOW CREATE TABLE#################
+      //参数  --ignore-show-create-table-error，如果启用了这个参数，就忽略 show create table  的错误，继续
       my_snprintf(buff, sizeof(buff), "show create table %s", result_table);
 
       if (switch_character_set_results(mysql, "binary") ||
-          mysql_query_with_error_report(mysql, &result, buff) ||
+          mysql_query_with_error_report_for_create_table(mysql, &result, buff,opt_ignore_show_create_table_error) ||
           switch_character_set_results(mysql, default_charset))
         DBUG_RETURN(0);
 
@@ -6821,6 +6846,13 @@ int main(int argc, char **argv)
 	  exit(EX_MYSQLERR);
   }
 
+   if (opt_ignore_show_create_table_error && !opt_single_transaction)
+  {
+	  fprintf(stderr, "ignore_show_create_table_error option must be use with single_transaction.\n");
+	  free_resources();
+	  exit(EX_MYSQLERR);
+  }
+
   if (opt_xml && opt_enable_compress_optimization)
   {
 	  fprintf(stderr, "opt_xml can't be use with opt_enable_compress_optimization.\n");
@@ -7984,10 +8016,11 @@ static uint z_get_table_structure(char *table, char *db, char *table_type,/*{{{*
 
       if (opt_no_create_info && opt_enable_compress_optimization)
           write_to_file = false;
+//参数  --ignore-show-create-table-error，如果启用了这个参数，就忽略 show create table  的错误，继续
 
       my_snprintf(buff, sizeof(buff), "show create table %s", result_table);
       if(switch_character_set_results(mysql,"binary")||
-          mysql_query_with_error_report(mysql,&result,buff)||
+          mysql_query_with_error_report_for_create_table(mysql,&result,buff,opt_ignore_show_create_table_error)||
           switch_character_set_results(mysql,default_charset))
         DBUG_RETURN(0);
 
@@ -8412,6 +8445,7 @@ static my_bool z_get_view_structure(char *table, char* db)/*{{{*/
 
   if (switch_character_set_results(mysql, "binary"))
     DBUG_RETURN(1);
+//参数  --ignore-show-create-table-error，如果启用了这个参数，就忽略 show create table  的错误，继续
 
   my_snprintf(query, sizeof(query), "SHOW CREATE TABLE %s", result_table);
 
