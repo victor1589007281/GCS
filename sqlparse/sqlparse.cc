@@ -2615,22 +2615,36 @@ int parse_getkey_for_spider(THD *thd,  char *key_name, char *db_name, char *tabl
     case Key::PRIMARY:
     case Key::UNIQUE:
       {
-        if(has_shard_key && strcmp(key_name, column->field_name.str))
-        {// 已存在shard_key，且不是当前的唯一key，则报错
-          snprintf(result, buf_len, "ERROR: %s as TSpider key, but has other unique key", key_name);
-          strcpy(key_name, "");
-          return 1;
-        }
 
-        if (level > 1 && strcmp(key_name, column->field_name.str))
-        {// 多个unique, 如果前缀不同则报错
-          snprintf(result, buf_len, "%s", "ERROR: too more unique key with the different pre key");
-          strcpy(key_name, "");
-          return 1;
+        if(has_shard_key)
+        {/* 存在shard_key, 可以是多个唯一键的共同部分; 如果不在某个唯一键中，则报错 */
+          int has_flag = 0;
+          Key_part_spec *tmp_column;
+          cols.rewind();
+          while(tmp_column = cols++)
+          {
+            if(!strcmp(key_name, tmp_column->field_name.str))
+              has_flag = 1;
+          }
+          if(!has_flag)
+          {/* 如果不是某个唯一键的一部分 */
+            snprintf(result, buf_len, "ERROR: %s as TSpider key, but not in some unique key", key_name);
+            strcpy(key_name, "");
+            return 1;
+          }
         }
+        else
+        {
+          if (level > 1 && strcmp(key_name, column->field_name.str))
+          {// 多个unique, 如果前缀不同则报错
+            snprintf(result, buf_len, "%s", "ERROR: too more unique key with the different pre key");
+            strcpy(key_name, "");
+            return 1;
+          }
 
-        strcpy(key_name, column->field_name.str);
-        level = ((key->type == Key::PRIMARY) ? 3 : 2);
+          strcpy(key_name, column->field_name.str);
+          level = ((key->type == Key::PRIMARY) ? 3 : 2);
+        }
         break;
       }
     case Key::MULTIPLE:
