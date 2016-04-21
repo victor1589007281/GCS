@@ -1087,7 +1087,7 @@ query_parse_audit_tsqlparse(
 
  /* 建表指定了自增列，用于spider变更单据中显示告警 */
 
-      if(lex->type && AUTO_INCREMENT_FLAG)
+      if(lex->type & AUTO_INCREMENT_FLAG)
       {
         pra->result_type = 1;
         pra->warning_type = CREATE_TABLE_WITH_AUTOINCRE;
