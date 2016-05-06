@@ -66,6 +66,7 @@
 #include <sys/types.h>
 #include <sys/errno.h>
 #include <sys/io.h>
+#include <sys/stat.h>
 #else
 #include <io.h>
 #endif
@@ -100,6 +101,9 @@
 #define IGNORE_NONE 0x00 /* no ignore */
 #define IGNORE_DATA 0x01 /* don't dump data for this table */
 #define IGNORE_INSERT_DELAYED 0x02 /* table doesn't support INSERT DELAYED */
+
+/* Chars needed to store LONGLONG, excluding trailing '\0'. */
+#define LONGLONG_LEN 20
 
 #include <string.h>
 
@@ -265,7 +269,7 @@ static void z_write_footer(ZFILE sql_file);
 static void z_print_comment(ZFILE sql_file, my_bool is_error, const char *format, ...);
 static int z_add_stop_slave(void);
 static int z_do_show_slave_status(MYSQL *mysql_con);
-static int z_do_show_master_status(MYSQL *mysql_con, bool is_slave);
+static int z_do_show_master_status(MYSQL *mysql_con, int consistent_binlog_pos, bool is_slave);
 static int z_add_slave_statements(void);
 static uint z_dump_events_for_db(char *db);
 static ZFILE open_sql_zip_file_for_table(const char* db, const char* table, const char* type);
@@ -1618,6 +1622,43 @@ static int fetch_db_collation(const char *db_name,
   return err_status ? 1 : 0;
 }
 
+/*
+  Check if server supports non-blocking binlog position using the
+  binlog_snapshot_file and binlog_snapshot_position status variables. If it
+  does, also return the position obtained if output pointers are non-NULL.
+  Returns 1 if position available, 0 if not.
+*/
+static int
+check_consistent_binlog_pos(char *binlog_pos_file, char *binlog_pos_offset)
+{
+  MYSQL_RES *res;
+  MYSQL_ROW row;
+  int found;
+
+  if (mysql_query_with_error_report(mysql, &res,
+                                    "SHOW STATUS LIKE 'binlog_snapshot_%'"))
+    return 1;
+
+  found= 0;
+  while ((row= mysql_fetch_row(res)))
+  {
+    if (0 == strcmp(row[0], "Binlog_snapshot_file"))
+    {
+      if (binlog_pos_file)
+        strmake(binlog_pos_file, row[1], FN_REFLEN-1);
+      found++;
+    }
+    else if (0 == strcmp(row[0], "Binlog_snapshot_position"))
+    {
+      if (binlog_pos_offset)
+        strmake(binlog_pos_offset, row[1], LONGLONG_LEN);
+      found++;
+    }
+  }
+  mysql_free_result(res);
+
+  return (found == 2);
+}
 
 static char *my_case_str(const char *str,
                          uint str_len,
@@ -5897,52 +5938,74 @@ static int dump_selected_tables(char *db, char **table_names, int tables)
 } /* dump_selected_tables */
 
 
-static int do_show_master_status(MYSQL *mysql_con, bool is_slave)
+static int do_show_master_status(MYSQL *mysql_con, int consistent_binlog_pos, bool is_slave)
 {
-  MYSQL_ROW row;
-  MYSQL_RES *master;
-  const char *comment_prefix=
-    (opt_master_data == MYSQL_OPT_MASTER_DATA_COMMENTED_SQL || is_slave) ? "-- " : "";
-  if (mysql_query_with_error_report(mysql_con, &master, "SHOW MASTER STATUS"))
-  {
-    return 1;
-  }
-  else
-  {
-    row= mysql_fetch_row(master);
-    if (row && row[0] && row[1])
-    {
-      /* SHOW MASTER STATUS reports file and position */
-      print_comment(md_result_file, 0,
-                    "\n--\n-- Position to start replication or point-in-time "
-                    "recovery from\n--\n\n");
-      if(is_slave)
-      {
-        fprintf(md_result_file,
-              "%sCHANGE SLAVE TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
-              comment_prefix, row[0], row[1]);
-      }
-      else 
-      {
-        fprintf(md_result_file,
-              "%sCHANGE MASTER TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
-              comment_prefix, row[0], row[1]);
-      }
-     
-      check_io(md_result_file);
-    }
-    else if (!ignore_errors)
-    {
-      /* SHOW MASTER STATUS reports nothing and --force is not enabled */
-      my_printf_error(0, "Error: Binlogging on server not active",
-                      MYF(0));
-      mysql_free_result(master);
-      maybe_exit(EX_MYSQLERR);
-      return 1;
-    }
-    mysql_free_result(master);
-  }
-  return 0;
+	MYSQL_ROW row;
+	MYSQL_RES *master;
+	char binlog_pos_file[FN_REFLEN];
+	char binlog_pos_offset[LONGLONG_LEN+1];
+	char *file, *offset;
+	const char *comment_prefix=
+		(opt_master_data == MYSQL_OPT_MASTER_DATA_COMMENTED_SQL || is_slave) ? "-- " : "";
+
+	if (consistent_binlog_pos)
+	{
+		if (!check_consistent_binlog_pos(binlog_pos_file, binlog_pos_offset))
+			return 1;
+
+		file= binlog_pos_file;
+		offset= binlog_pos_offset;
+	}
+	else
+	{
+		if (mysql_query_with_error_report(mysql_con, &master, "SHOW MASTER STATUS"))
+			return 1;
+
+		row= mysql_fetch_row(master);
+		if (row && row[0] && row[1])
+		{
+			file = row[0];
+			offset = row[1];
+		}
+		else
+		{
+			mysql_free_result(master);
+			if (!ignore_errors)
+			{
+				/* SHOW MASTER STATUS reports nothing and --force is not enabled */
+				my_printf_error(0, "Error: Binlogging on server not active", MYF(0));
+				maybe_exit(EX_MYSQLERR);
+				return 1;
+			}
+			else
+			{
+				return 0;
+			}
+		}
+	}
+
+	/* SHOW MASTER STATUS reports file and position */
+	print_comment(md_result_file, 0,
+		"\n--\n-- Position to start replication or point-in-time "
+		"recovery from\n--\n\n");
+	if(is_slave)
+	{
+		fprintf(md_result_file,
+			"%sCHANGE SLAVE TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
+			comment_prefix, file, offset);
+	}
+	else
+	{
+		fprintf(md_result_file,
+			"%sCHANGE MASTER TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
+			comment_prefix, file, offset);
+	}
+
+	check_io(md_result_file);
+
+	if (!consistent_binlog_pos)
+		mysql_free_result(master);
+	return 0;
 }
 
 static int do_stop_slave_sql(MYSQL *mysql_con)
@@ -5994,47 +6057,64 @@ static int add_slave_statements(void)
 
 static int do_show_slave_status(MYSQL *mysql_con)
 {
-  MYSQL_RES *slave = NULL;
-  const char *comment_prefix=
-    (opt_slave_data == MYSQL_OPT_SLAVE_DATA_COMMENTED_SQL) ? "-- " : "";
-  if (mysql_query_with_error_report(mysql_con, &slave, "SHOW SLAVE STATUS"))
-  {
-    if (!ignore_errors)
-    {
-      /* SHOW SLAVE STATUS reports nothing and --force is not enabled */
-      my_printf_error(0, "Error: Slave not set up", MYF(0));
-    }
-    mysql_free_result(slave);
-    return 1;
-  }
-  else
-  {
-    MYSQL_ROW row= mysql_fetch_row(slave);
-    if (row && row[9] && row[21])
-    {
-      /* SHOW MASTER STATUS reports file and position */
-      if (opt_comments)
-        fprintf(md_result_file,
-                "\n--\n-- Position to start replication or point-in-time "
-                "recovery from (the master of this slave)\n--\n\n");
+	MYSQL_RES *slave = NULL;
+	const char *comment_prefix=
+		(opt_slave_data == MYSQL_OPT_SLAVE_DATA_COMMENTED_SQL) ? "-- " : "";
+	if (mysql_query_with_error_report(mysql_con, &slave, "SHOW SLAVE STATUS"))
+	{
+		if (!ignore_errors)
+		{
+			/* SHOW SLAVE STATUS reports nothing and --force is not enabled */
+			my_printf_error(0, "Error: Slave not set up", MYF(0));
+		}
+		mysql_free_result(slave);
+		return 1;
+	}
+	else
+	{
+		unsigned int num_fields;
+		unsigned int i;
+		MYSQL_FIELD *fields;
 
-      fprintf(md_result_file, "%sCHANGE MASTER TO ", comment_prefix);
+		num_fields = mysql_num_fields(slave);
+		fields = mysql_fetch_fields(slave);
+		MYSQL_ROW row= mysql_fetch_row(slave);
+		if (row)
+		{
+			/* SHOW MASTER STATUS reports file and position */
+			if (opt_comments)
+				fprintf(md_result_file,
+				"\n--\n-- Position to start replication or point-in-time "
+				"recovery from (the master of this slave)\n--\n\n");
 
-      if (opt_include_master_host_port)
-      {
-        if (row[1])
-          fprintf(md_result_file, "MASTER_HOST='%s', ", row[1]);
-        if (row[3])
-          fprintf(md_result_file, "MASTER_PORT='%s', ", row[3]);
-      }
-      fprintf(md_result_file,
-              "MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n", row[9], row[21]);
+			fprintf(md_result_file, "%sCHANGE MASTER TO ", comment_prefix);
+			for (i = 0; i < num_fields; i++)
+			{
+				if (!strcmp(fields[i].name, "Master_Host") && opt_include_master_host_port)
+				{
+					fprintf(md_result_file, "MASTER_HOST='%s', ", row[i]);
+				}
 
-      check_io(md_result_file);
-    }
-    mysql_free_result(slave);
-  }
-  return 0;
+				if (!strcmp(fields[i].name, "Master_Port") && opt_include_master_host_port)
+				{
+					fprintf(md_result_file, "MASTER_PORT='%s', ", row[i]);
+				}
+
+				if (!strcmp(fields[i].name, "Relay_Master_Log_File"))
+				{
+					fprintf(md_result_file, "MASTER_LOG_FILE='%s', ", row[i]);
+				}
+
+				if (!strcmp(fields[i].name, "Exec_Master_Log_Pos"))
+				{
+					fprintf(md_result_file, "MASTER_LOG_POS='%s', ", row[i]);
+				}
+			}
+		}
+
+		mysql_free_result(slave);
+	}
+	return 0;
 }
 
 static int do_show_processlist(MYSQL *mysql_con)
@@ -6798,6 +6878,7 @@ int main(int argc, char **argv)
 {
   char bin_log_name[FN_REFLEN];
   int exit_code;
+  int consistent_binlog_pos= 0;
   char tmp_buf[FN_REFLEN];
   char tmp_path[FN_REFLEN];
   char file_extend[FN_REFLEN];
@@ -6953,7 +7034,16 @@ int main(int argc, char **argv)
   if (opt_slave_data && do_stop_slave_sql(mysql))
     goto err;
 
-  if ((opt_lock_all_tables || opt_master_data ||
+  if (opt_single_transaction && opt_master_data)
+  {
+    /*
+       See if we can avoid FLUSH TABLES WITH READ LOCK with Binlog_snapshot_*
+       variables.
+    */
+    consistent_binlog_pos= check_consistent_binlog_pos(NULL, NULL);
+  }
+
+  if ((opt_lock_all_tables || (opt_master_data && !consistent_binlog_pos) ||
        (opt_single_transaction && flush_logs)) &&
       do_flush_tables_read_lock(mysql))
     goto err;
@@ -7004,12 +7094,12 @@ int main(int argc, char **argv)
   {
     if(gzpath)
     {
-      if(z_do_show_master_status(mysql, false))
+      if(z_do_show_master_status(mysql, consistent_binlog_pos, false))
         goto err;
     }
     else
     {
-      if(do_show_master_status(mysql, false))
+      if(do_show_master_status(mysql, consistent_binlog_pos, false))
         goto err;
     }
   }
@@ -7020,7 +7110,13 @@ int main(int argc, char **argv)
       if(z_do_show_slave_status(mysql))
         goto err;
 
-      if(z_do_show_master_status(mysql, true))
+	  /*
+	   * NB: arg2 must be false.
+	   * we get slave's binlog info through show master status,
+	   * the show status like 'binlog_snapshot_%' 's result may be effected
+	   * by log_slave_updates's ON/OFF and incorrect
+	   */
+      if(z_do_show_master_status(mysql, false, true))
         goto err;
     }
     else
@@ -7028,7 +7124,7 @@ int main(int argc, char **argv)
       if(do_show_slave_status(mysql))
         goto err;
 
-      if(do_show_master_status(mysql, true))
+      if(do_show_master_status(mysql, false, true))
         goto err;
     }
   }
@@ -7347,52 +7443,77 @@ static int z_add_stop_slave(void)/*{{{*/
   ZPRINTF(dump_begin_file, "STOP SLAVE;\n");
   DBUG_RETURN(0);
 }/*}}}*/
-static int z_do_show_master_status(MYSQL *mysql_con, bool is_slave)/*{{{*/
+static int z_do_show_master_status(MYSQL *mysql_con, int consistent_binlog_pos, bool is_slave)/*{{{*/
 {
-  MYSQL_ROW row;
-  MYSQL_RES *master;
-  const char *comment_prefix=
-    (opt_master_data == MYSQL_OPT_MASTER_DATA_COMMENTED_SQL || is_slave) ? "-- " : "";
-  DBUG_ENTER("z_do_show_master_status");
-  if (mysql_query_with_error_report(mysql_con, &master, "SHOW MASTER STATUS"))
-  {
-    DBUG_RETURN(1);
-  }
-  else
-  {
-    row= mysql_fetch_row(master);
-    if (row && row[0] && row[1])
-    {
-      /* SHOW MASTER STATUS reports file and position */
-      z_print_comment(dump_begin_file, 0,
-                    "\n--\n-- Position to start replication or point-in-time "
-                    "recovery from\n--\n\n");
-      if (is_slave)
-      {
-        ZPRINTF(dump_begin_file,
-              "%sCHANGE SLAVE TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
-              comment_prefix, row[0], row[1]);
-      }
-      else 
-      {
-        ZPRINTF(dump_begin_file,
-              "%sCHANGE MASTER TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
-              comment_prefix, row[0], row[1]);
-      }
-      check_io(dump_begin_file);
-    }
-    else if (!ignore_errors)
-    {
-      /* SHOW MASTER STATUS reports nothing and --force is not enabled */
-      my_printf_error(0, "Error: Binlogging on server not active",
-                      MYF(0));
-      mysql_free_result(master);
-      maybe_exit(EX_MYSQLERR);
-      DBUG_RETURN(1);
-    }
-    mysql_free_result(master);
-  }
-  DBUG_RETURN(0);
+	MYSQL_ROW row;
+	MYSQL_RES *master;
+	char binlog_pos_file[FN_REFLEN];
+	char binlog_pos_offset[LONGLONG_LEN+1];
+	char *file, *offset;
+	const char *comment_prefix=
+		(opt_master_data == MYSQL_OPT_MASTER_DATA_COMMENTED_SQL || is_slave) ? "-- " : "";
+	DBUG_ENTER("z_do_show_master_status");
+
+	if (consistent_binlog_pos)
+	{
+		if (!check_consistent_binlog_pos(binlog_pos_file, binlog_pos_offset))
+			DBUG_RETURN(1);
+
+		file = binlog_pos_file;
+		offset = binlog_pos_offset;
+	}
+	else
+	{
+		if (mysql_query_with_error_report(mysql_con, &master, "SHOW MASTER STATUS"))
+			DBUG_RETURN(1);
+		else
+		{
+			row= mysql_fetch_row(master);
+			if (row && row[0] && row[1])
+			{
+				file = row[0];
+				offset = row[1];
+			}
+			else
+			{
+				mysql_free_result(master);
+				if (!ignore_errors)
+				{
+					/* SHOW MASTER STATUS reports nothing and --force is not enabled */
+					my_printf_error(0, "Error: Binlogging on server not active", MYF(0));
+					maybe_exit(EX_MYSQLERR);
+					DBUG_RETURN(1);
+				}
+				else
+				{
+					DBUG_RETURN(0);
+				}
+			}
+		}
+	}
+
+	/* SHOW MASTER STATUS reports file and position */
+	z_print_comment(dump_begin_file, 0,
+		"\n--\n-- Position to start replication or point-in-time "
+		"recovery from\n--\n\n");
+	if (is_slave)
+	{
+		ZPRINTF(dump_begin_file,
+			"%sCHANGE SLAVE TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
+			comment_prefix, file, offset);
+	}
+	else
+	{
+		ZPRINTF(dump_begin_file,
+			"%sCHANGE MASTER TO MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n",
+			comment_prefix, file, offset);
+	}
+	check_io(dump_begin_file);
+
+	if (!consistent_binlog_pos)
+		mysql_free_result(master);
+
+	DBUG_RETURN(0);
 }/*}}}*/
 static int z_do_show_slave_status(MYSQL *mysql_con)/*{{{*/
 {
@@ -7412,30 +7533,47 @@ static int z_do_show_slave_status(MYSQL *mysql_con)/*{{{*/
   }
   else
   {
-    MYSQL_ROW row= mysql_fetch_row(slave);
-    if (row && row[9] && row[21])
-    {
-      /* SHOW MASTER STATUS reports file and position */
-      if (opt_comments)
-        ZPRINTF(dump_begin_file,
-                "\n--\n-- Position to start replication or point-in-time "
-                "recovery from (the master of this slave)\n--\n\n");
+	  unsigned int num_fields;
+	  unsigned int i;
+	  MYSQL_FIELD *fields;
 
-      ZPRINTF(dump_begin_file, "%sCHANGE MASTER TO ", comment_prefix);
+	  num_fields = mysql_num_fields(slave);
+	  fields = mysql_fetch_fields(slave);
+	  MYSQL_ROW row= mysql_fetch_row(slave);
+	  if (row)
+	  {
+		  /* SHOW MASTER STATUS reports file and position */
+		  if (opt_comments)
+			  ZPRINTF(dump_begin_file,
+			  "\n--\n-- Position to start replication or point-in-time "
+			  "recovery from (the master of this slave)\n--\n\n");
 
-      if (opt_include_master_host_port)
-      {
-        if (row[1])
-          ZPRINTF(dump_begin_file, "MASTER_HOST='%s', ", row[1]);
-        if (row[3])
-          ZPRINTF(dump_begin_file, "MASTER_PORT='%s', ", row[3]);
-      }
-      ZPRINTF(dump_begin_file,
-              "MASTER_LOG_FILE='%s', MASTER_LOG_POS=%s;\n", row[9], row[21]);
+		  ZPRINTF(dump_begin_file, "%sCHANGE MASTER TO ", comment_prefix);
+		  for (i = 0; i < num_fields; i++)
+		  {
+			  if (!strcmp(fields[i].name, "Master_Host") && opt_include_master_host_port)
+			  {
+				  ZPRINTF(dump_begin_file, "MASTER_HOST='%s', ", row[i]);
+			  }
 
-      check_io(dump_begin_file);
-    }
-    mysql_free_result(slave);
+			  if (!strcmp(fields[i].name, "Master_Port") && opt_include_master_host_port)
+			  {
+				  ZPRINTF(dump_begin_file, "MASTER_PORT='%s', ", row[i]);
+			  }
+
+			  if (!strcmp(fields[i].name, "Relay_Master_Log_File"))
+			  {
+				  ZPRINTF(dump_begin_file, "MASTER_LOG_FILE='%s', ", row[i]);
+			  }
+
+			  if (!strcmp(fields[i].name, "Exec_Master_Log_Pos"))
+			  {
+				  ZPRINTF(dump_begin_file, "MASTER_LOG_POS='%s', ", row[i]);
+			  }
+		  }
+	  }
+
+	  mysql_free_result(slave);
   }
   DBUG_RETURN(0);
 }/*}}}*/
