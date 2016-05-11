@@ -19,7 +19,7 @@ extern int parse_export;
 static int ignore_error_code[] = {ER_UNKNOWN_SYSTEM_VARIABLE,0};//0 means the end
 
 
-static int version_pos[] = {0, 6, 13, 13, 13, 13, 13, 13};
+static int version_pos[] = {0, 6, 13, 13, 13, 13, 13, 13, 13, 13, 18, 18, 18};
 static  char word_segmentation[] = {' ' , '\t', '\n', '\r', ',', '.', '(', ')', '<', '>', '=', '!', '\0'}; 
 static parse_option sqlparse_option ;
 
@@ -32,15 +32,21 @@ static const char *reserve_words[] =
   "MASTER_SSL_VERIFY_SERVER_CERT",
   "RANGE",
   "READ_ONLY",
-  "READ_WRITE",  /* 5.1 reserved words */
+  "READ_WRITE",  /* 5.1 reserved words£¬ 5 */
   "GENERAL",
   "IGNORE_SERVER_IDS",
   "MASTER_HEARTBEAT_PERIOD",
   "MAXVALUE",
   "RESIGNAL",
   "SIGNAL",
-  "SLOW"			/* 5.5 reserved words */
+  "SLOW",			/* 5.5 reserved words£¬12 */
+  "GET",
+  "IO_AFTER_GTIDS",
+  "IO_BEFORE_GTIDS",
+  "MASTER_AUTO_POSITION",
+  "MASTER_BIND"  /* 5.6 reserved words, 17 */
 };
+
 
 void my_init_for_sqlparse();
 void my_end_for_sqlparse();
@@ -1732,6 +1738,16 @@ static int set_current_version(char *version, enum_version *current_version)
       *current_version = VERSION_TMYSQL_1_3;
     else if(0 == strcmp(version, "tmysql-1.4"))
       *current_version = VERSION_TMYSQL_1_4;
+    else if(0 == strcmp(version, "tmysql-1.5"))
+      *current_version = VERSION_TMYSQL_1_5;
+    else if(0 == strcmp(version, "tmysql-1.6"))
+      *current_version = VERSION_TMYSQL_1_6;
+    else if(0 == strcmp(version, "5.6"))
+      *current_version = VERSION_5_6;
+    else if(strstr(version, "tmysql-2.0"))
+      *current_version = VERSION_TMYSQL_2_0;
+    else if(strstr(version, "tmysql-2.1"))
+      *current_version = VERSION_TMYSQL_2_1;
     else
       return -1;
   }

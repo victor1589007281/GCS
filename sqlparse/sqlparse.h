@@ -84,7 +84,8 @@ enum enum_stmt_command {
 
 // 增加版本号的同时，要注意修改sqlparse.cc中的数组 version_pos
 enum enum_version {VERSION_5_0, VERSION_5_1, VERSION_5_5, VERSION_TMYSQL_1_0, VERSION_TMYSQL_1_1,
-					VERSION_TMYSQL_1_2, VERSION_TMYSQL_1_3, VERSION_TMYSQL_1_4};
+					VERSION_TMYSQL_1_2, VERSION_TMYSQL_1_3, VERSION_TMYSQL_1_4, VERSION_TMYSQL_1_5, VERSION_TMYSQL_1_6, 
+          VERSION_5_6, VERSION_TMYSQL_2_0, VERSION_TMYSQL_2_1};
 
 struct parse_table_struct {
     char dbname[NAME_LEN];
