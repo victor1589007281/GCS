@@ -4884,7 +4884,7 @@ int spider_mysql_handler::append_index_hint(
   DBUG_ENTER("spider_mysql_handler::append_index_hint");
   DBUG_PRINT("info",("spider this=%p", this));
 
-  while(hint = iter++)
+  while(index_hints && (hint = iter++))
   {
     if (sql_type != SPIDER_SQL_TYPE_HANDLER)
     {
