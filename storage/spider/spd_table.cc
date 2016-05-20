@@ -7756,6 +7756,19 @@ st_select_lex *spider_get_select_lex(
   DBUG_RETURN(NULL);
 }
 
+
+List<Index_hint> *spider_get_index_hints(
+  ha_spider *spider
+) {
+  TABLE_LIST *table_list = spider_get_parent_table_list(spider);
+  DBUG_ENTER("spider_get_index_hint");
+  if (table_list)
+  {
+    DBUG_RETURN(table_list->index_hints);
+  }
+  DBUG_RETURN(NULL);
+}
+
 bool is_spider_select_order_by(ha_spider *spider)
 {
 	st_select_lex *select_lex;
@@ -7820,8 +7833,11 @@ bool is_spider_select_limit_x_y(ha_spider *spider)
 {
 	st_select_lex *select_lex;
 	select_lex = spider_get_select_lex(spider);
+  longlong select_limit;
+  longlong offset_limit;
+  spider_get_select_limit(spider, &select_lex, &select_limit, &offset_limit);
 	DBUG_ENTER("is_spider_select_limit_x_y");
-	if (select_lex && select_lex->select_limit && select_lex->explicit_limit && select_lex->offset_limit)
+	if (select_lex && select_lex->select_limit && select_lex->explicit_limit && select_lex->offset_limit && select_limit && offset_limit)
 	{
 		DBUG_RETURN(true);
 	}

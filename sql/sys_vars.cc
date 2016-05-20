@@ -3046,6 +3046,11 @@ static Sys_var_mybool Sys_spider_auto_increment_mode_switch(
 	"the switch use to control if use the spider_auto_increment_mode, default true ",
 	READ_ONLY GLOBAL_VAR(spider_auto_increment_mode_switch), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_spider_index_hint_pushdown(
+  "spider_index_hint_pushdown", 
+  "if the force index can be push down",
+  GLOBAL_VAR(opt_spider_index_hint_pushdown), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
 static Sys_var_mybool Sys_spider_parallel_group_order(
 	"spider_parallel_group_order", 
 	"spider_parallel_group_order defaults is false, set spider parallel process without supporting group by, order by",
