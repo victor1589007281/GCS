@@ -3063,6 +3063,12 @@ static Sys_var_mybool Sys_spider_parallel_limit(
   GLOBAL_VAR(opt_spider_parallel_limit), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 
+static Sys_var_mybool Sys_spider_not_convert_binary(
+  "spider_not_convert_binary", 
+  "spider_not_convert_binary defaults is false, set spider to use binary to express binary",
+  GLOBAL_VAR(opt_spider_not_convert_binary), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+
 static Sys_var_mybool Sys_spider_use_delete_all(
   "spider_use_delete_all", 
   "spider_use_delete_all defaults is false, do not use delete_all_row()",

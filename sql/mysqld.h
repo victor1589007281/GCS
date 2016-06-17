@@ -92,6 +92,7 @@ extern bool opt_update_log, opt_bin_log, opt_error_log;
 extern my_bool opt_bin_log_compress;
 extern my_bool opt_log, opt_slow_log, log_sql_use_mutil_partition, spider_auto_increment_mode_switch, opt_alter_log,opt_spider_index_hint_pushdown;
 extern my_bool opt_spider_parallel_limit, opt_spider_parallel_group_order, opt_spider_ignore_autocommit, opt_spider_use_delete_all;
+extern my_bool opt_spider_not_convert_binary;
 extern uint spider_auto_increment_mode_value, spider_auto_increment_step, opt_spider_max_connections,opt_spider_conn_wait_timeout,opt_spider_max_partitions;
 extern my_bool opt_backup_history_log;
 extern my_bool opt_backup_progress_log;
