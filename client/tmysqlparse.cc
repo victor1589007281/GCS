@@ -1226,14 +1226,17 @@ int main(int argc,char *argv[])
 
 	sqlparse_option.is_show_create = show_create;
 	memset(sqlparse_option.show_create_file, sizeof(sqlparse_option.show_create_file), 0);
-	if(show_create && show_create_path)
-	{
-		fp_show_create = fopen(show_create_path,"w+");
-		strcpy(sqlparse_option.show_create_file, show_create_path);
-		sqlparse_option.fp_show_create = (void*)fp_show_create;
-		fputs("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n",fp_show_create);
-		fputs("<result>\n",fp_show_create);;
-	}
+  if(show_create && show_create_path)
+  {
+    fp_show_create = fopen(show_create_path,"w+");
+    strcpy(sqlparse_option.show_create_file, show_create_path);
+    sqlparse_option.fp_show_create = (void*)fp_show_create;
+    fputs("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n",fp_show_create);
+    fputs("<result>\n",fp_show_create);
+#if defined(__WIN__)
+    fclose(fp_show_create);
+#endif
+  }
 
 
 	if(-1 == parse_result_audit_init(&pra,set_version, set_charset, get_only_ntables, &sqlparse_option))
@@ -1271,6 +1274,9 @@ int main(int argc,char *argv[])
 
 	if(show_create && show_create_path)
 	{
+#if defined(__WIN__)
+    fp_show_create = fopen(show_create_path,"a+");
+#endif
 		fputs("</result>\n",fp_show_create);
 		fclose(fp_show_create);
 	}
@@ -1573,7 +1579,7 @@ static struct my_option my_long_options[] =
 */	{"version", 'V', "Output version information and exit.", 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
 	{"force", 'F', "Continue even if we get an SQL error.", &ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
 	{"set_version", 'v', "choose a version to parse sql, like, \"5.0\" \"5.1\" \"5.5\" \"tmysql-1.0\" " 
-	" \"tmysql-1.1\" \"tmysql-1.2\" \"tmysql-1.3\" \"tmysql-1.4\"."
+	" \"tmysql-1.1\" \"tmysql-1.2\" \"tmysql-1.3\" \"tmysql-1.4\" \"tmysql-1.5\" \"tmysql-1.6\" \"5.6\" \"tmysql-2.0\" \"tmysql-2.1\""
 	"default value is \"5.5\"",&set_version, &set_version, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"set_charset", 'c', "set the charset of db.", &set_charset, &set_charset, 0 ,GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 	{"get_only_ntables", 'T', "sqlparse output table counts only.", &get_only_ntables, &get_only_ntables, 0 ,GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},

@@ -1003,6 +1003,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  GEOMETRYCOLLECTION
 %token  GEOMETRY_SYM
 %token  GET_FORMAT                    /* MYSQL-FUNC */
+%token  GET_SYM                       /* SQL-2003-R */
 %token  GLOBAL_SYM                    /* SQL-2003-R */
 %token  GRANT                         /* SQL-2003-R */
 %token  GRANTS
@@ -1044,6 +1045,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  INT_SYM                       /* SQL-2003-R */
 %token  INVOKER_SYM
 %token  IN_SYM                        /* SQL-2003-R */
+%token  IO_AFTER_GTIDS                /* MYSQL, FUTURE-USE */
+%token  IO_BEFORE_GTIDS               /* MYSQL, FUTURE-USE */
 %token  IO_SYM
 %token  IPC_SYM
 %token  IS                            /* SQL-2003-R */
@@ -1085,6 +1088,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  LOOP_SYM
 %token  LOW_PRIORITY
 %token  LT                            /* OPERATOR */
+%token  MASTER_AUTO_POSITION_SYM
+%token  MASTER_BIND_SYM
 %token  MASTER_CONNECT_RETRY_SYM
 %token  MASTER_HOST_SYM
 %token  MASTER_LOG_FILE_SYM

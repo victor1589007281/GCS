@@ -3358,6 +3358,17 @@ int spider_db_mysql_util::open_item_func(
           last_str_length = SPIDER_SQL_AS_SIGNED_LEN;
           break;
         }
+        else if(!strncasecmp("last_insert_id", func_name, func_name_length))
+        {
+          THD *thd = current_thd;
+          if(!str && thd && thd->lex &&
+            (thd->lex->sql_command == SQLCOM_UPDATE || 
+            thd->lex->sql_command == SQLCOM_UPDATE_MULTI ||
+            thd->lex->sql_command == SQLCOM_DELETE))
+          {
+               DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+          }
+        }
       } else if (func_name_length == 16)
       {
         if (!strncasecmp("cast_as_unsigned", func_name, func_name_length))

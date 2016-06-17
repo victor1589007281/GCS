@@ -77,7 +77,6 @@ void cp_parse_option(parse_option *dest, parse_option *src)
 
   dest->is_show_create = src->is_show_create;
   strcpy(dest->show_create_file, src->show_create_file);
-
   dest->fp_show_create = src->fp_show_create;
 }
 
@@ -540,6 +539,9 @@ const char* get_warnings_type_str(int type)
   case CREATE_PROCEDURE_WITH_DEFINER: return "CREATE_PROCEDURE_WITH_DEFINER";
   case USE_UNKNOWN_SYSTEM_VARIABLE: return "USE_UNKNOWN_SYSTEM_VARIABLE";
   case CREATE_TABLE_WITH_AUTOINCRE: return "CREATE_TABLE_WITH_AUTOINCRE";
+  case ALTER_TABLE_CHANGE_COLUMN: return "ALTER_TABLE_CHANGE_COLUMN";
+  case ALTER_TABLE_ADD_INDEX: return "ALTER_TABLE_ADD_INDEX";
+  case ALTER_TABLE_DROP_INDEX:return "ALTER_TABLE_DROP_INDEX";
   case OTHER_WARNINGS: return "OTHER_WARNINGS";
   default:
     break;
@@ -1165,6 +1167,25 @@ query_parse_audit_tsqlparse(
         pra->result_type = 1;
         pra->warning_type = ADD_OR_DROP_UNIQUE_KEY ;
       }
+
+      if(lex->alter_info.flags & ALTER_CHANGE_COLUMN)
+      {
+        pra->result_type = 1;
+        pra->warning_type = ALTER_TABLE_CHANGE_COLUMN ;
+      }
+
+      if(lex->alter_info.flags & ALTER_ADD_INDEX)
+      {
+        pra->result_type = 1;
+        pra->warning_type = ALTER_TABLE_ADD_INDEX;
+      }
+
+      if(lex->alter_info.flags & ALTER_DROP_INDEX)
+      {
+        pra->result_type = 1;
+        pra->warning_type = ALTER_TABLE_DROP_INDEX ;
+      }
+
     }
     break;
   case SQLCOM_CREATE_PROCEDURE:
@@ -1236,6 +1257,10 @@ query_parse_audit_tsqlparse(
   {
     char key_name[256], db_name[256], table_name[256], result[256];
     char full_name[1024];
+
+#if defined(__WIN__)
+    sqlparse_option.fp_show_create = (void *)fopen(sqlparse_option.show_create_file,"a+");
+#endif
 
     strcpy(result, "SUCCESS");
 
@@ -1459,6 +1484,10 @@ query_parse_audit_tsqlparse(
 
     // »¹Ô­result_type
     pra->result_type = 0;
+
+#if defined(__WIN__)
+    fclose((FILE*)sqlparse_option.fp_show_create);
+#endif
   }
 
 
