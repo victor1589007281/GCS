@@ -43,8 +43,8 @@ static const char *reserve_words[] =
   "GET",
   "IO_AFTER_GTIDS",
   "IO_BEFORE_GTIDS",
-  "MASTER_AUTO_POSITION",
-  "MASTER_BIND"  /* 5.6 reserved words, 17 */
+  "MASTER_BIND",
+  "PARTITION"/* 5.6 reserved words, 17 */
 };
 
 
@@ -1626,7 +1626,7 @@ int query_parse_audit(char* query, parse_result_audit* pra )
       if(!query_parse_audit_low(sql1, pra))
         //保留字加上``，重新分析，语法正确
       {
-        pra->result_type = 0;
+//        pra->result_type = 0;
         exit_code = 0;
       }
       else
