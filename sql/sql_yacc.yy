@@ -1088,7 +1088,6 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  LOOP_SYM
 %token  LOW_PRIORITY
 %token  LT                            /* OPERATOR */
-%token  MASTER_AUTO_POSITION_SYM
 %token  MASTER_BIND_SYM
 %token  MASTER_CONNECT_RETRY_SYM
 %token  MASTER_HOST_SYM
