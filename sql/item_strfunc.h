@@ -240,6 +240,7 @@ public:
   String *val_str(String *);
   void fix_length_and_dec();
   const char *func_name() const { return "substr"; }
+  bool check_partition_func_processor(uchar *bool_arg) { return FALSE;}
 };
 
 
