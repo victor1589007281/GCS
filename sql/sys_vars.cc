@@ -3080,6 +3080,11 @@ static Sys_var_mybool Sys_spider_ignore_autocommit(
 	"spider_ignore_autocommit defaults is false, let spider transmit set autocommit=0 to remote mysql when the param is true and conn->autocommit=0",
 	GLOBAL_VAR(opt_spider_ignore_autocommit), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_spider_part_cond_pushdown(
+  "spider_part_cond_pushdown", 
+  "spider_part_cond_pushdown defaults is false, let spider push down the partition condition to each remote mysql",
+  GLOBAL_VAR(opt_spider_part_cond_pushdown), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
 
 static Sys_var_uint Sys_spider_auto_increment_mode_value(
 	"spider_auto_increment_mode_value", 

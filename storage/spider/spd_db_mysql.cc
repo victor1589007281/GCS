@@ -7165,9 +7165,13 @@ int spider_mysql_handler::append_condition(
   }
 
   Item_cond_and *new_cond=new Item_cond_and;
-  if(str)
-  {
-    spider->construct_par_cond();
+  if(str && opt_spider_part_cond_pushdown && !(spider->construct_par_cond()) )
+  { 
+   /*
+   1. str must be not null, null mean test
+   2. opt_spider_part_cond_pushdown
+   3. construct_part_cond, return 1 means failed
+    */
     if(tmp_cond)
     {/* have where condition, add partition condition */
       new_cond->argument_list()->push_back(spider->part_condition);
@@ -7175,13 +7179,13 @@ int spider_mysql_handler::append_condition(
       tmp_cond->cond = new_cond;
     }
     else
-    {/*  */
+    {/* without where condition push down */
       SPIDER_CONDITION *tmp = (SPIDER_CONDITION *) spider_malloc(spider_current_trx, 3, sizeof(*tmp), MYF(MY_WME));
       tmp->cond = spider->part_condition;
       tmp->next = NULL;
       tmp_cond = tmp;
-      spider->condition = tmp_cond;
     }
+    spider->condition = tmp_cond;  /* for memory collect */
   }
 
   while (tmp_cond)

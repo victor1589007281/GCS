@@ -1332,7 +1332,7 @@ public:
     MODULE condition pushdown
     -------------------------------------------------------------------------
   */
-    virtual const COND *cond_push(const COND *cond);
+    virtual const COND *cond_push(COND *cond);
     virtual void cond_pop();
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
     virtual int info_push(uint info_type, void *info);

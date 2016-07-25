@@ -366,6 +366,7 @@ my_bool opt_spider_not_convert_binary;
 my_bool opt_spider_use_delete_all;
 my_bool opt_spider_parallel_group_order;
 my_bool opt_spider_ignore_autocommit;
+my_bool opt_spider_part_cond_pushdown;
 uint spider_auto_increment_mode_value;
 uint spider_auto_increment_step;
 uint opt_spider_max_connections;

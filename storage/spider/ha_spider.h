@@ -81,6 +81,9 @@ public:
   SPIDER_TRX         *trx;
   ulonglong          spider_thread_id;                          /* ÄÚ²¿ID */
   ulonglong          trx_conn_adjustment;
+  partition_info     *part_info;
+  partition_element *pre_part_elem;
+  partition_element *cur_part_elem;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   ulonglong          trx_hs_r_conn_adjustment;
   ulonglong          trx_hs_w_conn_adjustment;
@@ -124,6 +127,7 @@ public:
   uchar              *position_bitmap;
   SPIDER_POSITION    *pushed_pos;
   SPIDER_POSITION    pushed_pos_buf;
+  Item               *part_condition; 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   SPIDER_PARTITION_HANDLER_SHARE *partition_handler_share;
   ha_spider          *pt_handler_share_creator;
@@ -268,6 +272,7 @@ public:
   spider_db_handler  **dbton_handler;
 
 
+
   ha_spider();
   ha_spider(
     handlerton *hton,
@@ -285,6 +290,12 @@ public:
     uint test_if_locked
   );
   int close();
+  void get_partition_file(void *pt_info, void *pre_elem, void *cur_elem)
+  {
+    part_info = (partition_info*)pt_info;
+    pre_part_elem = (partition_element*)pre_elem;
+    cur_part_elem = (partition_element*)cur_elem;
+  }
   int check_access_kind(
     THD *thd,
     bool write_request
@@ -357,6 +368,8 @@ public:
     bool sorted
   );
   int read_range_next();
+
+  int construct_par_cond();
 #ifdef HA_MRR_USE_DEFAULT_IMPL
 #if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
   ha_rows multi_range_read_info_const(
@@ -720,7 +733,7 @@ public:
     Field *field
   );
   const COND *cond_push(
-    const COND* cond
+    COND* cond
   );
   void cond_pop();
   int info_push(

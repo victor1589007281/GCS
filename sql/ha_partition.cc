@@ -2829,15 +2829,24 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
   }
   else
   {
-   file= m_file;
+    List_iterator<partition_element> part_it(m_part_info->partitions);
+    partition_element *pre_elem = NULL;
+    partition_element *cur_elem;
+    file= m_file;
    do
    {
+      cur_elem = part_it++;
+     
       create_partition_name(name_buff, name, name_buffer_ptr, NORMAL_PART_NAME,
                             FALSE);
       if ((error= (*file)->ha_open(table, name_buff, mode, test_if_locked)))
         goto err_handler;
       m_num_locks+= (*file)->lock_count();
       name_buffer_ptr+= strlen(name_buffer_ptr) + 1;
+
+      (*file)->get_partition_file(m_part_info, pre_elem, cur_elem);
+      pre_elem = cur_elem;
+
     } while (*(++file));
   }
   
@@ -9009,7 +9018,7 @@ int ha_partition::indexes_are_disabled(void)
   return error;
 }
 
-const COND *ha_partition::cond_push(const COND *cond)
+const COND *ha_partition::cond_push(COND *cond)
 {
   handler **file= m_file;
   COND *res_cond = NULL;

@@ -1664,6 +1664,10 @@ public:
   /* ha_ methods: pubilc wrappers for private virtual API */
 
   int ha_open(TABLE *table, const char *name, int mode, int test_if_locked);
+  void virtual get_partition_file(void *part_info, void *pre_elem, void *cur_elem)
+  {
+    return;
+  }
   int ha_index_init(uint idx, bool sorted)
   {
     DBUG_EXECUTE_IF("ha_index_init_fail", return HA_ERR_TABLE_DEF_CHANGED;);
@@ -2441,7 +2445,7 @@ public:
    Calls to rnd_init/rnd_end, index_init/index_end etc do not affect the
    condition stack.
  */ 
- virtual const COND *cond_push(const COND *cond) { return cond; };
+ virtual const COND *cond_push(COND *cond) { return cond; };
  /**
    Pop the top condition from the condition stack of the handler instance.
 

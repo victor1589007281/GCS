@@ -3981,6 +3981,104 @@ int ha_spider::pre_read_range_first(
   DBUG_RETURN(0);
 }
 
+int ha_spider::construct_par_cond()
+{
+  THD *thd = current_thd;
+  Item *part_func = part_info->part_expr;
+  Item *fix_left = part_info->part_expr;
+
+  List<part_elem_value> part_value_list;
+  part_elem_value *item_part_value;
+  List<Item> *item_pre_list = new List<Item>;
+  List<Item> *item_cur_list = new List<Item>;
+
+
+  if(!part_info->part_expr && part_info->column_list)
+  {/* like range columns(datetime) */
+    if(part_info->num_columns == 1)
+    {/* only support 1 column */
+      Item_field *tmp = new Item_field(part_info->part_field_array[0]);
+      part_func = tmp;
+    }
+    else
+      return 1;
+  }
+
+  if(pre_part_elem)
+  {
+    part_value_list = pre_part_elem->list_val_list;
+    List_iterator<part_elem_value> lit_part_value(part_value_list);
+    item_part_value = lit_part_value++;
+    while(item_part_value)
+    {
+      item_pre_list->push_back(item_part_value->col_val_array->item_expression);
+      item_part_value = lit_part_value++;
+    }
+  }
+
+  if(cur_part_elem)
+  {
+    part_value_list = cur_part_elem->list_val_list;
+    List_iterator<part_elem_value> lit_part_value(part_value_list);
+    item_part_value = lit_part_value++;
+    while(item_part_value)
+    {
+      item_cur_list->push_back(item_part_value->col_val_array->item_expression);
+      item_part_value = lit_part_value++;
+    }
+  }
+
+  List_iterator<Item> it_pre(*item_pre_list);
+  List_iterator<Item> it_cur(*item_cur_list);
+  int part_type = part_info->part_type;
+
+  Item_func_lt *item_lt;
+  Item_func_ge *item_ge;
+  Item_func_in *item_in;
+  Item_cond_and *and_cond=new Item_cond_and;
+
+  Item *item_cur = it_cur++;
+  Item *item_pre = NULL;
+  if(pre_part_elem)
+    item_pre = it_pre++;
+
+
+  switch(part_type)
+  {
+  case partition_type::RANGE_PARTITION:
+    
+    if(pre_part_elem == NULL)
+    {
+      item_lt = new Item_func_lt(part_func, item_cur);
+      part_condition = (Item *)item_lt;
+    }
+    else
+    {
+      item_lt = new Item_func_lt(part_func, item_cur);
+      item_ge = new Item_func_ge(part_func, item_pre);
+      and_cond->argument_list()->push_back(item_lt);
+      and_cond->argument_list()->push_back(item_ge);
+      part_condition = (Item*)and_cond;
+    }
+    break;
+
+  case partition_type::LIST_PARTITION:
+    item_cur_list->push_front(part_func);
+
+    item_in = new(&(this->share->table_share->mem_root)) Item_func_in(*item_cur_list);
+ //   item_in->fix_fields(thd, (Item**)&item_in);
+    part_condition = (Item*)item_in;
+    break;
+  case partition_type::HASH_PARTITION:
+  case partition_type::NOT_A_PARTITION:
+    return 1;
+    break;
+  default:
+    return 1;
+  }
+  return 0;
+}
+
 int ha_spider::read_range_first(
   const key_range *start_key,
   const key_range *end_key,
@@ -10320,7 +10418,7 @@ Field *ha_spider::field_exchange(
 }
 
 const COND *ha_spider::cond_push(
-  const COND *cond
+  COND *cond
 ) {
   DBUG_ENTER("ha_spider::cond_push");
   cond_check = FALSE;
