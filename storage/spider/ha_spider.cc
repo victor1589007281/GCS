@@ -41,6 +41,7 @@
 #include "spd_db_conn.h"
 #include "spd_ping_table.h"
 #include "spd_malloc.h"
+#include "partition_element.h"
 
 #if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100002
 #define SPIDER_CAN_BG_SEARCH (1LL << 37)
@@ -3983,9 +3984,7 @@ int ha_spider::pre_read_range_first(
 
 int ha_spider::construct_par_cond()
 {
-  THD *thd = current_thd;
   Item *part_func = part_info->part_expr;
-  Item *fix_left = part_info->part_expr;
 
   List<part_elem_value> part_value_list;
   part_elem_value *item_part_value;
@@ -4045,7 +4044,7 @@ int ha_spider::construct_par_cond()
 
   switch(part_type)
   {
-  case partition_type::RANGE_PARTITION:
+  case RANGE_PARTITION:
     
     if(pre_part_elem == NULL)
     {
@@ -4062,17 +4061,16 @@ int ha_spider::construct_par_cond()
     }
     break;
 
-  case partition_type::LIST_PARTITION:
+  case LIST_PARTITION:
     item_cur_list->push_front(part_func);
 
     item_in = new(&(this->share->table_share->mem_root)) Item_func_in(*item_cur_list);
  //   item_in->fix_fields(thd, (Item**)&item_in);
     part_condition = (Item*)item_in;
     break;
-  case partition_type::HASH_PARTITION:
-  case partition_type::NOT_A_PARTITION:
+  case HASH_PARTITION:
+  case NOT_A_PARTITION:
     return 1;
-    break;
   default:
     return 1;
   }
