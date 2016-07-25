@@ -7164,6 +7164,26 @@ int spider_mysql_handler::append_condition(
     tmp_cond = spider->pt_clone_source_handler->condition;
   }
 
+  Item_cond_and *new_cond=new Item_cond_and;
+  if(str)
+  {
+    spider->construct_par_cond();
+    if(tmp_cond)
+    {/* have where condition, add partition condition */
+      new_cond->argument_list()->push_back(spider->part_condition);
+      new_cond->argument_list()->push_back(tmp_cond->cond);
+      tmp_cond->cond = new_cond;
+    }
+    else
+    {/*  */
+      SPIDER_CONDITION *tmp = (SPIDER_CONDITION *) spider_malloc(spider_current_trx, 3, sizeof(*tmp), MYF(MY_WME));
+      tmp->cond = spider->part_condition;
+      tmp->next = NULL;
+      tmp_cond = tmp;
+      spider->condition = tmp_cond;
+    }
+  }
+
   while (tmp_cond)
   {
     if (str)
