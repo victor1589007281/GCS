@@ -8197,8 +8197,8 @@ int spider_db_open_item_string(
       {
         item->print(str->get_str(), (enum_query_type)QT_ORDINARY);
       }
-      else if(opt_spider_not_convert_binary && 
-        item && item->str_value.ptr() && item->str_value.charset() && 
+      else if(!field_charset && opt_spider_not_convert_binary &&
+        item->type() == Item::STRING_ITEM && item->str_value.ptr() && item->str_value.charset() && 
         my_charset_same(item->str_value.charset(), &my_charset_bin))
       {/* 对作为更新条件的二进制，加上binary */
  //       str->append(SPIDER_SQL_BINARY_STR, SPIDER_SQL_BINARY_LEN);
